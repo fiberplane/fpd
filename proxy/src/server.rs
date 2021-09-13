@@ -2,7 +2,6 @@ use crate::common::{FetchDataMessage, FetchDataResultMessage, RelayMessage, Serv
 use clap::Clap;
 use fp_plugins::runtime;
 use futures::{sink::SinkExt, StreamExt};
-use hyper::client::conn;
 use hyper_tungstenite::tungstenite::Message;
 use rmp_serde::Serializer;
 use serde::Serialize;
@@ -20,7 +19,6 @@ pub async fn handle_command(args: Arguments) {
     // open ws connection
 
     let addr = url::Url::parse("ws://127.0.0.1:3000/ws").expect("valid endpoint");
-
     let (ws_stream, resp) = connect_async(addr).await.expect("failed to connect");
 
     let connection_id = resp.headers().get("x-fp-conn-id");

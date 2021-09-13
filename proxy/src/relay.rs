@@ -18,10 +18,10 @@ use crate::common::{FetchDataMessage, FetchDataResultMessage, RelayMessage, Serv
 #[derive(Clap)]
 pub struct Arguments {}
 
-pub async fn handle_command(args: Arguments) {
+pub async fn handle_command(_: Arguments) {
     let relay_service = RelayService {
-        connections: Arc::new(Mutex::new(HashMap::new())),
-        outgoing_queries: Arc::new(Mutex::new(HashMap::new())),
+        connections: Default::default(),
+        outgoing_queries: Default::default(),
     };
 
     let service = RouterService::new(router(relay_service)).unwrap();
@@ -35,7 +35,6 @@ pub async fn handle_command(args: Arguments) {
 
     eprintln!("Starting server {}", addr);
 
-    // Run this server for... forever!
     match server.await {
         Ok(_) => eprintln!("Graceful shutdown"),
         Err(e) => eprintln!("server error: {}", e),
@@ -58,47 +57,6 @@ pub struct RelayService {
 }
 
 impl RelayService {
-    // /// Handle a websocket connection.
-    // async fn serve_websocket(
-    //     &mut self,
-    //     websocket: HyperWebsocket,
-    // ) -> Result<(), Box<dyn std::error::Error>> {
-    //     let websocket = websocket.await?;
-    //     let (write, mut read) = websocket.split();
-    //     {
-    //         let mut connections = self.connections.lock().unwrap();
-    //         connections.insert("connection".to_owned(), write);
-    //     }
-
-    //     while let Some(message) = read.next().await {
-    //         use hyper_tungstenite::tungstenite::Message::*;
-
-    //         let message = message?;
-    //         match message {
-    //             Text(_) => eprintln!("Received Text"),
-    //             Binary(message) => handle_message(message),
-    //             Ping(_) => eprintln!("Received Ping"),
-    //             Pong(_) => eprintln!("Received Pong"),
-    //             Close(_) => {
-    //                 eprintln!("Received Close");
-    //                 break;
-    //             }
-    //         }
-
-    //         eprintln!("received a message!");
-
-    //         // Do something with the message.
-    //         // foo(&message);
-
-    //         // Send a reply.
-    //         // websocket
-    //         //     .send(Message::text("Thank you, come again."))
-    //         //     .await?;
-    //     }
-
-    //     Ok(())
-    // }
-
     fn handle_message(&self, message: RelayMessage) {
         match message {
             RelayMessage::FetchDataResult(message) => {
@@ -108,8 +66,12 @@ impl RelayService {
     }
 
     fn handle_fetch_data_result_message(&self, message: FetchDataResultMessage) {
-        let mut outgoing_queries = self.outgoing_queries.lock().unwrap();
-        match outgoing_queries.remove(&message.op_id) {
+        let reply = {
+            let mut outgoing_queries = self.outgoing_queries.lock().unwrap();
+            outgoing_queries.remove(&message.op_id)
+        };
+
+        match reply {
             Some(chan) => {
                 eprintln!(
                     "handle_fetch_data_result_message: received something for a outgoing message"
@@ -126,6 +88,8 @@ impl RelayService {
         };
     }
 
+    /// Register a channel which allows messages to be send back to the
+    /// proxy server.
     fn register_connection(
         &self,
         id: uuid::Uuid,
@@ -135,6 +99,8 @@ impl RelayService {
         connections.insert(id, tx);
     }
 
+    /// Register a channel that will be called once a result is received with
+    /// the same op_id.
     pub fn prepare_query(
         &self,
         op_id: Uuid,
@@ -156,6 +122,9 @@ async fn ws_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     // Check if the request is a websocket upgrade request.
     if hyper_tungstenite::is_upgrade_request(&req) {
         eprintln!("ws_handler: tis a upgrade request");
+
+        // at this point we should be able to inspect the token that is in in
+        // the req, authorize it, and update registration.
 
         let id = uuid::Uuid::nil();
         let service = req.service().clone();
@@ -240,7 +209,9 @@ async fn ws_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 async fn relay_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     eprintln!("relay_handler");
 
-    // let body = req.body();
+    // TODO: Read query from body and forward to proxy server
+    // TODO: Get proxy id and DS from request
+
     let service = req.service();
 
     let connection_exists = {
@@ -248,6 +219,8 @@ async fn relay_handler(req: Request<Body>) -> Result<Response<Body>, Infallible>
         connections.get(&uuid::Uuid::nil()).is_some()
     };
 
+    // NOTE: it is possible for a connection to have bee removed between these
+    // checks. This will be refactored in a future PR.
     if connection_exists {
         eprintln!("relay_handler: sending message");
         let op_id = uuid::Uuid::new_v4();
@@ -286,14 +259,10 @@ async fn not_found_handler(_: Request<Body>) -> Result<Response<Body>, Infallibl
         .unwrap())
 }
 
-fn handle_message(message: Vec<u8>) {
-    eprintln!("received a binary message: {:?}", message);
-}
-
 // Create a `Router<Body, Infallible>` for response body type `hyper::Body`
 // and for handler error type `Infallible`.
 fn router(service: RelayService) -> Router<Body, Infallible> {
-    let state = State { service };
+    let state = State::new(service);
 
     Router::builder()
         // Specify the state data which will be available to every route handlers,

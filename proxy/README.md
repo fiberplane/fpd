@@ -1,3 +1,0 @@
-# Proxy
-
-Some documentation
