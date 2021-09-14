@@ -1139,10 +1139,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "provider"
-version = "0.1.0"
-
-[[package]]
 name = "proxy"
 version = "0.1.0"
 dependencies = [

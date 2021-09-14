@@ -1,5 +1,5 @@
 use crate::common::{FetchDataMessage, FetchDataResultMessage, RelayMessage, ServerMessage};
-use clap::Clap;
+use clap::{AppSettings, Clap};
 use fp_plugins::runtime;
 use futures::{sink::SinkExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
@@ -9,13 +9,19 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::connect_async;
 use wasmer::{Singlepass, Store, Universal};
 
+pub mod common;
+
 #[derive(Clap)]
+#[clap(author, about, version, setting = AppSettings::ColoredHelp)]
 pub struct Arguments {
     #[clap()]
     wasm_path: String,
 }
 
-pub async fn handle_command(args: Arguments) {
+#[tokio::main]
+async fn main() {
+    let args = Arguments::parse();
+
     // open ws connection
 
     let addr = url::Url::parse("ws://127.0.0.1:3000/ws").expect("valid endpoint");
