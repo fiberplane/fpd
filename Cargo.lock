@@ -424,6 +424,7 @@ dependencies = [
 [[package]]
 name = "fp-plugins"
 version = "0.1.0"
+source = "git+ssh://git@github.com/fiberplane/plugins-rs.git?branch=main#ded4d3cfd3edff6d7b79bb9f91fd2ca5488c3f39"
 dependencies = [
  "rand",
  "reqwest",
