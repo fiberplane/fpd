@@ -16,6 +16,17 @@ pub mod common;
 pub struct Arguments {
     #[clap()]
     wasm_path: String,
+
+    #[clap(
+        long,
+        short,
+        env = "FP_PROXY_ENDPOINT",
+        default_value = "ws://127.0.0.1:3000/ws"
+    )]
+    endpoint: String,
+
+    #[clap(long, short, env = "FP_PROXY_AUTH_TOKEN")]
+    auth_token: String,
 }
 
 #[tokio::main]
@@ -23,12 +34,15 @@ async fn main() {
     let args = Arguments::parse();
 
     // open ws connection
+    let request = http::Request::builder()
+        .uri(args.endpoint.clone())
+        .header("fp-auth-token", args.auth_token.clone())
+        .body(())
+        .unwrap();
 
-    let addr = url::Url::parse("ws://127.0.0.1:3000/ws").expect("valid endpoint");
-    let (ws_stream, resp) = connect_async(addr).await.expect("failed to connect");
+    let (ws_stream, resp) = connect_async(request).await.expect("failed to connect");
 
     let connection_id = resp.headers().get("x-fp-conn-id");
-
     match connection_id {
         Some(val) => eprintln!(
             "connection established, connection id: {}",
