@@ -422,14 +422,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "fp-plugins"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/plugins-rs.git?branch=main#ded4d3cfd3edff6d7b79bb9f91fd2ca5488c3f39"
+name = "fp-provider-runtime"
+version = "1.0.0-alpha.1"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#101c331c6407ecb2678e98a63c834ec85ba9f552"
 dependencies = [
  "rand",
  "reqwest",
- "rmp-serde",
+ "rmp-serde 1.0.0-beta.2",
  "serde",
+ "serde_bytes",
  "thiserror",
  "tokio",
  "wasmer",
@@ -1001,9 +1002,9 @@ checksum = "28988d872ab76095a6e6ac88d99b54fd267702734fd7ffe610ca27f533ddb95a"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.66"
+version = "0.9.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1996d2d305e561b70d1ee0c53f1542833f4e1ac6ce9a6708b6ff2738ca67dc82"
+checksum = "69df2d8dfc6ce3aaf44b40dec6f487d5a886516cf6879c49e98e0710f310a058"
 dependencies = [
  "autocfg",
  "cc",
@@ -1083,9 +1084,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pkg-config"
-version = "0.3.19"
+version = "0.3.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
+checksum = "7c9b1041b4387893b91ee6746cddfc28516aff326a3519fb2adf820932c5e6cb"
 
 [[package]]
 name = "ppv-lite86"
@@ -1143,12 +1144,12 @@ name = "proxy"
 version = "0.1.0"
 dependencies = [
  "clap",
- "fp-plugins",
+ "fp-provider-runtime",
  "futures",
  "http",
  "hyper",
  "hyper-tungstenite",
- "rmp-serde",
+ "rmp-serde 0.15.5",
  "routerify",
  "serde",
  "tokio",
@@ -1404,6 +1405,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmp-serde"
+version = "1.0.0-beta.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05d18f64792a930cdb215b849eb75d8d7ffaaf70c3b9bd594b5ccc5ab63b4f70"
+dependencies = [
+ "byteorder",
+ "rmp",
+ "serde",
+]
+
+[[package]]
 name = "routerify"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1551,9 +1563,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.67"
+version = "1.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7f9e390c27c3c0ce8bc5d725f6e4d30a29d26659494aa4b17535f7522c5c950"
+checksum = "0f690853975602e1bfe1ccbf50504d67174e3bcf340f23b5ea9992e0587a52d8"
 dependencies = [
  "itoa",
  "ryu",
