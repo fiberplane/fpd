@@ -3,7 +3,7 @@ use crate::common::{
 };
 use clap::{AppSettings, Clap};
 use fp_provider_runtime::spec::types::{
-    DataSource, PrometheusDataSource, QueryInstantOptions, QuerySeriesOptions, TimeRange,
+    DataSource, PrometheusDataSource, QueryInstantOptions, QuerySeriesOptions,
 };
 use futures::{sink::SinkExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
@@ -159,10 +159,10 @@ async fn handle_relay_query_message(
 
     // Execute either a series or an instant query
     let query_result = match message.query_type {
-        QueryType::Series(from, to) => {
+        QueryType::Series(time_range) => {
             let options = QuerySeriesOptions {
                 data_source,
-                time_range: TimeRange { from, to },
+                time_range,
             };
             let result = runtime.fetch_series(query, options).await;
             QueryResult::Series(result.unwrap())

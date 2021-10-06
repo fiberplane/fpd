@@ -1,4 +1,4 @@
-use fp_provider_runtime::spec::types::{FetchError, Instant, Series};
+use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
 use serde::{Deserialize, Serialize};
 
 /// Messages intended for the Server to handle
@@ -24,10 +24,10 @@ pub struct FetchDataMessage {
 #[derive(Debug, Deserialize, Serialize)]
 pub enum QueryType {
     // From, To
-    Series(f64, f64),
+    Series(TimeRange),
 
     // Time instant
-    Instant(f64),
+    Instant(Timestamp),
 }
 
 /// Messages intended for the Relay to handle
