@@ -1,6 +1,10 @@
-use crate::common::{FetchDataMessage, FetchDataResultMessage, RelayMessage, ServerMessage};
+use crate::common::{
+    FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
+};
 use clap::{AppSettings, Clap};
-use fp_plugins::runtime;
+use fp_provider_runtime::spec::types::{
+    DataSource, PrometheusDataSource, QueryInstantOptions, QuerySeriesOptions,
+};
 use futures::{sink::SinkExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
 use rmp_serde::Serializer;
@@ -138,20 +142,44 @@ async fn handle_relay_query_message(
 ) {
     eprintln!("received a relay message: {:?}", message);
 
+    // TODO: Preload and/or cache the result
     let wasm_module = std::fs::read(wasm_path).unwrap();
 
     let engine = Universal::new(Singlepass::default()).engine();
     let store = Store::new(&engine);
 
-    let runtime = runtime::Runtime::new(store, wasm_module).unwrap();
+    let runtime =
+        fp_provider_runtime::Runtime::new(store, wasm_module).expect("unable to create runtime");
 
-    let result = runtime
-        .invoke::<String, String, String>("".to_owned())
-        .await;
+    let query = message.query;
+    let data_source = DataSource::Prometheus(PrometheusDataSource {
+        // TODO: read the data-source actually from a local file
+        url: "https://prometheus.dev.fiberplane.io".into(),
+    });
+
+    // Execute either a series or an instant query
+    let query_result = match message.query_type {
+        QueryType::Series(time_range) => {
+            let options = QuerySeriesOptions {
+                data_source,
+                time_range,
+            };
+            let result = runtime.fetch_series(query, options).await;
+            QueryResult::Series(result.unwrap())
+        }
+        QueryType::Instant(time) => {
+            let options = QueryInstantOptions { data_source, time };
+            let result = runtime.fetch_instant(query, options).await;
+            QueryResult::Instant(result.unwrap())
+        }
+    };
+
+    // TODO: Better handling of invocation errors. Do we send something back in
+    // that case, and/or log to stderr?
 
     let fetch_data_result_message = FetchDataResultMessage {
         op_id: message.op_id,
-        result,
+        result: query_result,
     };
 
     reply
