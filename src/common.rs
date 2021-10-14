@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Messages intended for the Server to handle
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
     FetchData(FetchDataMessage),
 }
@@ -14,6 +15,7 @@ impl ServerMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FetchDataMessage {
     pub op_id: uuid::Uuid,
     pub data_source_name: String,
@@ -22,6 +24,7 @@ pub struct FetchDataMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum QueryType {
     // From, To
     Series(TimeRange),
@@ -32,6 +35,7 @@ pub enum QueryType {
 
 /// Messages intended for the Relay to handle
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum RelayMessage {
     FetchDataResult(FetchDataResultMessage),
 }
@@ -43,12 +47,14 @@ impl RelayMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FetchDataResultMessage {
     pub op_id: uuid::Uuid,
     pub result: QueryResult,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum QueryResult {
     Series(Result<Vec<Series>, FetchError>),
     Instant(Result<Vec<Instant>, FetchError>),
