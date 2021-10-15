@@ -79,10 +79,11 @@ impl ProxyService {
                 while let Some(message) = read.next().await {
                     match message.unwrap() {
                         Text(_) => error!("Received Text"),
-                        Binary(msg) => service
-                            .handle_message(ServerMessage::deserialize_msgpack(msg), tx.clone())
-                            .await
-                            .expect("error handling server message"),
+                        Binary(msg) => {
+                            service
+                                .handle_message(ServerMessage::deserialize_msgpack(msg), tx.clone())
+                                .await?
+                        }
                         Ping(_) => trace!("Received Ping"),
                         Pong(_) => trace!("Received Pong"),
                         Close(_) => {
@@ -92,7 +93,7 @@ impl ProxyService {
                     }
                 }
 
-                read
+                Ok(read)
             })
             .await
         });
@@ -106,15 +107,12 @@ impl ProxyService {
                 let mut buf = Vec::new();
                 message.serialize(&mut Serializer::new(&mut buf)).unwrap();
 
-                write
-                    .send(Message::Binary(buf))
-                    .await
-                    .expect("unable to send message to relay");
+                write.send(Message::Binary(buf)).await?;
 
                 trace!("handle_command: sending message to relay complete");
             }
 
-            write
+            Ok(write)
         });
 
         // keep connection open and handle incoming connections
