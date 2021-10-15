@@ -1,14 +1,16 @@
 use crate::common::{
     FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
 };
-use fp_provider_runtime::spec::types::{
-    DataSource, PrometheusDataSource, QueryInstantOptions, QuerySeriesOptions,
-};
+use crate::data_sources::DataSources;
+use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
+use fp_provider_runtime::Runtime;
 use futures::{sink::SinkExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
 use rmp_serde::Serializer;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::fs;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::connect_async;
 use url::Url;
@@ -23,16 +25,23 @@ pub struct ProxyService {
 struct Inner {
     endpoint: Url,
     auth_token: String,
-    wasm_path: String,
+    wasm_dir: PathBuf,
+    data_sources: DataSources,
 }
 
 impl ProxyService {
-    pub fn new(endpoint: Url, auth_token: String, wasm_path: String) -> Self {
+    pub fn new(
+        endpoint: Url,
+        auth_token: String,
+        wasm_dir: PathBuf,
+        data_sources: DataSources,
+    ) -> Self {
         ProxyService {
             inner: Arc::new(Inner {
                 endpoint,
                 auth_token,
-                wasm_path,
+                wasm_dir,
+                data_sources,
             }),
         }
     }
@@ -135,22 +144,24 @@ impl ProxyService {
         message: FetchDataMessage,
         reply: UnboundedSender<RelayMessage>,
     ) {
-        eprintln!("received a relay message: {:?}", message);
-
-        // TODO: Preload and/or cache the result
-        let wasm_module = std::fs::read(&self.inner.wasm_path).unwrap();
-
-        let engine = Universal::new(Singlepass::default()).engine();
-        let store = Store::new(&engine);
-
-        let runtime = fp_provider_runtime::Runtime::new(store, wasm_module)
-            .expect("unable to create runtime");
+        let data_source_name = message.data_source_name.as_str();
+        eprintln!(
+            "received a relay message for data source {}: {:?}",
+            data_source_name, message
+        );
+        let runtime = self.create_runtime(data_source_name).await;
 
         let query = message.query;
-        let data_source = DataSource::Prometheus(PrometheusDataSource {
-            // TODO: read the data-source actually from a local file
-            url: "https://prometheus.dev.fiberplane.io".into(),
-        });
+        let data_source = self
+            .inner
+            .data_sources
+            .0
+            .get(data_source_name)
+            // TODO send error message back to caller
+            .expect(&format!("unknown data source: {}", data_source_name))
+            .clone()
+            // convert to the fp_provider_runtime type
+            .into();
 
         // Execute either a series or an instant query
         let query_result = match message.query_type {
@@ -180,5 +191,22 @@ impl ProxyService {
         reply
             .send(RelayMessage::FetchDataResult(fetch_data_result_message))
             .ok();
+    }
+
+    async fn create_runtime(&self, data_source_name: &str) -> Runtime {
+        // WASM files are stored in the WASM directory as providerName.wasm
+        // (for example, /path/to/wasm/dir/prometheus.wasm)
+        let wasm_path = &self
+            .inner
+            .wasm_dir
+            .with_file_name(data_source_name)
+            .with_extension("wasm");
+        // TODO: Preload and/or cache the result
+        let wasm_module = fs::read(wasm_path).await.unwrap();
+
+        let engine = Universal::new(Singlepass::default()).engine();
+        let store = Store::new(&engine);
+
+        Runtime::new(store, wasm_module).expect("unable to create runtime")
     }
 }
