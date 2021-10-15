@@ -43,6 +43,10 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let args = Arguments::parse();
 
+    if !args.wasm_dir.is_dir() {
+        panic!("wasm_dir must be a directory");
+    }
+
     let data_sources = fs::read_to_string(args.data_sources)
         .await
         .expect("error reading data sources YAML file");
