@@ -40,6 +40,7 @@ pub struct Arguments {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
     let args = Arguments::parse();
 
     let data_sources = fs::read_to_string(args.data_sources)

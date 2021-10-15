@@ -14,6 +14,7 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::connect_async;
+use tracing::{debug, error, trace};
 use url::Url;
 use wasmer::{Singlepass, Store, Universal};
 
@@ -58,11 +59,11 @@ impl ProxyService {
 
         let connection_id = resp.headers().get("x-fp-conn-id");
         match connection_id {
-            Some(val) => eprintln!(
+            Some(val) => debug!(
                 "connection established, connection id: {}",
                 val.to_str().unwrap()
             ),
-            None => eprintln!("connection established, no connection id provided"),
+            None => debug!("connection established, no connection id provided"),
         }
 
         let (mut write, mut read) = ws_stream.split();
@@ -76,18 +77,16 @@ impl ProxyService {
             tokio::task::spawn_local(async move {
                 use hyper_tungstenite::tungstenite::Message::*;
                 while let Some(message) = read.next().await {
-                    eprintln!("handle_command: received a message");
-
                     match message.unwrap() {
-                        Text(_) => eprintln!("Received Text"),
+                        Text(_) => error!("Received Text"),
                         Binary(msg) => service
                             .handle_message(ServerMessage::deserialize_msgpack(msg), tx.clone())
                             .await
                             .expect("error handling server message"),
-                        Ping(_) => eprintln!("Received Ping"),
-                        Pong(_) => eprintln!("Received Pong"),
+                        Ping(_) => trace!("Received Ping"),
+                        Pong(_) => trace!("Received Pong"),
                         Close(_) => {
-                            eprintln!("Received Close");
+                            debug!("Received Close");
                             break;
                         }
                     }
@@ -99,10 +98,10 @@ impl ProxyService {
         });
 
         let write_handle = tokio::spawn(async move {
-            eprintln!("handle_command: creating write_handle");
+            trace!("handle_command: creating write_handle");
 
             while let Some(message) = rx.recv().await {
-                eprintln!("handle_command: sending message to relay");
+                trace!("handle_command: sending message to relay");
 
                 let mut buf = Vec::new();
                 message.serialize(&mut Serializer::new(&mut buf)).unwrap();
@@ -112,7 +111,7 @@ impl ProxyService {
                     .await
                     .expect("unable to send message to relay");
 
-                eprintln!("handle_command: sending message to relay complete");
+                trace!("handle_command: sending message to relay complete");
             }
 
             write
@@ -121,13 +120,13 @@ impl ProxyService {
         // keep connection open and handle incoming connections
         let (read, write) = futures::join!(read_handle, write_handle);
 
-        eprintln!("handle_command: reuniting read and write, and closing them");
+        trace!("handle_command: reuniting read and write, and closing them");
         let websocket = read?.reunite(write?);
 
-        eprintln!("closing connection");
+        trace!("closing connection");
         websocket?.close(None).await?;
 
-        eprintln!("connection closed");
+        trace!("connection closed");
 
         Ok(())
     }
@@ -150,7 +149,7 @@ impl ProxyService {
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
         let data_source_name = message.data_source_name.as_str();
-        eprintln!(
+        debug!(
             "received a relay message for data source {}: {:?}",
             data_source_name, message
         );
