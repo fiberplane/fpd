@@ -2,7 +2,7 @@ use crate::common::{
     FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
 };
 use crate::data_sources::DataSources;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
 use futures::{sink::SinkExt, StreamExt};
@@ -93,9 +93,9 @@ impl ProxyService {
                     }
                 }
 
-                Ok(read)
+                Ok::<_, Error>(read)
             })
-            .await
+            .await?
         });
 
         let write_handle = tokio::spawn(async move {
@@ -112,14 +112,15 @@ impl ProxyService {
                 trace!("handle_command: sending message to relay complete");
             }
 
-            Ok(write)
+            Ok::<_, Error>(write)
         });
 
         // keep connection open and handle incoming connections
         let (read, write) = futures::join!(read_handle, write_handle);
 
         trace!("handle_command: reuniting read and write, and closing them");
-        let websocket = read?.reunite(write?);
+        // TODO is there a way to get rid of the double question mark?
+        let websocket = read?.reunite(write??);
 
         trace!("closing connection");
         websocket?.close(None).await?;
