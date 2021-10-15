@@ -2,6 +2,7 @@ use crate::common::{
     FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
 };
 use crate::data_sources::DataSources;
+use anyhow::{anyhow, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
 use futures::{sink::SinkExt, StreamExt};
@@ -46,15 +47,14 @@ impl ProxyService {
         }
     }
 
-    pub async fn connect(&self) {
+    pub async fn connect(&self) -> Result<()> {
         // open ws connection
         let request = http::Request::builder()
             .uri(self.inner.endpoint.as_str())
             .header("fp-auth-token", self.inner.auth_token.clone())
-            .body(())
-            .unwrap();
+            .body(())?;
 
-        let (ws_stream, resp) = connect_async(request).await.expect("failed to connect");
+        let (ws_stream, resp) = connect_async(request).await?;
 
         let connection_id = resp.headers().get("x-fp-conn-id");
         match connection_id {
@@ -80,11 +80,10 @@ impl ProxyService {
 
                     match message.unwrap() {
                         Text(_) => eprintln!("Received Text"),
-                        Binary(msg) => {
-                            service
-                                .handle_message(ServerMessage::deserialize_msgpack(msg), tx.clone())
-                                .await
-                        }
+                        Binary(msg) => service
+                            .handle_message(ServerMessage::deserialize_msgpack(msg), tx.clone())
+                            .await
+                            .expect("error handling server message"),
                         Ping(_) => eprintln!("Received Ping"),
                         Pong(_) => eprintln!("Received Pong"),
                         Close(_) => {
@@ -123,33 +122,39 @@ impl ProxyService {
         let (read, write) = futures::join!(read_handle, write_handle);
 
         eprintln!("handle_command: reuniting read and write, and closing them");
-        let websocket = read.unwrap().reunite(write.unwrap());
+        let websocket = read?.reunite(write?);
 
         eprintln!("closing connection");
-        websocket.unwrap().close(None).await.ok();
+        websocket?.close(None).await?;
 
         eprintln!("connection closed");
+
+        Ok(())
     }
 
-    async fn handle_message(&self, message: ServerMessage, reply: UnboundedSender<RelayMessage>) {
+    async fn handle_message(
+        &self,
+        message: ServerMessage,
+        reply: UnboundedSender<RelayMessage>,
+    ) -> Result<()> {
         match message {
             ServerMessage::FetchData(message) => {
                 self.handle_relay_query_message(message, reply).await
             }
-        };
+        }
     }
 
     async fn handle_relay_query_message(
         &self,
         message: FetchDataMessage,
         reply: UnboundedSender<RelayMessage>,
-    ) {
+    ) -> Result<()> {
         let data_source_name = message.data_source_name.as_str();
         eprintln!(
             "received a relay message for data source {}: {:?}",
             data_source_name, message
         );
-        let runtime = self.create_runtime(data_source_name).await;
+        let runtime = self.create_runtime(data_source_name).await?;
 
         let query = message.query;
         let data_source = self
@@ -158,7 +163,7 @@ impl ProxyService {
             .0
             .get(data_source_name)
             // TODO send error message back to caller
-            .expect(&format!("unknown data source: {}", data_source_name))
+            .ok_or_else(|| anyhow!(format!("unknown data source: {}", data_source_name)))?
             .clone()
             // convert to the fp_provider_runtime type
             .into();
@@ -188,12 +193,12 @@ impl ProxyService {
             result: query_result,
         };
 
-        reply
-            .send(RelayMessage::FetchDataResult(fetch_data_result_message))
-            .ok();
+        reply.send(RelayMessage::FetchDataResult(fetch_data_result_message))?;
+
+        Ok(())
     }
 
-    async fn create_runtime(&self, data_source_name: &str) -> Runtime {
+    async fn create_runtime(&self, data_source_name: &str) -> Result<Runtime> {
         // WASM files are stored in the WASM directory as providerName.wasm
         // (for example, /path/to/wasm/dir/prometheus.wasm)
         let wasm_path = &self
@@ -202,11 +207,12 @@ impl ProxyService {
             .with_file_name(data_source_name)
             .with_extension("wasm");
         // TODO: Preload and/or cache the result
-        let wasm_module = fs::read(wasm_path).await.unwrap();
+        let wasm_module = fs::read(wasm_path).await?;
 
         let engine = Universal::new(Singlepass::default()).engine();
         let store = Store::new(&engine);
 
-        Runtime::new(store, wasm_module).expect("unable to create runtime")
+        let runtime = Runtime::new(store, wasm_module)?;
+        Ok(runtime)
     }
 }

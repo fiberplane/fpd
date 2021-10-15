@@ -49,5 +49,5 @@ async fn main() {
         serde_yaml::from_str(&data_sources).expect("invalid data sources file");
 
     let proxy = ProxyService::new(args.endpoint, args.auth_token, args.wasm_dir, data_sources);
-    proxy.connect().await;
+    proxy.connect().await.unwrap();
 }
