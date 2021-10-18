@@ -1,3 +1,4 @@
+use crate::common::DataSourceType;
 use fp_provider_runtime::spec::types::{DataSource as RuntimeDataSource, PrometheusDataSource};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,6 +20,14 @@ impl From<DataSource> for RuntimeDataSource {
     fn from(d: DataSource) -> Self {
         match d {
             DataSource::Prometheus(options) => RuntimeDataSource::Prometheus(options),
+        }
+    }
+}
+
+impl From<&DataSource> for DataSourceType {
+    fn from(d: &DataSource) -> Self {
+        match d {
+            DataSource::Prometheus(_) => DataSourceType::Prometheus,
         }
     }
 }

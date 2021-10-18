@@ -1,5 +1,6 @@
 use crate::common::{
     FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
+    SetDataSourcesMessage,
 };
 use crate::data_sources::DataSources;
 use anyhow::{anyhow, Error, Result};
@@ -67,6 +68,20 @@ impl ProxyService {
         }
 
         let (mut write, mut read) = ws_stream.split();
+
+        // Send the list of data sources to the relay
+        let data_sources: SetDataSourcesMessage = self
+            .inner
+            .data_sources
+            .0
+            .iter()
+            .map(|(name, data_source)| (name.clone(), data_source.into()))
+            .collect();
+        debug!("sending data sources to relay: {:?}", data_sources);
+        let message = RelayMessage::SetDataSources(data_sources);
+        write
+            .send(Message::Binary(message.serialize_msgpack()))
+            .await?;
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RelayMessage>();
 
