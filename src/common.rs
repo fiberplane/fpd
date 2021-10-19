@@ -1,5 +1,9 @@
 use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::str::FromStr;
+use thiserror::Error;
 
 /// Messages intended for the Server to handle
 #[derive(Debug, Deserialize, Serialize)]
@@ -11,6 +15,10 @@ pub enum ServerMessage {
 impl ServerMessage {
     pub fn deserialize_msgpack(input: Vec<u8>) -> ServerMessage {
         rmp_serde::from_read_ref(&input).unwrap()
+    }
+
+    pub fn serialize_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(&self).unwrap()
     }
 }
 
@@ -37,6 +45,7 @@ pub enum QueryType {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RelayMessage {
+    SetDataSources(SetDataSourcesMessage),
     FetchDataResult(FetchDataResultMessage),
 }
 
@@ -44,7 +53,43 @@ impl RelayMessage {
     pub fn deserialize_msgpack(input: Vec<u8>) -> RelayMessage {
         rmp_serde::from_read_ref(&input).unwrap()
     }
+
+    pub fn serialize_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(&self).unwrap()
+    }
 }
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DataSourceType {
+    Prometheus,
+}
+
+impl Display for DataSourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            DataSourceType::Prometheus => "prometheus",
+        };
+        f.write_str(s)
+    }
+}
+
+#[derive(Error, Debug, PartialEq)]
+#[error("Unexpected data source type: {0}")]
+pub struct UnexpectedDataSourceType(String);
+
+impl FromStr for DataSourceType {
+    type Err = UnexpectedDataSourceType;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "prometheus" => Ok(DataSourceType::Prometheus),
+            _ => Err(UnexpectedDataSourceType(s.to_string())),
+        }
+    }
+}
+
+/// This is a map from the data source name to the data source's type
+pub type SetDataSourcesMessage = HashMap<String, DataSourceType>;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

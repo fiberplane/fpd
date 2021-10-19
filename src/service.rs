@@ -1,8 +1,9 @@
 use crate::common::{
     FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
+    SetDataSourcesMessage,
 };
 use crate::data_sources::DataSources;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
 use futures::{sink::SinkExt, StreamExt};
@@ -68,6 +69,19 @@ impl ProxyService {
 
         let (mut write, mut read) = ws_stream.split();
 
+        // Send the list of data sources to the relay
+        let data_sources: SetDataSourcesMessage = self
+            .inner
+            .data_sources
+            .iter()
+            .map(|(name, data_source)| (name.clone(), data_source.into()))
+            .collect();
+        debug!("sending data sources to relay: {:?}", data_sources);
+        let message = RelayMessage::SetDataSources(data_sources);
+        write
+            .send(Message::Binary(message.serialize_msgpack()))
+            .await?;
+
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RelayMessage>();
 
         let local = tokio::task::LocalSet::new();
@@ -93,9 +107,9 @@ impl ProxyService {
                     }
                 }
 
-                Ok(read)
+                Ok::<_, Error>(read)
             })
-            .await
+            .await?
         });
 
         let write_handle = tokio::spawn(async move {
@@ -112,14 +126,15 @@ impl ProxyService {
                 trace!("handle_command: sending message to relay complete");
             }
 
-            Ok(write)
+            Ok::<_, Error>(write)
         });
 
         // keep connection open and handle incoming connections
         let (read, write) = futures::join!(read_handle, write_handle);
 
         trace!("handle_command: reuniting read and write, and closing them");
-        let websocket = read?.reunite(write?);
+        // TODO is there a way to get rid of the double question mark?
+        let websocket = read?.reunite(write??);
 
         trace!("closing connection");
         websocket?.close(None).await?;
@@ -157,7 +172,6 @@ impl ProxyService {
         let data_source = self
             .inner
             .data_sources
-            .0
             .get(data_source_name)
             // TODO send error message back to caller
             .ok_or_else(|| anyhow!(format!("unknown data source: {}", data_source_name)))?
