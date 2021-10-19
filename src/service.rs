@@ -73,7 +73,6 @@ impl ProxyService {
         let data_sources: SetDataSourcesMessage = self
             .inner
             .data_sources
-            .0
             .iter()
             .map(|(name, data_source)| (name.clone(), data_source.into()))
             .collect();
@@ -173,7 +172,6 @@ impl ProxyService {
         let data_source = self
             .inner
             .data_sources
-            .0
             .get(data_source_name)
             // TODO send error message back to caller
             .ok_or_else(|| anyhow!(format!("unknown data source: {}", data_source_name)))?

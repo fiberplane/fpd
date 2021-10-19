@@ -3,6 +3,7 @@ use fp_provider_runtime::spec::types::{DataSource as RuntimeDataSource, Promethe
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::From;
+use std::ops::Deref;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "type", content = "options")]
@@ -36,3 +37,11 @@ impl From<&DataSource> for DataSourceType {
 #[serde(rename_all = "camelCase")]
 // note this uses camel case to be consistent with the fp_provider_runtime types
 pub struct DataSources(pub HashMap<String, DataSource>);
+
+impl Deref for DataSources {
+    type Target = HashMap<String, DataSource>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
