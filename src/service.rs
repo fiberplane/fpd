@@ -34,14 +34,14 @@ struct Inner {
 
 impl ProxyService {
     pub fn new(
-        endpoint: Url,
+        fiberplane_endpoint: Url,
         auth_token: String,
         wasm_dir: PathBuf,
         data_sources: DataSources,
     ) -> Self {
         ProxyService {
             inner: Arc::new(Inner {
-                endpoint,
+                endpoint: fiberplane_endpoint,
                 auth_token,
                 wasm_dir,
                 data_sources,
