@@ -6,7 +6,8 @@ use crate::data_sources::DataSources;
 use anyhow::{anyhow, Error, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
-use futures::{sink::SinkExt, StreamExt};
+use futures::select;
+use futures::{sink::SinkExt, FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
 use rmp_serde::Serializer;
 use serde::Serialize;
@@ -14,10 +15,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::time::{sleep, Duration};
 use tokio_tungstenite::connect_async;
 use tracing::{debug, error, trace};
 use url::Url;
 use wasmer::{Singlepass, Store, Universal};
+
+const WS_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(45);
 
 #[derive(Clone, Debug)]
 pub struct ProxyService {
@@ -115,15 +119,27 @@ impl ProxyService {
         let write_handle = tokio::spawn(async move {
             trace!("handle_command: creating write_handle");
 
-            while let Some(message) = rx.recv().await {
-                trace!("handle_command: sending message to relay");
+            loop {
+                select! {
+                    message = rx.recv().fuse() => {
+                        match message {
+                            Some(message) => {
+                                trace!("handle_command: sending message to relay");
 
-                let mut buf = Vec::new();
-                message.serialize(&mut Serializer::new(&mut buf)).unwrap();
+                                let mut buf = Vec::new();
+                                message.serialize(&mut Serializer::new(&mut buf)).unwrap();
 
-                write.send(Message::Binary(buf)).await?;
+                                write.send(Message::Binary(buf)).await?;
 
-                trace!("handle_command: sending message to relay complete");
+                                trace!("handle_command: sending message to relay complete");
+                            },
+                            None => { break;}
+                        }
+                    }
+                    _ = sleep(WS_INACTIVITY_TIMEOUT).fuse() => {
+                        write.send(Message::Ping(b"ping".to_vec())).await?;
+                    }
+                }
             }
 
             Ok::<_, Error>(write)
