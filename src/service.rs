@@ -82,7 +82,7 @@ impl ProxyService {
             .send(Message::Binary(message.serialize_msgpack()))
             .await?;
 
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RelayMessage>();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
 
         let local = tokio::task::LocalSet::new();
 
@@ -116,14 +116,7 @@ impl ProxyService {
             trace!("handle_command: creating write_handle");
 
             while let Some(message) = rx.recv().await {
-                trace!("handle_command: sending message to relay");
-
-                let mut buf = Vec::new();
-                message.serialize(&mut Serializer::new(&mut buf)).unwrap();
-
-                write.send(Message::Binary(buf)).await?;
-
-                trace!("handle_command: sending message to relay complete");
+                write.send(message).await?;
             }
 
             Ok::<_, Error>(write)
@@ -147,20 +140,22 @@ impl ProxyService {
     async fn handle_message(
         &self,
         message: ServerMessage,
-        reply: UnboundedSender<RelayMessage>,
+        reply: UnboundedSender<Message>,
     ) -> Result<()> {
-        match message {
-            ServerMessage::FetchData(message) => {
-                self.handle_relay_query_message(message, reply).await
-            }
-        }
+        let response = match message {
+            ServerMessage::FetchData(message) => self.handle_relay_query_message(message).await?,
+        };
+
+        trace!("handle_command: sending message to relay");
+        let mut buf = Vec::new();
+        response.serialize(&mut Serializer::new(&mut buf)).unwrap();
+        reply.send(Message::Binary(buf))?;
+        trace!("handle_command: finished sending message to relay");
+
+        Ok(())
     }
 
-    async fn handle_relay_query_message(
-        &self,
-        message: FetchDataMessage,
-        reply: UnboundedSender<RelayMessage>,
-    ) -> Result<()> {
+    async fn handle_relay_query_message(&self, message: FetchDataMessage) -> Result<RelayMessage> {
         let data_source_name = message.data_source_name.as_str();
         debug!(
             "received a relay message for data source {}: {:?}",
@@ -204,9 +199,7 @@ impl ProxyService {
             result: query_result,
         };
 
-        reply.send(RelayMessage::FetchDataResult(fetch_data_result_message))?;
-
-        Ok(())
+        Ok(RelayMessage::FetchDataResult(fetch_data_result_message))
     }
 
     async fn create_runtime(&self, data_source_name: &str) -> Result<Runtime> {
