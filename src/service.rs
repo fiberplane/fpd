@@ -6,18 +6,26 @@ use crate::data_sources::DataSources;
 use anyhow::{anyhow, Error, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
-use futures::{sink::SinkExt, StreamExt};
+use futures::{
+    future::{select, Either},
+    sink::SinkExt,
+    StreamExt,
+};
 use hyper_tungstenite::tungstenite::Message;
 use rmp_serde::Serializer;
 use serde::Serialize;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::time::{sleep, Duration};
 use tokio_tungstenite::connect_async;
 use tracing::{debug, error, trace};
 use url::Url;
 use wasmer::{Singlepass, Store, Universal};
+
+const WS_PING_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Debug)]
 pub struct ProxyService {
@@ -115,7 +123,13 @@ impl ProxyService {
         let write_handle = tokio::spawn(async move {
             trace!("handle_command: creating write_handle");
 
-            while let Some(message) = rx.recv().await {
+            let ping = || async {
+                sleep(WS_PING_INACTIVITY_TIMEOUT).await;
+                Some(Message::Ping(Vec::new()))
+            };
+
+            // Either send the next message or send a ping after the given timeout
+            while let Some(message) = race(rx.recv(), ping()).await {
                 write.send(message).await?;
             }
 
@@ -218,5 +232,14 @@ impl ProxyService {
 
         let runtime = Runtime::new(store, wasm_module)?;
         Ok(runtime)
+    }
+}
+
+/// Race two futures that output the same type
+async fn race<T>(fut1: impl Future<Output = T>, fut2: impl Future<Output = T>) -> T {
+    // TODO is it better to use Box::pin here or put bounds on the types
+    match select(Box::pin(fut1), Box::pin(fut2)).await {
+        Either::Left((t, _)) => t,
+        Either::Right((t, _)) => t,
     }
 }
