@@ -13,7 +13,8 @@ mod service;
 #[clap(author, about, version, setting = AppSettings::ColoredHelp)]
 pub struct Arguments {
     #[clap(
-        env = "FP_PROXY_WASM_DIR",
+        long,
+        env = "WASM_DIR",
         about = "Path to directory containing provider WASM files"
     )]
     wasm_dir: PathBuf,
@@ -21,18 +22,24 @@ pub struct Arguments {
     #[clap(
         long,
         short,
-        env = "FP_PROXY_ENDPOINT",
-        default_value = "ws://127.0.0.1:3001/ws"
+        env = "FIBERPLANE_ENDPOINT",
+        default_value = "ws://127.0.0.1:3001",
+        about = "Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)"
     )]
-    endpoint: Url,
+    fiberplane_endpoint: Url,
 
-    #[clap(long, short, env = "FP_PROXY_AUTH_TOKEN")]
+    #[clap(
+        long,
+        short,
+        env = "AUTH_TOKEN",
+        about = "Token used to authenticate against the Fiberplane API"
+    )]
     auth_token: String,
 
     #[clap(
         long,
         short,
-        env = "FP_PROXY_DATA_SOURCES",
+        env = "DATA_SOURCES",
         about = "Path to data sources YAML file"
     )]
     data_sources: PathBuf,
@@ -41,7 +48,12 @@ pub struct Arguments {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let args = Arguments::parse();
+    let mut args = Arguments::parse();
+
+    // Update the endpoint to include the default path if nothing is set
+    if args.fiberplane_endpoint.path() == "/" {
+        args.fiberplane_endpoint.set_path("/api/proxies/ws");
+    }
 
     if !args.wasm_dir.is_dir() {
         panic!("wasm_dir must be a directory");
@@ -53,6 +65,11 @@ async fn main() {
     let data_sources: DataSources =
         serde_yaml::from_str(&data_sources).expect("invalid data sources file");
 
-    let proxy = ProxyService::new(args.endpoint, args.auth_token, args.wasm_dir, data_sources);
+    let proxy = ProxyService::new(
+        args.fiberplane_endpoint,
+        args.auth_token,
+        args.wasm_dir,
+        data_sources,
+    );
     proxy.connect().await.unwrap();
 }
