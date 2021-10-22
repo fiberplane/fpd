@@ -3,7 +3,7 @@ use crate::common::{
     SetDataSourcesMessage,
 };
 use crate::data_sources::DataSources;
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
 use futures::select;
@@ -182,7 +182,17 @@ impl ProxyService {
             "received a relay message for data source {}: {:?}",
             data_source_name, message
         );
-        let runtime = self.create_runtime(data_source_name).await?;
+        // TODO get the
+        let data_source_type =
+            if let Some(data_source) = self.inner.data_sources.get(data_source_name) {
+                data_source.ty()
+            } else {
+                return Err(anyhow!(
+                    "received relay message for unknown data source: {}",
+                    data_source_name
+                ));
+            };
+        let runtime = self.create_runtime(data_source_type).await?;
 
         let query = message.query;
         let data_source = self
@@ -225,16 +235,17 @@ impl ProxyService {
         Ok(())
     }
 
-    async fn create_runtime(&self, data_source_name: &str) -> Result<Runtime> {
+    async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
         // WASM files are stored in the WASM directory as providerName.wasm
         // (for example, /path/to/wasm/dir/prometheus.wasm)
         let wasm_path = &self
             .inner
             .wasm_dir
-            .with_file_name(data_source_name)
-            .with_extension("wasm");
+            .join(&format!("{}.wasm", data_source_type));
         // TODO: Preload and/or cache the result
-        let wasm_module = fs::read(wasm_path).await?;
+        let wasm_module = fs::read(wasm_path)
+            .await
+            .with_context(|| format!("Error loading wasm file: {}", wasm_path.display()))?;
 
         let engine = Universal::new(Singlepass::default()).engine();
         let store = Store::new(&engine);

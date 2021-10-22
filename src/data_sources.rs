@@ -17,6 +17,14 @@ pub enum DataSource {
     Prometheus(PrometheusDataSource),
 }
 
+impl DataSource {
+    pub fn ty(&self) -> &str {
+        match self {
+            DataSource::Prometheus(_) => "prometheus",
+        }
+    }
+}
+
 impl From<DataSource> for RuntimeDataSource {
     fn from(d: DataSource) -> Self {
         match d {
