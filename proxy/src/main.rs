@@ -64,11 +64,14 @@ async fn main() {
     let data_sources: DataSources =
         serde_yaml::from_str(&data_sources).expect("invalid data sources file");
 
-    let proxy = ProxyService::new(
+    let proxy = ProxyService::create(
         args.fiberplane_endpoint,
         args.auth_token,
-        args.wasm_dir,
+        args.wasm_dir.as_path(),
         data_sources,
-    );
+    )
+    .await
+    .unwrap();
+
     proxy.connect().await.unwrap();
 }

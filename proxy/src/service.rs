@@ -11,7 +11,8 @@ use proxy_types::{
 };
 use rmp_serde::Serializer;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::mpsc::UnboundedSender;
@@ -32,25 +33,28 @@ pub struct ProxyService {
 struct Inner {
     endpoint: Url,
     auth_token: String,
-    wasm_dir: PathBuf,
     data_sources: DataSources,
+    /// This is a mapping from the provider type to the bytes of the wasm module
+    wasm_modules: HashMap<String, Vec<u8>>,
 }
 
 impl ProxyService {
-    pub fn new(
+    pub async fn create(
         fiberplane_endpoint: Url,
         auth_token: String,
-        wasm_dir: PathBuf,
+        wasm_dir: &Path,
         data_sources: DataSources,
-    ) -> Self {
-        ProxyService {
+    ) -> Result<Self> {
+        let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await?;
+
+        Ok(ProxyService {
             inner: Arc::new(Inner {
                 endpoint: fiberplane_endpoint,
                 auth_token,
-                wasm_dir,
+                wasm_modules,
                 data_sources,
             }),
-        }
+        })
     }
 
     pub async fn connect(&self) -> Result<()> {
@@ -182,17 +186,7 @@ impl ProxyService {
             "received a relay message for data source {}: {:?}",
             data_source_name, message
         );
-        // TODO get the
-        let data_source_type =
-            if let Some(data_source) = self.inner.data_sources.get(data_source_name) {
-                data_source.ty()
-            } else {
-                return Err(anyhow!(
-                    "received relay message for unknown data source: {}",
-                    data_source_name
-                ));
-            };
-        let runtime = self.create_runtime(data_source_type).await?;
+        let runtime = self.create_runtime(data_source_name).await?;
 
         let query = message.query;
         let data_source = self
@@ -235,22 +229,59 @@ impl ProxyService {
         Ok(())
     }
 
-    async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
-        // WASM files are stored in the WASM directory as providerName.wasm
-        // (for example, /path/to/wasm/dir/prometheus.wasm)
-        let wasm_path = &self
-            .inner
-            .wasm_dir
-            .join(&format!("{}.wasm", data_source_type));
-        // TODO: Preload and/or cache the result
+    async fn create_runtime(&self, data_source_name: &str) -> Result<Runtime> {
+        let data_source_type = match self.inner.data_sources.get(data_source_name) {
+            Some(data_source) => data_source.ty(),
+            None => {
+                return Err(anyhow!(
+                    "received relay message for unknown data source: {}",
+                    data_source_name
+                ))
+            }
+        };
+        let wasm_module: &[u8] = self.inner.wasm_modules.get(data_source_type).unwrap();
+
+        compile_wasm(wasm_module)
+    }
+}
+
+async fn load_wasm_modules(
+    wasm_dir: &Path,
+    data_sources: &DataSources,
+) -> Result<HashMap<String, Vec<u8>>> {
+    let data_source_types: HashSet<String> = data_sources
+        .0
+        .values()
+        .map(|d| d.ty().to_string())
+        .collect();
+
+    let mut wasm_modules = HashMap::new();
+    for data_source_type in data_source_types.into_iter() {
+        // Each provider's wasm module is found in the wasm_dir as provider_name.wasm
+        let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
         let wasm_module = fs::read(wasm_path)
             .await
             .with_context(|| format!("Error loading wasm file: {}", wasm_path.display()))?;
 
-        let engine = Universal::new(Singlepass::default()).engine();
-        let store = Store::new(&engine);
+        // Make sure the wasm file can compile
+        compile_wasm(&wasm_module).with_context(|| {
+            format!(
+                "Error compiling wasm file for provider: {}",
+                &data_source_type
+            )
+        })?;
 
-        let runtime = Runtime::new(store, wasm_module)?;
-        Ok(runtime)
+        debug!("loaded provider: {}", data_source_type);
+        wasm_modules.insert(data_source_type, wasm_module);
     }
+
+    Ok(wasm_modules)
+}
+
+fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
+    // TODO can any of these objects be safely cloned between instances?
+    let engine = Universal::new(Singlepass::default()).engine();
+    let store = Store::new(&engine);
+    let runtime = Runtime::new(store, wasm_module)?;
+    Ok(runtime)
 }
