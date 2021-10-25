@@ -24,6 +24,9 @@ use wasmer::{Singlepass, Store, Universal};
 
 const WS_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(45);
 
+/// This is a mapping from the provider type to the bytes of the wasm module
+pub type WasmModuleMap = HashMap<String, Vec<u8>>;
+
 #[derive(Clone, Debug)]
 pub struct ProxyService {
     inner: Arc<Inner>,
@@ -34,27 +37,40 @@ struct Inner {
     endpoint: Url,
     auth_token: String,
     data_sources: DataSources,
-    /// This is a mapping from the provider type to the bytes of the wasm module
-    wasm_modules: HashMap<String, Vec<u8>>,
+    wasm_modules: WasmModuleMap,
 }
 
 impl ProxyService {
-    pub async fn create(
+    /// Load the provider wasm files from the given directory and create a new Proxy instance
+    pub async fn init(
         fiberplane_endpoint: Url,
         auth_token: String,
         wasm_dir: &Path,
         data_sources: DataSources,
     ) -> Result<Self> {
         let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await?;
+        Ok(ProxyService::new(
+            fiberplane_endpoint,
+            auth_token,
+            wasm_modules,
+            data_sources,
+        ))
+    }
 
-        Ok(ProxyService {
+    fn new(
+        fiberplane_endpoint: Url,
+        auth_token: String,
+        wasm_modules: WasmModuleMap,
+        data_sources: DataSources,
+    ) -> Self {
+        ProxyService {
             inner: Arc::new(Inner {
                 endpoint: fiberplane_endpoint,
                 auth_token,
                 wasm_modules,
                 data_sources,
             }),
-        })
+        }
     }
 
     pub async fn connect(&self) -> Result<()> {
@@ -245,10 +261,7 @@ impl ProxyService {
     }
 }
 
-async fn load_wasm_modules(
-    wasm_dir: &Path,
-    data_sources: &DataSources,
-) -> Result<HashMap<String, Vec<u8>>> {
+async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Result<WasmModuleMap> {
     let data_source_types: HashSet<String> = data_sources
         .0
         .values()
