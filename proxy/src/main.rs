@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use tokio::fs;
 use url::Url;
 
-pub mod common;
 mod data_sources;
 mod service;
 

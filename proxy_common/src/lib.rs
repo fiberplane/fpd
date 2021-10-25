@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Messages intended for the Server to handle
 #[derive(Debug, Deserialize, Serialize)]
@@ -25,7 +26,7 @@ impl ServerMessage {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchDataMessage {
-    pub op_id: uuid::Uuid,
+    pub op_id: Uuid,
     pub data_source_name: String,
     pub query: String,
     pub query_type: QueryType,
@@ -94,7 +95,7 @@ pub type SetDataSourcesMessage = HashMap<String, DataSourceType>;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchDataResultMessage {
-    pub op_id: uuid::Uuid,
+    pub op_id: Uuid,
     pub result: QueryResult,
 }
 

@@ -1,0 +1,14 @@
+[package]
+name = "proxy_common"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "main"  }
+# fp-provider-runtime = { path = "../providers/runtimes/fp-provider-runtime/"  }
+rmp-serde = "0.15.5"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0.30"
+uuid = { version = "0.8.2", features = ["serde", "v4"] }
