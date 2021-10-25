@@ -82,13 +82,14 @@ impl ProxyService {
 
         let (ws_stream, resp) = connect_async(request).await?;
 
-        let connection_id = resp.headers().get("x-fp-conn-id");
-        match connection_id {
-            Some(val) => debug!(
-                "connection established, connection id: {}",
-                val.to_str().unwrap()
-            ),
-            None => debug!("connection established, no connection id provided"),
+        let connection_id = resp
+            .headers()
+            .get("x-fp-conn-id")
+            .and_then(|id| id.to_str().ok());
+        if let Some(connection_id) = connection_id {
+            debug!("connection established, connection id: {}", connection_id);
+        } else {
+            debug!("connection established, no connection id provided");
         }
 
         let (mut write, mut read) = ws_stream.split();
@@ -115,7 +116,9 @@ impl ProxyService {
             tokio::task::spawn_local(async move {
                 use hyper_tungstenite::tungstenite::Message::*;
                 while let Some(message) = read.next().await {
-                    match message.unwrap() {
+                    let message =
+                        message.with_context(|| "Error reading next websocket message")?;
+                    match message {
                         Text(_) => error!("Received Text"),
                         Binary(msg) => {
                             service
@@ -147,7 +150,8 @@ impl ProxyService {
                                 trace!("handle_command: sending message to relay");
 
                                 let mut buf = Vec::new();
-                                message.serialize(&mut Serializer::new(&mut buf)).unwrap();
+                                message.serialize(&mut Serializer::new(&mut buf))
+                                    .with_context(|| "Error serializing RelayMessage to binary")?;
 
                                 write.send(Message::Binary(buf)).await?;
 
@@ -222,13 +226,19 @@ impl ProxyService {
                     data_source,
                     time_range,
                 };
-                let result = runtime.fetch_series(query, options).await;
-                QueryResult::Series(result.unwrap())
+                let result = runtime
+                    .fetch_series(query, options)
+                    .await
+                    .with_context(|| "Wasmer runtime error while running fetch_series query")?;
+                QueryResult::Series(result)
             }
             QueryType::Instant(time) => {
                 let options = QueryInstantOptions { data_source, time };
-                let result = runtime.fetch_instant(query, options).await;
-                QueryResult::Instant(result.unwrap())
+                let result = runtime
+                    .fetch_instant(query, options)
+                    .await
+                    .with_context(|| "Wasmer runtime error while running fetch_instant query")?;
+                QueryResult::Instant(result)
             }
         };
 
@@ -255,7 +265,14 @@ impl ProxyService {
                 ))
             }
         };
-        let wasm_module: &[u8] = self.inner.wasm_modules.get(data_source_type).unwrap();
+        let wasm_module: &[u8] = self
+            .inner
+            .wasm_modules
+            .get(data_source_type)
+            .expect(&format!(
+                "should have loaded wasm module for provider {}",
+                data_source_type,
+            ));
 
         compile_wasm(wasm_module)
     }
