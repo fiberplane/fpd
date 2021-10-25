@@ -1208,7 +1208,7 @@ dependencies = [
  "http",
  "hyper",
  "hyper-tungstenite",
- "proxy_common",
+ "proxy_types",
  "rmp-serde 0.15.5",
  "routerify",
  "serde",
@@ -1222,7 +1222,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "proxy_common"
+name = "proxy_types"
 version = "0.1.0"
 dependencies = [
  "fp-provider-runtime",

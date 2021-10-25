@@ -1,5 +1,5 @@
 [package]
-name = "proxy_common"
+name = "proxy_types"
 version = "0.1.0"
 edition = "2018"
 

@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "proxy_common",
+    "proxy_types",
     "proxy",
 ]

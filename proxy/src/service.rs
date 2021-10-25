@@ -5,7 +5,7 @@ use fp_provider_runtime::Runtime;
 use futures::select;
 use futures::{sink::SinkExt, FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
-use proxy_common::{
+use proxy_types::{
     FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
     SetDataSourcesMessage,
 };

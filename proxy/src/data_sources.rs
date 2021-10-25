@@ -1,5 +1,5 @@
 use fp_provider_runtime::spec::types::{DataSource as RuntimeDataSource, PrometheusDataSource};
-use proxy_common::DataSourceType;
+use proxy_types::DataSourceType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::From;
