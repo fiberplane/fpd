@@ -14,6 +14,7 @@ pub struct Arguments {
     #[clap(
         long,
         env = "WASM_DIR",
+        default_value = "./providers",
         about = "Path to directory containing provider WASM files"
     )]
     wasm_dir: PathBuf,
@@ -22,7 +23,7 @@ pub struct Arguments {
         long,
         short,
         env = "FIBERPLANE_ENDPOINT",
-        default_value = "ws://127.0.0.1:3001",
+        default_value = "wss://fiberplane.io",
         about = "Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)"
     )]
     fiberplane_endpoint: Url,
@@ -31,7 +32,7 @@ pub struct Arguments {
         long,
         short,
         env = "AUTH_TOKEN",
-        about = "Token used to authenticate against the Fiberplane API"
+        about = "Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`"
     )]
     auth_token: String,
 
@@ -39,6 +40,7 @@ pub struct Arguments {
         long,
         short,
         env = "DATA_SOURCES",
+        default_value = "data_sources.yaml",
         about = "Path to data sources YAML file"
     )]
     data_sources: PathBuf,
