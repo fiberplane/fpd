@@ -1,7 +1,3 @@
-use crate::common::{
-    FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
-    SetDataSourcesMessage,
-};
 use crate::data_sources::DataSources;
 use anyhow::{anyhow, Context, Error, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
@@ -9,6 +5,10 @@ use fp_provider_runtime::Runtime;
 use futures::select;
 use futures::{sink::SinkExt, FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
+use proxy_types::{
+    FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
+    SetDataSourcesMessage,
+};
 use rmp_serde::Serializer;
 use serde::Serialize;
 use std::path::PathBuf;

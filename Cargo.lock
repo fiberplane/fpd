@@ -1208,18 +1208,28 @@ dependencies = [
  "http",
  "hyper",
  "hyper-tungstenite",
+ "proxy_types",
  "rmp-serde 0.15.5",
  "routerify",
  "serde",
  "serde_yaml",
- "thiserror",
  "tokio",
  "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "url",
- "uuid",
  "wasmer",
+]
+
+[[package]]
+name = "proxy_types"
+version = "0.1.0"
+dependencies = [
+ "fp-provider-runtime",
+ "rmp-serde 0.15.5",
+ "serde",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
