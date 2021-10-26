@@ -1,4 +1,4 @@
-use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
+pub use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
 use rmp_serde::{decode, encode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
