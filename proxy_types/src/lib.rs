@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
 use thiserror::Error;
-use uuid::Uuid;
+pub use uuid::Uuid;
 
 /// Messages intended for the Server to handle
 #[derive(Debug, Deserialize, Serialize)]
