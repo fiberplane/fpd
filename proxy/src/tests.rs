@@ -134,6 +134,58 @@ async fn sends_pings() {
 }
 
 #[tokio::test]
+async fn returns_error_for_query_to_unknown_provider() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let service = ProxyService::new(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        HashMap::new(),
+        DataSources(HashMap::new()),
+    );
+
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_async(stream).await.unwrap();
+        // first message is data sources
+        ws.next().await.unwrap().unwrap();
+
+        let op_id = Uuid::new_v4();
+        let message = ServerMessage::FetchData(FetchDataMessage {
+            op_id,
+            data_source_name: "data source 1".to_string(),
+            query: "test query".to_string(),
+            query_type: QueryType::Instant(0.0),
+        });
+        let message = message.serialize_msgpack();
+        ws.send(Message::Binary(message)).await.unwrap();
+
+        // Parse the query result
+        let response = ws.next().await.unwrap().unwrap();
+        let response = match response {
+            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            _ => panic!("wrong message type"),
+        };
+        let result = match response {
+            RelayMessage::FetchDataResult(result) => result,
+            _ => panic!("wrong message type"),
+        };
+        assert_eq!(result.op_id, op_id);
+        match result.result {
+            QueryResult::Instant(Err(proxy_types::FetchError::Other { message })) => {
+                assert!(message.contains("unknown data source"))
+            }
+            _ => panic!("wrong response"),
+        }
+    };
+
+    select! {
+      result = service.connect().fuse() => result.unwrap(),
+      _ = handle_connection.fuse() => {}
+    }
+}
+
+#[tokio::test]
 async fn calls_provider_with_query_and_sends_result() {
     // Note that the fake Prometheus returns an error just to test that
     // the error code is relayed back through the proxy
