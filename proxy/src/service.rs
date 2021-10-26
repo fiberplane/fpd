@@ -1,24 +1,26 @@
 use crate::data_sources::DataSources;
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
 use futures::select;
+use futures::stream::{SplitSink, SplitStream};
 use futures::{sink::SinkExt, FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
-use proxy_types::{
-    FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage, ServerMessage,
-    SetDataSourcesMessage,
-};
+use hyper_tungstenite::WebSocketStream;
+use proxy_types::*;
 use rmp_serde::Serializer;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::net::TcpStream;
+use tokio::sync::broadcast::Sender;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::task::JoinError;
 use tokio::time::{sleep, Duration};
-use tokio_tungstenite::connect_async;
-use tracing::{debug, error, trace};
+use tokio_tungstenite::{connect_async, MaybeTlsStream};
+use tracing::{debug, error, trace, warn};
 use url::Url;
 use wasmer::{Singlepass, Store, Universal};
 
@@ -73,7 +75,7 @@ impl ProxyService {
         }
     }
 
-    pub async fn connect(&self) -> Result<()> {
+    pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
         // open ws connection
         let request = http::Request::builder()
             .uri(self.inner.endpoint.as_str())
@@ -82,17 +84,14 @@ impl ProxyService {
 
         let (ws_stream, resp) = connect_async(request).await?;
 
-        let connection_id = resp
+        let conn_id = resp
             .headers()
             .get("x-fp-conn-id")
-            .and_then(|id| id.to_str().ok());
-        if let Some(connection_id) = connection_id {
-            debug!("connection established, connection id: {}", connection_id);
-        } else {
-            debug!("connection established, no connection id provided");
-        }
+            .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok())
+            .ok_or_else(|| anyhow!("no connection id was returned"))?;
+        debug!("connection established, connection id: {}", conn_id);
 
-        let (mut write, mut read) = ws_stream.split();
+        let (mut write_ws, read_ws) = ws_stream.split();
 
         // Send the list of data sources to the relay
         let data_sources: SetDataSourcesMessage = self
@@ -104,91 +103,210 @@ impl ProxyService {
         debug!("sending data sources to relay: {:?}", data_sources);
         let message = RelayMessage::SetDataSources(data_sources);
         let message = Message::Binary(message.serialize_msgpack());
-        write.send(message).await?;
+        write_ws.send(message).await?;
 
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RelayMessage>();
+        let (tx_relay_messages, rx_relay_messages) =
+            tokio::sync::mpsc::unbounded_channel::<RelayMessage>();
 
         // We use a local task set because the Wasmer runtime embedded in the ProxyService
         // cannot be moved across threads (which would be necessary to spawn a task that
         // includes the service)
         let local = tokio::task::LocalSet::new();
+        let read_handle = local.run_until(Self::handle_read_loop(
+            shutdown.clone(),
+            conn_id.clone(),
+            read_ws,
+            tx_relay_messages,
+            self.clone(),
+        ));
 
-        let service = self.clone();
-        let read_handle = local.run_until(async move {
-            tokio::task::spawn_local(async move {
-                use hyper_tungstenite::tungstenite::Message::*;
-                while let Some(message) = read.next().await {
-                    let message =
-                        message.with_context(|| "Error reading next websocket message")?;
-                    match message {
-                        Text(_) => error!("Received Text"),
-                        Binary(msg) => {
-                            service
-                                .handle_message(
-                                    ServerMessage::deserialize_msgpack(msg).with_context(|| {
-                                        "Error deserializing server message as msgpack"
-                                    })?,
-                                    tx.clone(),
-                                )
-                                .await?
-                        }
-                        Ping(_) => trace!("Received Ping"),
-                        Pong(_) => trace!("Received Pong"),
-                        Close(_) => {
-                            debug!("Received Close");
-                            break;
-                        }
-                    }
-                }
-
-                Ok::<_, Error>(read)
-            })
-            .await?
-        });
-
-        let write_handle = tokio::spawn(async move {
-            trace!("handle_command: creating write_handle");
-
-            loop {
-                select! {
-                    message = rx.recv().fuse() => {
-                        match message {
-                            Some(message) => {
-                                trace!("handle_command: sending message to relay");
-
-                                let mut buf = Vec::new();
-                                message.serialize(&mut Serializer::new(&mut buf))
-                                    .with_context(|| "Error serializing RelayMessage to binary")?;
-
-                                write.send(Message::Binary(buf)).await?;
-
-                                trace!("handle_command: sending message to relay complete");
-                            },
-                            None => { break;}
-                        }
-                    }
-                    _ = sleep(WS_INACTIVITY_TIMEOUT).fuse() => {
-                        write.send(Message::Ping(b"ping".to_vec())).await?;
-                    }
-                }
-            }
-
-            Ok::<_, Error>(write)
-        });
+        let write_handle = tokio::spawn(Self::handle_write_loop(
+            shutdown.clone(),
+            conn_id.clone(),
+            rx_relay_messages,
+            write_ws,
+        ));
 
         // keep connection open and handle incoming connections
         let (read, write) = futures::join!(read_handle, write_handle);
 
-        trace!("handle_command: reuniting read and write, and closing them");
-        // TODO is there a way to get rid of the double question mark?
-        let websocket = read?.reunite(write??);
-
-        trace!("closing connection");
-        websocket?.close(None).await?;
-
-        trace!("connection closed");
+        match (read, write) {
+            (Ok(read), Ok(write)) => {
+                let websocket = read.reunite(write);
+                websocket.unwrap().close(None).await.ok();
+                trace!(?conn_id, "shutdown web-socket connection successfully");
+            }
+            (read, write) => {
+                error!(
+                    ?read,
+                    ?write,
+                    ?conn_id,
+                    "unable to reunite read and write web socket streams"
+                );
+            }
+        };
 
         Ok(())
+    }
+
+    /// Handle any incoming web socket messages (`read_ws`) by sending them
+    /// to the service for processing.
+    ///
+    /// This will block until a message is broadcast on the `shutdown` channel.
+    /// It can also exit if an error occurred during receiving or sending a
+    /// message from the channel.
+    async fn handle_read_loop(
+        shutdown: Sender<()>,
+        conn_id: String,
+        mut read_ws: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        tx_relay_messages: UnboundedSender<RelayMessage>,
+        service: ProxyService,
+    ) -> Result<SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>, JoinError> {
+        tokio::task::spawn_local(async move {
+            use hyper_tungstenite::tungstenite::Message::*;
+
+            let mut should_shutdown = shutdown.subscribe();
+            let conn_id = conn_id;
+            loop {
+                select! {
+                    // Handle a ws message if we receive one from the web-socket
+                    // connection.
+                    message = read_ws.next().fuse() => {
+                        // First make sure we actually received a message or
+                        // that the connection is closed.
+                        let message = match message {
+                            Some(Ok(message)) => message,
+                            Some(Err(err)) => {
+                                warn!(?err, ?conn_id, "web-socket connection closed unexpectedly");
+                                if let Err(e) = shutdown.send(()) {
+                                    warn!(?e, "unable to send shutdown signal");
+                                };
+                                break;
+                            }
+                            None => {
+                                trace!(?conn_id, "web-socket connection did not return a message");
+                                if let Err(e) = shutdown.send(()) {
+                                    warn!(?e, "unable to send shutdown signal");
+                                };
+                                break;
+                            }
+                        };
+
+                        // We are only interested in Binary and Close messages.
+                        match message {
+                            Text(_) => error!("Received Text"),
+                            Binary(msg) => {
+                                let message = match ServerMessage::deserialize_msgpack(msg) {
+                                    Ok(message) => message,
+                                    Err(err) => {
+                                        warn!(
+                                            ?err,
+                                            ?conn_id,
+                                            "unable to deserialize msgpack encoded server message"
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                let op_id = message.op_id();
+                                let result = service.handle_message(message, tx_relay_messages.clone()).await;
+                                if let Err(err) = result {
+                                    warn!(
+                                        ?err,
+                                        ?conn_id,
+                                        ?op_id,
+                                        "service was unable to handle message"
+                                    );
+                                };
+                            }
+                            Ping(_) => trace!(?conn_id, "Received Ping"),
+                            Pong(_) => trace!(?conn_id, "Received Pong"),
+                            Close(_) => {
+                                trace!(?conn_id, "received close message");
+                                if let Err(e) = shutdown.send(()) {
+                                    warn!(?e, "unable to send shutdown signal");
+                                };
+                                break;
+                            }
+                        }
+                    }
+                    // Stop the loop if we receive a message on the
+                    // `should_shutdown` broadcast channel.
+                    _ = should_shutdown.recv().fuse() => {
+                        trace!(?conn_id, "received shutdown signal, stopping read ws loop");
+                        break;
+                    }
+                }
+            }
+
+            read_ws
+        })
+        .await
+    }
+
+    /// Handle any outgoing relay messages (`rx_relay_messages`) by sending them
+    /// to the outgoing web socket connection (`write_ws`).
+    ///
+    /// This will block until a message is broadcast on the `shutdown` channel.
+    /// It can also exit if an error occurred during sending or receiving a
+    /// message from the channel.
+    async fn handle_write_loop(
+        shutdown: Sender<()>,
+        conn_id: String,
+        mut rx_relay_messages: UnboundedReceiver<RelayMessage>,
+        mut write_ws: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+    ) -> SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message> {
+        let mut should_shutdown = shutdown.subscribe();
+
+        trace!(?conn_id, "handle_command: creating write_handle");
+        loop {
+            select! {
+                // Handle a outgoing relay message by writing it to the web
+                // socket connection.
+                message = rx_relay_messages.recv().fuse() => {
+                    match message {
+                        Some(message) => {
+                            trace!(?conn_id, "handle_command: sending message to relay");
+
+                            let op_id = message.op_id();
+
+                            let mut buf = Vec::new();
+                            if let Err(err) = message.serialize(&mut Serializer::new(&mut buf)) {
+                                error!(?err, ?conn_id, ?op_id, "unable to serialize message to msgpack");
+                            };
+
+                            if let Err(err) = write_ws.send(Message::Binary(buf)).await {
+                                error!(?err, ?conn_id, ?op_id, "unable to serialize message to msgpack");
+                                break;
+                            }
+
+                            trace!(?conn_id, "handle_command: sending message to relay complete");
+                        },
+                        None => {
+                            if let Err(e) = shutdown.send(()) {
+                                warn!(?e, ?conn_id, "unable to send shutdown signal");
+                            };
+                            break;
+                        }
+                    }
+                }
+                // Stop the loop if we receive a message on the
+                // should_shutdown broadcast channel.
+                _ = should_shutdown.recv().fuse() => {
+                    trace!(?conn_id, "received shutdown signal");
+                    break;
+                }
+                // Send a Ping message to the web socket connection if we have
+                // not send anything for some amount of time.
+                _ = sleep(WS_INACTIVITY_TIMEOUT).fuse() => {
+                    if let Err(err) = write_ws.send(Message::Ping(b"ping".to_vec())).await {
+                        warn!(?err, ?conn_id, "unable to send ping to server");
+                    };
+                }
+            }
+        }
+
+        write_ws
     }
 
     async fn handle_message(
