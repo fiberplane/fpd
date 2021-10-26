@@ -57,7 +57,7 @@ impl ProxyService {
         ))
     }
 
-    fn new(
+    pub(crate) fn new(
         fiberplane_endpoint: Url,
         auth_token: String,
         wasm_modules: WasmModuleMap,
@@ -108,6 +108,9 @@ impl ProxyService {
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RelayMessage>();
 
+        // We use a local task set because the Wasmer runtime embedded in the ProxyService
+        // cannot be moved across threads (which would be necessary to spawn a task that
+        // includes the service)
         let local = tokio::task::LocalSet::new();
 
         let service = self.clone();
@@ -273,10 +276,12 @@ impl ProxyService {
             .inner
             .wasm_modules
             .get(data_source_type)
-            .expect(&format!(
-                "should have loaded wasm module for provider {}",
-                data_source_type,
-            ));
+            .unwrap_or_else(|| {
+                panic!(
+                    "should have loaded wasm module for provider {}",
+                    data_source_type,
+                )
+            });
 
         compile_wasm(wasm_module)
     }
