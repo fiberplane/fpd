@@ -73,7 +73,7 @@ async fn main() {
         data_sources,
     )
     .await
-    .unwrap();
+    .expect("Error initializing proxy");
 
-    proxy.connect().await.unwrap();
+    proxy.connect().await.expect("Proxy encountered error");
 }

@@ -1,4 +1,5 @@
-use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
+pub use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
+use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -14,12 +15,12 @@ pub enum ServerMessage {
 }
 
 impl ServerMessage {
-    pub fn deserialize_msgpack(input: Vec<u8>) -> ServerMessage {
-        rmp_serde::from_read_ref(&input).unwrap()
+    pub fn deserialize_msgpack(input: Vec<u8>) -> Result<ServerMessage, decode::Error> {
+        rmp_serde::from_read_ref(&input)
     }
 
     pub fn serialize_msgpack(&self) -> Vec<u8> {
-        rmp_serde::to_vec(&self).unwrap()
+        rmp_serde::to_vec(&self).expect("MessgePack serialization error")
     }
 }
 
@@ -51,12 +52,12 @@ pub enum RelayMessage {
 }
 
 impl RelayMessage {
-    pub fn deserialize_msgpack(input: Vec<u8>) -> RelayMessage {
-        rmp_serde::from_read_ref(&input).unwrap()
+    pub fn deserialize_msgpack(input: Vec<u8>) -> Result<RelayMessage, decode::Error> {
+        rmp_serde::from_read_ref(&input)
     }
 
     pub fn serialize_msgpack(&self) -> Vec<u8> {
-        rmp_serde::to_vec(&self).unwrap()
+        rmp_serde::to_vec(&self).expect("MessgePack serialization error")
     }
 }
 
