@@ -103,11 +103,7 @@ impl ProxyService {
             .collect();
         debug!("sending data sources to relay: {:?}", data_sources);
         let message = RelayMessage::SetDataSources(data_sources);
-        let message = Message::Binary(
-            message
-                .serialize_msgpack()
-                .with_context(|| "Error serializing response message to msgpack")?,
-        );
+        let message = Message::Binary(message.serialize_msgpack());
         write.send(message).await?;
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RelayMessage>();

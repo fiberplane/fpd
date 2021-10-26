@@ -1,5 +1,5 @@
 pub use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
-use rmp_serde::{decode, encode};
+use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -19,8 +19,8 @@ impl ServerMessage {
         rmp_serde::from_read_ref(&input)
     }
 
-    pub fn serialize_msgpack(&self) -> Result<Vec<u8>, encode::Error> {
-        rmp_serde::to_vec(&self)
+    pub fn serialize_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(&self).expect("MessgePack serialization error")
     }
 }
 
@@ -56,8 +56,8 @@ impl RelayMessage {
         rmp_serde::from_read_ref(&input)
     }
 
-    pub fn serialize_msgpack(&self) -> Result<Vec<u8>, encode::Error> {
-        rmp_serde::to_vec(&self)
+    pub fn serialize_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(&self).expect("MessgePack serialization error")
     }
 }
 
