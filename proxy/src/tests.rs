@@ -134,6 +134,7 @@ async fn sends_pings() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn returns_error_for_query_to_unknown_provider() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
