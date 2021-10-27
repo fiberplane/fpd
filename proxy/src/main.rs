@@ -7,6 +7,8 @@ use url::Url;
 
 mod data_sources;
 mod service;
+#[cfg(test)]
+mod tests;
 
 #[derive(Clap)]
 #[clap(author, about, version, setting = AppSettings::ColoredHelp)]
