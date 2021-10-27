@@ -22,6 +22,12 @@ impl ServerMessage {
     pub fn serialize_msgpack(&self) -> Vec<u8> {
         rmp_serde::to_vec(&self).expect("MessgePack serialization error")
     }
+
+    pub fn op_id(&self) -> Option<Uuid> {
+        match self {
+            ServerMessage::FetchData(ref message) => Some(message.op_id),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -58,6 +64,13 @@ impl RelayMessage {
 
     pub fn serialize_msgpack(&self) -> Vec<u8> {
         rmp_serde::to_vec(&self).expect("MessgePack serialization error")
+    }
+
+    pub fn op_id(&self) -> Option<Uuid> {
+        match self {
+            RelayMessage::FetchDataResult(ref message) => Some(message.op_id),
+            RelayMessage::SetDataSources(_) => None,
+        }
     }
 }
 

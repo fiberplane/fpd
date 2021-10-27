@@ -3,6 +3,7 @@ use clap::{AppSettings, Clap};
 use data_sources::DataSources;
 use std::path::PathBuf;
 use tokio::fs;
+use tracing::info;
 use url::Url;
 
 mod data_sources;
@@ -77,5 +78,19 @@ async fn main() {
     .await
     .expect("Error initializing proxy");
 
-    proxy.connect().await.expect("Proxy encountered error");
+    let (shutdown, _) = tokio::sync::broadcast::channel::<()>(3);
+
+    let cloned_shutdown = shutdown.clone();
+    ctrlc::set_handler(move || {
+        info!("received SIGINT, shutting down listeners");
+        cloned_shutdown
+            .send(())
+            .expect("Could not send signal on channel.");
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    proxy
+        .connect(shutdown)
+        .await
+        .expect("Proxy encountered error");
 }
