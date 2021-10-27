@@ -55,6 +55,13 @@ pub enum QueryType {
 pub enum RelayMessage {
     SetDataSources(SetDataSourcesMessage),
     FetchDataResult(FetchDataResultMessage),
+    Error(ErrorMessage),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ErrorMessage {
+    pub op_id: Uuid,
+    pub message: String,
 }
 
 impl RelayMessage {
@@ -69,6 +76,7 @@ impl RelayMessage {
     pub fn op_id(&self) -> Option<Uuid> {
         match self {
             RelayMessage::FetchDataResult(ref message) => Some(message.op_id),
+            RelayMessage::Error(ref error) => Some(error.op_id),
             RelayMessage::SetDataSources(_) => None,
         }
     }

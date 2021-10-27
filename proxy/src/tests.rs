@@ -41,7 +41,7 @@ async fn sends_auth_token_in_header() {
         .unwrap();
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -97,7 +97,7 @@ async fn sends_data_sources_on_connect() {
         };
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -135,7 +135,7 @@ async fn sends_pings() {
         };
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -143,7 +143,6 @@ async fn sends_pings() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn returns_error_for_query_to_unknown_provider() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -177,20 +176,15 @@ async fn returns_error_for_query_to_unknown_provider() {
             Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong message type"),
         };
-        let result = match response {
-            RelayMessage::FetchDataResult(result) => result,
+        let error = match response {
+            RelayMessage::Error(error) => error,
             _ => panic!("wrong message type"),
         };
-        assert_eq!(result.op_id, op_id);
-        match result.result {
-            QueryResult::Instant(Err(proxy_types::FetchError::Other { message })) => {
-                assert!(message.contains("unknown data source"))
-            }
-            _ => panic!("wrong response"),
-        }
+        assert_eq!(error.op_id, op_id);
+        assert!(error.message.contains("unknown data source"));
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -275,7 +269,7 @@ async fn calls_provider_with_query_and_sends_result() {
         }
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
