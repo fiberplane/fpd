@@ -4,7 +4,7 @@ use fp_provider_runtime::spec::types::{PrometheusDataSource, RequestError};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response};
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Server};
+use hyper::{header::HeaderValue, Body, Server};
 use proxy_types::{
     DataSourceType, FetchDataMessage, QueryResult, QueryType, RelayMessage, ServerMessage, Uuid,
 };
@@ -13,7 +13,7 @@ use std::convert::Infallible;
 use std::path::Path;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tokio_tungstenite::{accept_async, accept_hdr_async, tungstenite::Message};
+use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
 #[tokio::test]
 async fn sends_auth_token_in_header() {
@@ -30,18 +30,17 @@ async fn sends_auth_token_in_header() {
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
-        accept_hdr_async(stream, |request: &Request<()>, response: Response<()>| {
-            assert_eq!(
-                request.headers().get("fp-auth-token").unwrap(),
-                "auth token"
-            );
-            Ok(response)
+        accept_hdr_async(stream, |req: &Request<()>, mut res: Response<()>| {
+            assert_eq!(req.headers().get("fp-auth-token").unwrap(), "auth token");
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
         })
         .await
         .unwrap();
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -75,7 +74,13 @@ async fn sends_data_sources_on_connect() {
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
-        let mut ws = accept_async(stream).await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
         let message = ws.next().await.unwrap().unwrap();
         let message = match message {
             Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
@@ -97,7 +102,7 @@ async fn sends_data_sources_on_connect() {
         };
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -120,7 +125,13 @@ async fn sends_pings() {
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
-        let mut ws = accept_async(stream).await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
         // first message is data sources
         ws.next().await.unwrap().unwrap();
 
@@ -135,7 +146,7 @@ async fn sends_pings() {
         };
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -143,7 +154,6 @@ async fn sends_pings() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn returns_error_for_query_to_unknown_provider() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -157,7 +167,13 @@ async fn returns_error_for_query_to_unknown_provider() {
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
-        let mut ws = accept_async(stream).await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
         // first message is data sources
         ws.next().await.unwrap().unwrap();
 
@@ -177,20 +193,15 @@ async fn returns_error_for_query_to_unknown_provider() {
             Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong message type"),
         };
-        let result = match response {
-            RelayMessage::FetchDataResult(result) => result,
+        let error = match response {
+            RelayMessage::Error(error) => error,
             _ => panic!("wrong message type"),
         };
-        assert_eq!(result.op_id, op_id);
-        match result.result {
-            QueryResult::Instant(Err(proxy_types::FetchError::Other { message })) => {
-                assert!(message.contains("unknown data source"))
-            }
-            _ => panic!("wrong response"),
-        }
+        assert_eq!(error.op_id, op_id);
+        assert!(error.message.contains("unknown data source"));
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
@@ -238,7 +249,13 @@ async fn calls_provider_with_query_and_sends_result() {
     // After the proxy connects, send it a query
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
-        let mut ws = accept_async(stream).await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
         ws.next().await.unwrap().unwrap();
 
         // Send query
@@ -275,7 +292,7 @@ async fn calls_provider_with_query_and_sends_result() {
         }
     };
 
-    let (tx, _) = broadcast::channel(1);
+    let (tx, _) = broadcast::channel(3);
     select! {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}

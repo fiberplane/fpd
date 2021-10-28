@@ -7,7 +7,10 @@ use futures::stream::{SplitSink, SplitStream};
 use futures::{sink::SinkExt, FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
 use hyper_tungstenite::WebSocketStream;
-use proxy_types::*;
+use proxy_types::{
+    ErrorMessage, FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage,
+    ServerMessage, SetDataSourcesMessage,
+};
 use rmp_serde::Serializer;
 use serde::Serialize;
 use std::cmp;
@@ -381,70 +384,78 @@ impl ProxyService {
         message: FetchDataMessage,
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
+        let op_id = message.op_id;
         let data_source_name = message.data_source_name.as_str();
         debug!(
             "received a relay message for data source {}: {:?}",
             data_source_name, message
         );
-        let runtime = self.create_runtime(data_source_name).await?;
 
-        let query = message.query;
-        let data_source = self
-            .inner
-            .data_sources
-            .get(data_source_name)
-            // TODO send error message back to caller
-            .ok_or_else(|| anyhow!(format!("unknown data source: {}", data_source_name)))?
-            .clone()
-            // convert to the fp_provider_runtime type
-            .into();
+        // Try to create the runtime for the given data source
+        let data_source = match self.inner.data_sources.get(data_source_name) {
+            Some(data_source) => data_source.clone(),
+            None => {
+                reply.send(RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: format!(
+                        "received relay message for unknown data source: {}",
+                        data_source_name
+                    ),
+                }))?;
+                return Ok(());
+            }
+        };
+        let runtime = match self.create_runtime(data_source.ty()).await {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                reply.send(RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: format!("error creating provider runtime: {:?}", e),
+                }))?;
+                return Ok(());
+            }
+        };
 
         // Execute either a series or an instant query
-        let query_result = match message.query_type {
+        let result = match message.query_type {
             QueryType::Series(time_range) => {
                 let options = QuerySeriesOptions {
-                    data_source,
+                    data_source: data_source.into(),
                     time_range,
                 };
-                let result = runtime
-                    .fetch_series(query, options)
+                runtime
+                    .fetch_series(message.query, options)
                     .await
-                    .with_context(|| "Wasmer runtime error while running fetch_series query")?;
-                QueryResult::Series(result)
+                    .with_context(|| "Wasmer runtime error while running fetch_series query")
+                    .map(QueryResult::Series)
             }
             QueryType::Instant(time) => {
-                let options = QueryInstantOptions { data_source, time };
-                let result = runtime
-                    .fetch_instant(query, options)
+                let options = QueryInstantOptions {
+                    data_source: data_source.into(),
+                    time,
+                };
+                runtime
+                    .fetch_instant(message.query, options)
                     .await
-                    .with_context(|| "Wasmer runtime error while running fetch_instant query")?;
-                QueryResult::Instant(result)
+                    .with_context(|| "Wasmer runtime error while running fetch_instant query")
+                    .map(QueryResult::Instant)
             }
         };
 
-        // TODO: Better handling of invocation errors. Do we send something back in
-        // that case, and/or log to stderr?
-
-        let fetch_data_result_message = FetchDataResultMessage {
-            op_id: message.op_id,
-            result: query_result,
+        let response_message = match result {
+            Ok(result) => RelayMessage::FetchDataResult(FetchDataResultMessage { op_id, result }),
+            Err(e) => RelayMessage::Error(ErrorMessage {
+                op_id,
+                message: format!("Provider runtime error: {:?}", e),
+            }),
         };
 
-        reply.send(RelayMessage::FetchDataResult(fetch_data_result_message))?;
+        reply.send(response_message)?;
 
         Ok(())
     }
 
-    async fn create_runtime(&self, data_source_name: &str) -> Result<Runtime> {
-        let data_source_type = match self.inner.data_sources.get(data_source_name) {
-            Some(data_source) => data_source.ty(),
-            None => {
-                return Err(anyhow!(
-                    "received relay message for unknown data source: {}",
-                    data_source_name
-                ))
-            }
-        };
+    async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
         let wasm_module: &[u8] = self
             .inner
             .wasm_modules
