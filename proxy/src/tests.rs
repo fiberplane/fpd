@@ -298,3 +298,56 @@ async fn calls_provider_with_query_and_sends_result() {
       _ = handle_connection.fuse() => {}
     }
 }
+
+#[tokio::test]
+async fn reconnects_if_websocket_closes() {
+    tracing_subscriber::fmt::init();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let service = ProxyService::new(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        HashMap::new(),
+        DataSources(HashMap::new()),
+        1,
+    );
+
+    tokio::time::pause();
+
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let ws = accept_hdr_async(stream, |_req: &Request<()>, _res: Response<()>| {
+            Err(Response::builder().status(500).body(None).unwrap())
+        })
+        .await
+        .ok();
+
+        drop(ws);
+
+        tokio::time::advance(tokio::time::Duration::from_secs(45)).await;
+        tokio::time::resume();
+
+        // Proxy should try to reconnect
+        let (stream, _) = listener.accept().await.unwrap();
+        let ws = accept_hdr_async(stream, |_req: &Request<()>, _res: Response<()>| {
+            Err(Response::builder().status(500).body(None).unwrap())
+        })
+        .await
+        .ok();
+
+        drop(ws);
+
+        let (_stream, _) = listener.accept().await.unwrap();
+        panic!("should not get here because it should not try again");
+    };
+
+    let (tx, _) = broadcast::channel(3);
+    let result = select! {
+      result = service.connect(tx).fuse() => result,
+      _ = handle_connection.fuse() => unreachable!()
+    };
+    assert_eq!(
+        format!("{}", result.unwrap_err()),
+        "unable to connect, exceeded max tries"
+    );
+}
