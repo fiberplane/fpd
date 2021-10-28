@@ -104,31 +104,10 @@ impl ProxyService {
 
             info!(?current_try, "connecting to fiberplane");
 
-            // Create a request object. If this fails there is no point in
-            // retrying so just return the error object.
-            let request = http::Request::builder()
-                .uri(self.inner.endpoint.as_str())
-                .header("fp-auth-token", self.inner.auth_token.clone())
-                .body(())?;
-
-            // Actually connect to the web-socket server. If this fails we want
-            // to try it.
-            let (ws_stream, resp) = match connect_async(request).await {
+            let (ws_stream, conn_id) = match self.connect_websocket().await {
                 Ok(result) => result,
                 Err(err) => {
-                    error!(?err, "unable to connect to fiberplane");
-                    continue;
-                }
-            };
-
-            let conn_id = match resp
-                .headers()
-                .get("x-fp-conn-id")
-                .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok())
-            {
-                Some(conn_id) => conn_id,
-                None => {
-                    error!("response did not include a connection id");
+                    error!(?err, "unable to connect to web-socket server");
                     continue;
                 }
             };
@@ -199,6 +178,29 @@ impl ProxyService {
         }
 
         Ok(())
+    }
+
+    /// Connects to a web-socket server and returns the connection id and the
+    /// web-socket stream.
+    async fn connect_websocket(
+        &self,
+    ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, String)> {
+        // Create a request object. If this fails there is no point in
+        // retrying so just return the error object.
+        let request = http::Request::builder()
+            .uri(self.inner.endpoint.as_str())
+            .header("fp-auth-token", self.inner.auth_token.clone())
+            .body(())?;
+
+        let (ws_stream, resp) = connect_async(request).await?;
+
+        let conn_id = resp
+            .headers()
+            .get("x-fp-conn-id")
+            .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok())
+            .ok_or_else(|| anyhow!("no connection id was returned"))?;
+
+        Ok((ws_stream, conn_id))
     }
 
     /// Handle any incoming web socket messages (`read_ws`) by sending them
