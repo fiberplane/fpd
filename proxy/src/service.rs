@@ -3,8 +3,9 @@ use anyhow::{anyhow, Context, Result};
 use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
 use futures::select;
+use futures::sink::SinkExt;
 use futures::stream::{SplitSink, SplitStream};
-use futures::{sink::SinkExt, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
 use hyper_tungstenite::WebSocketStream;
 use proxy_types::{
@@ -17,12 +18,14 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
+use stream_cancel::StreamExt as CancelStreamExt;
 use tokio::fs;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinError;
 use tokio::time::{sleep, Duration};
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_tungstenite::{connect_async, MaybeTlsStream};
 use tracing::{debug, error, info, trace, warn};
 use url::Url;
@@ -215,7 +218,7 @@ impl ProxyService {
     async fn handle_read_loop(
         shutdown: Sender<()>,
         conn_id: String,
-        mut read_ws: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        read_ws: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
         tx_relay_messages: UnboundedSender<RelayMessage>,
         service: ProxyService,
     ) -> Result<bool, JoinError> {
@@ -225,77 +228,76 @@ impl ProxyService {
             let mut should_reconnect = false;
             let mut should_shutdown = shutdown.subscribe();
 
+            let mut read_ws = Box::pin(read_ws.take_until_if(should_shutdown.recv().map(|_| true)));
+
             loop {
-                select! {
-                    // Handle a ws message if we receive one from the web-socket
-                    // connection.
-                    message = read_ws.next().fuse() => {
-                        // First make sure we actually received a message or
-                        // that the connection is closed.
-                        let message = match message {
-                            Some(Ok(message)) => message,
-                            Some(Err(err)) => {
-                                warn!(?err, ?conn_id, "unable to read message from web-socket connection");
-                                should_reconnect = true;
-                                if let Err(e) = shutdown.send(()) {
-                                    warn!(?e, "unable to send shutdown signal");
-                                };
-                                break;
-                            }
-                            None => {
-                                trace!(?conn_id, "web-socket connection is closed while trying to read from it");
-                                should_reconnect = true;
-                                if let Err(e) = shutdown.send(()) {
-                                    warn!(?e, "unable to send shutdown signal");
-                                };
-                                break;
+                // First make sure we actually received a message or
+                // that the connection is closed.
+                let message = match read_ws.next().await {
+                    Some(Ok(message)) => message,
+                    Some(Err(err)) => {
+                        warn!(
+                            ?err,
+                            ?conn_id,
+                            "unable to read message from web-socket connection"
+                        );
+                        should_reconnect = true;
+                        if let Err(e) = shutdown.send(()) {
+                            warn!(?e, "unable to send shutdown signal");
+                        };
+                        break;
+                    }
+                    None => {
+                        trace!(
+                            ?conn_id,
+                            "web-socket connection is closed while trying to read from it"
+                        );
+                        should_reconnect = true;
+                        if let Err(e) = shutdown.send(()) {
+                            warn!(?e, "unable to send shutdown signal");
+                        };
+                        break;
+                    }
+                };
+
+                // We are only interested in Binary and Close messages.
+                match message {
+                    Binary(msg) => {
+                        let message = match ServerMessage::deserialize_msgpack(msg) {
+                            Ok(message) => message,
+                            Err(err) => {
+                                warn!(
+                                    ?err,
+                                    ?conn_id,
+                                    "unable to deserialize msgpack encoded server message"
+                                );
+                                continue;
                             }
                         };
 
-                        // We are only interested in Binary and Close messages.
-                        match message {
-                            Binary(msg) => {
-                                let message = match ServerMessage::deserialize_msgpack(msg) {
-                                    Ok(message) => message,
-                                    Err(err) => {
-                                        warn!(
-                                            ?err,
-                                            ?conn_id,
-                                            "unable to deserialize msgpack encoded server message"
-                                        );
-                                        continue;
-                                    }
-                                };
-
-                                let op_id = message.op_id();
-                                let result = service.handle_message(message, tx_relay_messages.clone()).await;
-                                if let Err(err) = result {
-                                    warn!(
-                                        ?err,
-                                        ?conn_id,
-                                        ?op_id,
-                                        "service was unable to handle message"
-                                    );
-                                };
-                            }
-                            Close(_) => {
-                                trace!(?conn_id, "received close message");
-                                if let Err(e) = shutdown.send(()) {
-                                    warn!(?e, "unable to send shutdown signal");
-                                };
-                                break;
-                            }
-                            Text(_) => error!(?conn_id, "Received Text"),
-                            Ping(_) => trace!(?conn_id, "Received Ping"),
-                            Pong(_) => trace!(?conn_id, "Received Pong"),
-                        }
+                        let op_id = message.op_id();
+                        let result = service
+                            .handle_message(message, tx_relay_messages.clone())
+                            .await;
+                        if let Err(err) = result {
+                            warn!(
+                                ?err,
+                                ?conn_id,
+                                ?op_id,
+                                "service was unable to handle message"
+                            );
+                        };
                     }
-                    // Stop the loop if we receive a message on the
-                    // `should_shutdown` broadcast channel.
-                    _ = should_shutdown.recv().fuse() => {
-                        trace!(?conn_id, "received shutdown signal, stopping read ws loop");
+                    Close(_) => {
+                        trace!(?conn_id, "received close message");
+                        if let Err(e) = shutdown.send(()) {
+                            warn!(?e, "unable to send shutdown signal");
+                        };
                         break;
                     }
+                    Text(_) => error!(?conn_id, "Received Text"),
+                    Ping(_) => trace!(?conn_id, "Received Ping"),
+                    Pong(_) => trace!(?conn_id, "Received Pong"),
                 }
             }
 
@@ -313,35 +315,47 @@ impl ProxyService {
     async fn handle_write_loop(
         shutdown: Sender<()>,
         conn_id: String,
-        mut rx_relay_messages: UnboundedReceiver<RelayMessage>,
+        rx_relay_messages: UnboundedReceiver<RelayMessage>,
         mut write_ws: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     ) {
         let mut should_shutdown = shutdown.subscribe();
 
-        trace!(?conn_id, "handle_command: creating write_handle");
+        let rx_relay_messages = UnboundedReceiverStream::new(rx_relay_messages);
+        let mut rx_relay_messages =
+            Box::pin(rx_relay_messages.take_until_if(should_shutdown.recv().map(|_| true)));
+
         loop {
             select! {
-                // Handle a outgoing relay message by writing it to the web
-                // socket connection.
-                message = rx_relay_messages.recv().fuse() => {
+                message = rx_relay_messages.next().fuse() => {
                     match message {
                         Some(message) => {
-                            trace!(?conn_id, "handle_command: sending message to relay");
-
                             let op_id = message.op_id();
 
                             let mut buf = Vec::new();
                             if let Err(err) = message.serialize(&mut Serializer::new(&mut buf)) {
-                                error!(?err, ?conn_id, ?op_id, "unable to serialize message to msgpack");
+                                error!(
+                                    ?err,
+                                    ?conn_id,
+                                    ?op_id,
+                                    "unable to serialize message to msgpack"
+                                );
                             };
 
                             if let Err(err) = write_ws.send(Message::Binary(buf)).await {
-                                error!(?err, ?conn_id, ?op_id, "unable to serialize message to msgpack");
+                                error!(
+                                    ?err,
+                                    ?conn_id,
+                                    ?op_id,
+                                    "unable to serialize message to msgpack"
+                                );
                                 break;
                             }
 
-                            trace!(?conn_id, "handle_command: sending message to relay complete");
-                        },
+                            trace!(
+                                ?conn_id,
+                                "handle_command: sending message to relay complete"
+                            );
+                        }
                         None => {
                             if let Err(e) = shutdown.send(()) {
                                 warn!(?e, ?conn_id, "unable to send shutdown signal");
@@ -349,12 +363,6 @@ impl ProxyService {
                             break;
                         }
                     }
-                }
-                // Stop the loop if we receive a message on the
-                // should_shutdown broadcast channel.
-                _ = should_shutdown.recv().fuse() => {
-                    trace!(?conn_id, "received shutdown signal");
-                    break;
                 }
                 // Send a Ping message to the web socket connection if we have
                 // not send anything for some amount of time.
