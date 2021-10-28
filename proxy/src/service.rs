@@ -26,6 +26,7 @@ use url::Url;
 use wasmer::{Singlepass, Store, Universal};
 
 const WS_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(45);
+const MAX_EXPONENTIAL_BACKOFF_DURATION: u64 = 10000;
 
 /// This is a mapping from the provider type to the bytes of the wasm module
 pub type WasmModuleMap = HashMap<String, Vec<u8>>;
@@ -93,7 +94,7 @@ impl ProxyService {
                 let sleep_duration = {
                     let base: u64 = 2;
                     let duration = base.pow(current_try + 6);
-                    let duration = cmp::min(duration, 10000);
+                    let duration = cmp::min(duration, MAX_EXPONENTIAL_BACKOFF_DURATION);
                     Duration::from_millis(duration)
                 };
 
