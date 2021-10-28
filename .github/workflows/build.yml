@@ -34,6 +34,12 @@ jobs:
           override: true
           components: rustfmt, clippy
 
+    - name: setup-git-credentials
+      uses: fusion-engineering/setup-git-credentials@v2.0.6
+      with:
+        credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+
     - name: Check format
       run: cargo fmt -- --check
 
