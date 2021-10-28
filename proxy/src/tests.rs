@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::Path;
 use tokio::net::TcpListener;
+use tokio::sync::broadcast;
 use tokio_tungstenite::{accept_async, accept_hdr_async, tungstenite::Message};
 
 #[tokio::test]
@@ -24,6 +25,7 @@ async fn sends_auth_token_in_header() {
         "auth token".to_string(),
         HashMap::new(),
         DataSources(HashMap::new()),
+        5,
     );
 
     let handle_connection = async move {
@@ -38,8 +40,10 @@ async fn sends_auth_token_in_header() {
         .await
         .unwrap();
     };
+
+    let (tx, _) = broadcast::channel(1);
     select! {
-      result = service.connect().fuse() => result.unwrap(),
+      result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
 }
@@ -66,6 +70,7 @@ async fn sends_data_sources_on_connect() {
         "auth token".to_string(),
         HashMap::new(),
         DataSources(data_sources),
+        5,
     );
 
     let handle_connection = async move {
@@ -91,8 +96,10 @@ async fn sends_data_sources_on_connect() {
             _ => panic!(),
         };
     };
+
+    let (tx, _) = broadcast::channel(1);
     select! {
-      result = service.connect().fuse() => result.unwrap(),
+      result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
 }
@@ -106,6 +113,7 @@ async fn sends_pings() {
         "auth token".to_string(),
         HashMap::new(),
         DataSources(HashMap::new()),
+        5,
     );
 
     tokio::time::pause();
@@ -127,8 +135,9 @@ async fn sends_pings() {
         };
     };
 
+    let (tx, _) = broadcast::channel(1);
     select! {
-      result = service.connect().fuse() => result.unwrap(),
+      result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
 }
@@ -143,6 +152,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         "auth token".to_string(),
         HashMap::new(),
         DataSources(HashMap::new()),
+        5,
     );
 
     let handle_connection = async move {
@@ -180,8 +190,9 @@ async fn returns_error_for_query_to_unknown_provider() {
         }
     };
 
+    let (tx, _) = broadcast::channel(1);
     select! {
-      result = service.connect().fuse() => result.unwrap(),
+      result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
 }
@@ -219,6 +230,7 @@ async fn calls_provider_with_query_and_sends_result() {
         "auth token".to_string(),
         Path::new("../providers"),
         DataSources(data_sources),
+        5,
     )
     .await
     .unwrap();
@@ -262,8 +274,10 @@ async fn calls_provider_with_query_and_sends_result() {
             _ => panic!("wrong response"),
         }
     };
+
+    let (tx, _) = broadcast::channel(1);
     select! {
-      result = service.connect().fuse() => result.unwrap(),
+      result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
 }

@@ -2,8 +2,9 @@ use crate::service::ProxyService;
 use clap::{AppSettings, Clap};
 use data_sources::DataSources;
 use std::path::PathBuf;
+use std::process;
 use tokio::fs;
-use tracing::info;
+use tracing::{error, info, trace};
 use url::Url;
 
 mod data_sources;
@@ -47,6 +48,15 @@ pub struct Arguments {
         about = "Path to data sources YAML file"
     )]
     data_sources: PathBuf,
+
+    #[clap(
+        long,
+        short,
+        env = "MAX_RETRIES",
+        default_value = "10",
+        about = "Max retries to connect to the fiberplane server before giving up on failed connections"
+    )]
+    max_retries: u32,
 }
 
 #[tokio::main]
@@ -74,6 +84,7 @@ async fn main() {
         args.auth_token,
         args.wasm_dir.as_path(),
         data_sources,
+        args.max_retries,
     )
     .await
     .expect("Error initializing proxy");
@@ -83,14 +94,20 @@ async fn main() {
     let cloned_shutdown = shutdown.clone();
     ctrlc::set_handler(move || {
         info!("received SIGINT, shutting down listeners");
-        cloned_shutdown
-            .send(())
-            .expect("Could not send signal on channel.");
+        if cloned_shutdown.send(()).is_err() {
+            trace!("no listeners found");
+            process::exit(0);
+        }
     })
     .expect("Error setting Ctrl-C handler");
 
-    proxy
-        .connect(shutdown)
-        .await
-        .expect("Proxy encountered error");
+    match proxy.connect(shutdown).await {
+        Ok(_) => {
+            info!("proxy shutdown successfully");
+        }
+        Err(err) => {
+            error!(?err, "proxy encounterd a error");
+            process::exit(1);
+        }
+    };
 }
