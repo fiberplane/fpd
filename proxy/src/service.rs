@@ -41,7 +41,7 @@ struct Inner {
     auth_token: String,
     data_sources: DataSources,
     wasm_modules: WasmModuleMap,
-    max_tries: u32,
+    max_retries: u32,
 }
 
 impl ProxyService {
@@ -51,7 +51,7 @@ impl ProxyService {
         auth_token: String,
         wasm_dir: &Path,
         data_sources: DataSources,
-        max_tries: u32,
+        max_retries: u32,
     ) -> Result<Self> {
         let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await?;
         Ok(ProxyService::new(
@@ -59,7 +59,7 @@ impl ProxyService {
             auth_token,
             wasm_modules,
             data_sources,
-            max_tries,
+            max_retries,
         ))
     }
 
@@ -68,7 +68,7 @@ impl ProxyService {
         auth_token: String,
         wasm_modules: WasmModuleMap,
         data_sources: DataSources,
-        max_tries: u32,
+        max_retries: u32,
     ) -> Self {
         ProxyService {
             inner: Arc::new(Inner {
@@ -76,7 +76,7 @@ impl ProxyService {
                 auth_token,
                 wasm_modules,
                 data_sources,
-                max_tries,
+                max_retries,
             }),
         }
     }
@@ -85,9 +85,11 @@ impl ProxyService {
         let mut current_try = 0;
         loop {
             current_try = current_try + 1;
-            if current_try > self.inner.max_tries {
+            let current_retries = current_try - 1;
+
+            if current_retries > self.inner.max_retries {
                 return Err(anyhow!("unable to connect, exceeded max tries"));
-            } else if current_try > 1 {
+            } else if current_retries > 0 {
                 let sleep_duration = {
                     let base: u64 = 2;
                     let duration = base.pow(current_try + 6);

@@ -52,9 +52,9 @@ pub struct Arguments {
     #[clap(
         long,
         short,
-        env = "MAX_TRIES",
-        default_value = "10",
-        about = "Max tries to connect to the fiberplane server before giving up on failed connections"
+        env = "MAX_RETRIES",
+        default_value = "0",
+        about = "Max retries to connect to the fiberplane server before giving up on failed connections"
     )]
     max_retries: u32,
 }
