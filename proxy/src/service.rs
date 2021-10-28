@@ -88,7 +88,7 @@ impl ProxyService {
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
         let mut current_try = 0;
         loop {
-            current_try = current_try + 1;
+            current_try += 1;
             let current_retries = current_try - 1;
 
             if current_retries > self.inner.max_retries {
