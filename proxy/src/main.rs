@@ -53,7 +53,7 @@ pub struct Arguments {
         long,
         short,
         env = "MAX_RETRIES",
-        default_value = "0",
+        default_value = "10",
         about = "Max retries to connect to the fiberplane server before giving up on failed connections"
     )]
     max_retries: u32,
