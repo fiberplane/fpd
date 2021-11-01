@@ -228,6 +228,8 @@ impl ProxyService {
             let mut should_reconnect = false;
             let mut should_shutdown = shutdown.subscribe();
 
+            // Wrap the stream in a new TakeUntilIf stream, which will stop
+            // processing once we receive something on the shutdown channel.
             let mut read_ws = Box::pin(read_ws.take_until_if(should_shutdown.recv().map(|_| true)));
 
             loop {
@@ -248,11 +250,7 @@ impl ProxyService {
                         break;
                     }
                     None => {
-                        trace!(
-                            ?conn_id,
-                            "web-socket connection is closed while trying to read from it"
-                        );
-                        should_reconnect = true;
+                        trace!(?conn_id, "stopping read loop; shutdown was invoked, or the connection is already closed");
                         if let Err(e) = shutdown.send(()) {
                             warn!(?e, "unable to send shutdown signal");
                         };
@@ -320,6 +318,9 @@ impl ProxyService {
     ) {
         let mut should_shutdown = shutdown.subscribe();
 
+        // Wrap the channel in a stream and then in a new TakeUntilIf stream,
+        // which will stop processing once we receive something on the shutdown
+        // channel.
         let rx_relay_messages = UnboundedReceiverStream::new(rx_relay_messages);
         let mut rx_relay_messages =
             Box::pin(rx_relay_messages.take_until_if(should_shutdown.recv().map(|_| true)));
@@ -357,8 +358,9 @@ impl ProxyService {
                             );
                         }
                         None => {
+                            trace!(?conn_id, "stopping write loop; shutdown was invoked, or the connection is already closed");
                             if let Err(e) = shutdown.send(()) {
-                                warn!(?e, ?conn_id, "unable to send shutdown signal");
+                                warn!(?e, "unable to send shutdown signal");
                             };
                             break;
                         }

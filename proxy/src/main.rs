@@ -89,7 +89,7 @@ async fn main() {
     .await
     .expect("Error initializing proxy");
 
-    let (shutdown, _) = tokio::sync::broadcast::channel::<()>(3);
+    let (shutdown, _) = tokio::sync::broadcast::channel(3);
 
     let cloned_shutdown = shutdown.clone();
     ctrlc::set_handler(move || {

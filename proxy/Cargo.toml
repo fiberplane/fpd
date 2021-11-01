@@ -9,7 +9,7 @@ edition = "2018"
 anyhow = "1.0.44"
 clap = "3.0.0-beta.4"
 ctrlc = "3.2.1"
-fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "main"  }
+fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "main" }
 # fp-provider-runtime = { path = "../../providers/runtimes/fp-provider-runtime/"  }
 futures = "0.3.17"
 http = "0.2.4"
@@ -27,7 +27,8 @@ tokio-tungstenite = { version = "0.15.0", features = ["rustls-tls"] }
 tracing = "0.1"
 tracing-subscriber = "0.2"
 url = "2.2.2"
-wasmer = {version = "2.0.0", features = ["singlepass"] }
+wasmer = { version = "2.0.0", features = ["singlepass"] }
 
 [dev-dependencies]
+test-env-log = { version = "0.2.7", default-features = false, features = [ "trace",] }
 tokio = { version = "1.10.1", features = ["full", "test-util"] }
