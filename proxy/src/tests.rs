@@ -11,11 +11,14 @@ use proxy_types::{
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::Path;
+use std::time::Duration;
+use test_env_log::test;
+use tokio::join;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
-#[tokio::test]
+#[test(tokio::test)]
 async fn sends_auth_token_in_header() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -47,7 +50,7 @@ async fn sends_auth_token_in_header() {
     }
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 async fn sends_data_sources_on_connect() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -109,7 +112,7 @@ async fn sends_data_sources_on_connect() {
     }
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 async fn sends_pings() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -153,7 +156,7 @@ async fn sends_pings() {
     }
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 async fn returns_error_for_query_to_unknown_provider() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -208,7 +211,7 @@ async fn returns_error_for_query_to_unknown_provider() {
     }
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_result() {
     // Note that the fake Prometheus returns an error just to test that
     // the error code is relayed back through the proxy
@@ -299,9 +302,8 @@ async fn calls_provider_with_query_and_sends_result() {
     }
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 async fn reconnects_if_websocket_closes() {
-    tracing_subscriber::fmt::init();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
@@ -350,4 +352,50 @@ async fn reconnects_if_websocket_closes() {
         format!("{}", result.unwrap_err()),
         "unable to connect, exceeded max tries"
     );
+}
+
+#[test(tokio::test)]
+async fn service_shutdown() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let service = ProxyService::new(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        HashMap::new(),
+        DataSources(HashMap::new()),
+        1,
+    );
+
+    let (tx, _) = broadcast::channel(3);
+    let tx_clone = tx.clone();
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+
+            Ok(res)
+        })
+        .await
+        .unwrap();
+
+        // Signal the service to actually shutdown (the sleep is to ensure that
+        // the service is able to spawn the read/write loops).
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert!(tx_clone.send(()).is_ok());
+
+        // Read any message sent from the service, until it gets closed, which
+        // will indicate that the service has shutdown.
+        loop {
+            if let None = ws.next().await {
+                break;
+            };
+        }
+    };
+
+    // Wait for both the service and our test handle_connection are stopped
+    let (_, result) = join!(handle_connection, service.connect(tx));
+    if let Err(err) = result {
+        panic!("unexpected error occurred: {:?}", err);
+    }
 }
