@@ -1,13 +1,14 @@
 use crate::data_sources::{DataSource, DataSources};
 use crate::service::ProxyService;
-use fp_provider_runtime::spec::types::{PrometheusDataSource, RequestError};
+use fp_provider_runtime::spec::types::{
+    Config, Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse,
+    QueryInstant,
+};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{header::HeaderValue, Body, Server};
-use proxy_types::{
-    DataSourceType, FetchDataMessage, QueryResult, QueryType, RelayMessage, ServerMessage, Uuid,
-};
+use proxy_types::{DataSourceType, RelayMessage, RequestMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::Path;
@@ -57,14 +58,14 @@ async fn sends_data_sources_on_connect() {
     let mut data_sources = HashMap::new();
     data_sources.insert(
         "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: "prometheus.example".to_string(),
+        DataSource::Prometheus(Config {
+            url: Some("prometheus.example".to_string()),
         }),
     );
     data_sources.insert(
         "data source 2".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: "prometheus.example".to_string(),
+        DataSource::Prometheus(Config {
+            url: Some("prometheus.example".to_string()),
         }),
     );
     let service = ProxyService::new(
@@ -181,11 +182,10 @@ async fn returns_error_for_query_to_unknown_provider() {
         ws.next().await.unwrap().unwrap();
 
         let op_id = Uuid::new_v4();
-        let message = ServerMessage::FetchData(FetchDataMessage {
+        let message = ServerMessage::Request(RequestMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
-            query: "test query".to_string(),
-            query_type: QueryType::Instant(0.0),
+            data: b"fake payload".to_vec(),
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -198,7 +198,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         };
         let error = match response {
             RelayMessage::Error(error) => error,
-            _ => panic!("wrong message type"),
+            other => panic!("wrong message type {:?}", other),
         };
         assert_eq!(error.op_id, op_id);
         assert!(error.message.contains("unknown data source"));
@@ -235,8 +235,8 @@ async fn calls_provider_with_query_and_sends_result() {
     let mut data_sources = HashMap::new();
     data_sources.insert(
         "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: format!("http://{}", fake_prometheus_addr),
+        DataSource::Prometheus(Config {
+            url: Some(format!("http://{}", fake_prometheus_addr)),
         }),
     );
     let service = ProxyService::init(
@@ -263,11 +263,15 @@ async fn calls_provider_with_query_and_sends_result() {
 
         // Send query
         let op_id = Uuid::new_v4();
-        let message = ServerMessage::FetchData(FetchDataMessage {
+        let request = ProviderRequest::Instant(QueryInstant {
+            query: "test query".to_string(),
+            timestamp: 0.0,
+        });
+        let message = ServerMessage::Request(RequestMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
-            query: "test query".to_string(),
-            query_type: QueryType::Instant(0.0),
+            // TODO serializing this with to_vec fails while to_vec_named works. Why?
+            data: rmp_serde::to_vec_named(&request).unwrap(),
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -279,18 +283,17 @@ async fn calls_provider_with_query_and_sends_result() {
             _ => panic!("wrong message type"),
         };
         let result = match response {
-            RelayMessage::FetchDataResult(result) => result,
-            _ => panic!("wrong message type"),
+            RelayMessage::Response(message) => message,
+            other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
-        match result.result {
-            QueryResult::Instant(Err(proxy_types::FetchError::RequestError {
-                payload:
-                    RequestError::ServerError {
-                        status_code,
-                        response: _,
-                    },
-            })) => assert_eq!(status_code, 418),
+        match rmp_serde::from_slice(&result.data) {
+            Ok(ProviderResponse::Error(ProviderError::Http(HttpRequestError::ServerError {
+                status_code,
+                response: _,
+            }))) => {
+                assert_eq!(status_code, 418);
+            }
             _ => panic!("wrong response"),
         }
     };
