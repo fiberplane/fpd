@@ -11,7 +11,7 @@ pub use uuid::Uuid;
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ServerMessage {
     // TODO should we have a more specific name?
-    Request(RequestMessage),
+    InvokeProxy(InvokeProxyMessage),
 }
 
 impl ServerMessage {
@@ -25,14 +25,14 @@ impl ServerMessage {
 
     pub fn op_id(&self) -> Option<Uuid> {
         match self {
-            ServerMessage::Request(ref message) => Some(message.op_id),
+            ServerMessage::InvokeProxy(ref message) => Some(message.op_id),
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RequestMessage {
+pub struct InvokeProxyMessage {
     pub op_id: Uuid,
     pub data_source_name: String,
     #[serde(with = "serde_bytes")]
@@ -44,13 +44,13 @@ pub struct RequestMessage {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RelayMessage {
     SetDataSources(SetDataSourcesMessage),
-    Response(ResponseMessage),
+    InvokeProxyResponse(InvokeProxyResponseMessage),
     Error(ErrorMessage),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ResponseMessage {
+pub struct InvokeProxyResponseMessage {
     pub op_id: Uuid,
     #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
@@ -74,7 +74,7 @@ impl RelayMessage {
 
     pub fn op_id(&self) -> Option<Uuid> {
         match self {
-            RelayMessage::Response(ref message) => Some(message.op_id),
+            RelayMessage::InvokeProxyResponse(ref message) => Some(message.op_id),
             RelayMessage::Error(ref error) => Some(error.op_id),
             RelayMessage::SetDataSources(_) => None,
         }

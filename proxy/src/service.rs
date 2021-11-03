@@ -8,7 +8,7 @@ use futures::{FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
 use hyper_tungstenite::WebSocketStream;
 use proxy_types::{
-    ErrorMessage, RelayMessage, RequestMessage, ResponseMessage, ServerMessage,
+    ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage,
 };
 use rmp_serde::Serializer;
@@ -383,7 +383,7 @@ impl ProxyService {
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
         match message {
-            ServerMessage::Request(message) => {
+            ServerMessage::InvokeProxy(message) => {
                 self.handle_relay_request_message(message, reply).await
             }
         }
@@ -391,7 +391,7 @@ impl ProxyService {
 
     async fn handle_relay_request_message(
         &self,
-        message: RequestMessage,
+        message: InvokeProxyMessage,
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
         let op_id = message.op_id;
@@ -435,7 +435,9 @@ impl ProxyService {
             .await
             .with_context(|| "Wasmer runtime error while running invoke_raw")
         {
-            Ok(data) => RelayMessage::Response(ResponseMessage { op_id, data }),
+            Ok(data) => {
+                RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
+            }
             Err(err) => {
                 debug!(?err, "error invoking provider");
                 RelayMessage::Error(ErrorMessage {

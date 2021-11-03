@@ -8,7 +8,7 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{header::HeaderValue, Body, Server};
-use proxy_types::{DataSourceType, RelayMessage, RequestMessage, ServerMessage, Uuid};
+use proxy_types::{DataSourceType, InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::Path;
@@ -182,7 +182,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         ws.next().await.unwrap().unwrap();
 
         let op_id = Uuid::new_v4();
-        let message = ServerMessage::Request(RequestMessage {
+        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
             data: b"fake payload".to_vec(),
@@ -292,7 +292,7 @@ async fn calls_provider_with_query_and_sends_result() {
             query: "test query".to_string(),
             timestamp: 0.0,
         });
-        let message = ServerMessage::Request(RequestMessage {
+        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
             data: rmp_serde::to_vec(&request).unwrap(),
@@ -307,7 +307,7 @@ async fn calls_provider_with_query_and_sends_result() {
             _ => panic!("wrong message type"),
         };
         let result = match response {
-            RelayMessage::Response(message) => message,
+            RelayMessage::InvokeProxyResponse(message) => message,
             other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
@@ -386,7 +386,7 @@ async fn calls_provider_with_query_and_sends_error() {
             query: "test query".to_string(),
             timestamp: 0.0,
         });
-        let message = ServerMessage::Request(RequestMessage {
+        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
             data: rmp_serde::to_vec(&request).unwrap(),
@@ -401,7 +401,7 @@ async fn calls_provider_with_query_and_sends_error() {
             _ => panic!("wrong message type"),
         };
         let result = match response {
-            RelayMessage::Response(message) => message,
+            RelayMessage::InvokeProxyResponse(message) => message,
             other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
