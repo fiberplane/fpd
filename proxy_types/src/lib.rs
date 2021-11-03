@@ -8,7 +8,7 @@ pub use uuid::Uuid;
 
 /// Messages intended for the Server to handle
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum ServerMessage {
     // TODO should we have a more specific name?
     Request(RequestMessage),
@@ -31,7 +31,7 @@ impl ServerMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub struct RequestMessage {
     pub op_id: Uuid,
     pub data_source_name: String,
@@ -41,7 +41,7 @@ pub struct RequestMessage {
 
 /// Messages intended for the Relay to handle
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum RelayMessage {
     SetDataSources(SetDataSourcesMessage),
     Response(ResponseMessage),
@@ -49,6 +49,7 @@ pub enum RelayMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResponseMessage {
     pub op_id: Uuid,
     #[serde(with = "serde_bytes")]
@@ -56,6 +57,7 @@ pub struct ResponseMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ErrorMessage {
     pub op_id: Uuid,
     pub message: String,
@@ -80,7 +82,7 @@ impl RelayMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum DataSourceType {
     Prometheus,
 }
