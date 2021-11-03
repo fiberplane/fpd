@@ -25,7 +25,7 @@ impl ServerMessage {
 
     pub fn op_id(&self) -> Option<Uuid> {
         match self {
-            ServerMessage::InvokeProxy(ref message) => Some(message.op_id),
+            ServerMessage::InvokeProxy(message) => Some(message.op_id),
         }
     }
 }
@@ -74,8 +74,8 @@ impl RelayMessage {
 
     pub fn op_id(&self) -> Option<Uuid> {
         match self {
-            RelayMessage::InvokeProxyResponse(ref message) => Some(message.op_id),
-            RelayMessage::Error(ref error) => Some(error.op_id),
+            RelayMessage::InvokeProxyResponse(message) => Some(message.op_id),
+            RelayMessage::Error(error) => Some(error.op_id),
             RelayMessage::SetDataSources(_) => None,
         }
     }
