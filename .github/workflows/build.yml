@@ -16,9 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Git Log
-        run: git log -2
-
       - uses: actions/cache@v2
         with:
           path: |
@@ -64,3 +61,74 @@ jobs:
           path: target/release/proxy
           if-no-files-found: error
           retention-days: 1
+
+  build-container:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v2
+
+      - id: vars
+        name: Export branch
+        run: echo "::set-output name=branch::${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}"
+
+      - name: Prepare Dockerfile
+        run: |
+          mkdir -p /tmp/docker_build
+          mv providers /tmp/docker_build
+
+      - name: Download build artifact
+        id: download
+        uses: actions/download-artifact@v2
+        with:
+          name: proxy
+          path: /tmp/docker_build
+
+      - name: Ensure file permissions
+        run: |
+          chmod u+x ${{ steps.download.outputs.download-path }}/proxy
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build image
+        env:
+          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
+          MAIN_TAG: "main-${{ github.sha }}"
+          BRANCH_TAG: "dev-${{ steps.vars.outputs.branch }}"
+        run: |
+          docker build -f Dockerfile \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:$MAIN_TAG" \
+            -t "$IMAGE:$BRANCH_TAG" \
+            --build-arg PROXY_PATH=proxy \
+            --build-arg PROVIDERS_PATH=providers \
+            /tmp/docker_build
+
+      - name: Push branch image to Amazon ECR
+        env:
+          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
+          BRANCH_TAG: "dev-${{ steps.vars.outputs.branch }}"
+        run: |
+          echo "Updating branch image, pushing: $IMAGE:$BRANCH_TAG"
+          docker push "$IMAGE:$BRANCH_TAG"
+
+      - name: Push latest and main image to Amazon ECR
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
+          MAIN_TAG: "main-${{ github.sha }}"
+        run: |
+          if ! docker pull "$IMAGE:$MAIN_TAG" ; then
+            echo "Docker image does not exist, pushing: $IMAGE:$MAIN_TAG"
+            docker push "$IMAGE:$MAIN_TAG"
+          fi
+          docker push "$IMAGE:latest"
