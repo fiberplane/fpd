@@ -436,10 +436,13 @@ impl ProxyService {
             .with_context(|| "Wasmer runtime error while running invoke_raw")
         {
             Ok(data) => RelayMessage::Response(ResponseMessage { op_id, data }),
-            Err(e) => RelayMessage::Error(ErrorMessage {
-                op_id,
-                message: format!("Provider runtime error: {:?}", e),
-            }),
+            Err(err) => {
+                debug!(?err, "error invoking provider");
+                RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: format!("Provider runtime error: {:?}", err),
+                })
+            }
         };
 
         reply.send(response_message)?;

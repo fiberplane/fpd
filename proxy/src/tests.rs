@@ -220,6 +220,125 @@ async fn calls_provider_with_query_and_sends_result() {
         Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(|_| async {
             Ok::<_, Infallible>(service_fn(|req: Request<Body>| async move {
                 assert_eq!(req.uri(), "/api/v1/query");
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(200)
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(
+                            r#"
+                            {
+                               "status" : "success",
+                               "data" : {
+                                  "resultType" : "vector",
+                                  "result" : [
+                                     {
+                                        "metric" : {
+                                           "__name__" : "up",
+                                           "job" : "prometheus",
+                                           "instance" : "localhost:9090"
+                                        },
+                                        "value": [ 1435781451.781, "1" ]
+                                     }
+                                  ]
+                               }
+                            }
+                            "#,
+                        ))
+                        .unwrap(),
+                )
+            }))
+        }));
+    let fake_prometheus_addr = fake_prometheus_server.local_addr();
+
+    tokio::spawn(async move {
+        fake_prometheus_server.await.unwrap();
+    });
+
+    // Create a websocket listener for the proxy to connect to
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let mut data_sources = HashMap::new();
+    data_sources.insert(
+        "data source 1".to_string(),
+        DataSource::Prometheus(Config {
+            url: Some(format!("http://{}", fake_prometheus_addr)),
+        }),
+    );
+    let service = ProxyService::init(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        Path::new("../providers"),
+        DataSources(data_sources),
+        5,
+    )
+    .await
+    .unwrap();
+
+    // After the proxy connects, send it a query
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
+        ws.next().await.unwrap().unwrap();
+
+        // Send query
+        let op_id = Uuid::new_v4();
+        let request = ProviderRequest::Instant(QueryInstant {
+            query: "test query".to_string(),
+            timestamp: 0.0,
+        });
+        let message = ServerMessage::Request(RequestMessage {
+            op_id,
+            data_source_name: "data source 1".to_string(),
+            data: rmp_serde::to_vec(&request).unwrap(),
+        });
+        let message = message.serialize_msgpack();
+        ws.send(Message::Binary(message)).await.unwrap();
+
+        // Parse the query result
+        let response = ws.next().await.unwrap().unwrap();
+        let response = match response {
+            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            _ => panic!("wrong message type"),
+        };
+        let result = match response {
+            RelayMessage::Response(message) => message,
+            other => panic!("wrong message type: {:?}", other),
+        };
+        assert_eq!(result.op_id, op_id);
+        match rmp_serde::from_slice(&result.data) {
+            Ok(ProviderResponse::Instant(results)) => {
+                assert_eq!(results[0].metric.name, "up");
+            }
+            Err(e) => panic!(
+                "error deserializing provider repsonse: {:?} {:?}",
+                e, result.data
+            ),
+            Ok(response) => panic!("wrong response {:?}", response),
+        }
+    };
+
+    let (tx, _) = broadcast::channel(3);
+    select! {
+      result = service.connect(tx).fuse() => result.unwrap(),
+      _ = handle_connection.fuse() => {}
+    }
+}
+
+#[test(tokio::test)]
+async fn calls_provider_with_query_and_sends_error() {
+    // Note that the fake Prometheus returns an error just to test that
+    // the error code is relayed back through the proxy
+    // because we're not testing the Prometheus provider functionality here
+    let fake_prometheus_server =
+        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(|_| async {
+            Ok::<_, Infallible>(service_fn(|req: Request<Body>| async move {
+                assert_eq!(req.uri(), "/api/v1/query");
                 Ok::<_, Infallible>(Response::builder().status(418).body(Body::empty()).unwrap())
             }))
         }));
@@ -270,8 +389,7 @@ async fn calls_provider_with_query_and_sends_result() {
         let message = ServerMessage::Request(RequestMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
-            // TODO serializing this with to_vec fails while to_vec_named works. Why?
-            data: rmp_serde::to_vec_named(&request).unwrap(),
+            data: rmp_serde::to_vec(&request).unwrap(),
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -294,7 +412,11 @@ async fn calls_provider_with_query_and_sends_result() {
             }))) => {
                 assert_eq!(status_code, 418);
             }
-            _ => panic!("wrong response"),
+            Err(e) => panic!(
+                "error deserializing provider repsonse: {:?} {:?}",
+                e, result.data
+            ),
+            Ok(response) => panic!("wrong response {:?}", response),
         }
     };
 
