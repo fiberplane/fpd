@@ -312,8 +312,8 @@ async fn calls_provider_with_query_and_sends_result() {
         };
         assert_eq!(result.op_id, op_id);
         match rmp_serde::from_slice(&result.data) {
-            Ok(ProviderResponse::Instant(results)) => {
-                assert_eq!(results[0].metric.name, "up");
+            Ok(ProviderResponse::Instant { instants }) => {
+                assert_eq!(instants[0].metric.name, "up");
             }
             Err(e) => panic!(
                 "error deserializing provider repsonse: {:?} {:?}",
@@ -406,10 +406,16 @@ async fn calls_provider_with_query_and_sends_error() {
         };
         assert_eq!(result.op_id, op_id);
         match rmp_serde::from_slice(&result.data) {
-            Ok(ProviderResponse::Error(ProviderError::Http(HttpRequestError::ServerError {
-                status_code,
-                response: _,
-            }))) => {
+            Ok(ProviderResponse::Error {
+                error:
+                    ProviderError::Http {
+                        error:
+                            HttpRequestError::ServerError {
+                                status_code,
+                                response: _,
+                            },
+                    },
+            }) => {
                 assert_eq!(status_code, 418);
             }
             Err(e) => panic!(

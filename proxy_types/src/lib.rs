@@ -1,4 +1,4 @@
-pub use fp_provider_runtime::spec::types::{Error, Instant, Series, TimeRange, Timestamp};
+pub use fp_provider_runtime::spec::types::{Instant, Series, TimeRange, Timestamp};
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,7 +10,6 @@ pub use uuid::Uuid;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ServerMessage {
-    // TODO should we have a more specific name?
     InvokeProxy(InvokeProxyMessage),
 }
 

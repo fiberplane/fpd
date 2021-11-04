@@ -467,7 +467,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=opaque_wasm_bridge#225964b29398ebabd64c0c11936ded89701ddc58"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=opaque_wasm_bridge#f65f7274d64a6d8fa7daa7ec09fe0e15dbbe55a2"
 dependencies = [
  "rand",
  "reqwest",
