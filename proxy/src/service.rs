@@ -426,6 +426,7 @@ impl ProxyService {
             }
         };
 
+        trace!(?data_source, ?message, "Invoking provider");
         let config = match data_source {
             DataSource::Prometheus(config) => config,
         };
@@ -433,7 +434,6 @@ impl ProxyService {
         let response_message = match runtime
             .invoke_raw(message.data, config)
             .await
-            .with_context(|| "Wasmer runtime error while running invoke_raw")
         {
             Ok(data) => {
                 RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
