@@ -384,12 +384,12 @@ impl ProxyService {
     ) -> Result<()> {
         match message {
             ServerMessage::InvokeProxy(message) => {
-                self.handle_relay_request_message(message, reply).await
+                self.handle_invoke_proxy_message(message, reply).await
             }
         }
     }
 
-    async fn handle_relay_request_message(
+    async fn handle_invoke_proxy_message(
         &self,
         message: InvokeProxyMessage,
         reply: UnboundedSender<RelayMessage>,
@@ -427,9 +427,7 @@ impl ProxyService {
         };
 
         trace!(?data_source, ?message, "Invoking provider");
-        let config = match data_source {
-            DataSource::Prometheus(config) => config,
-        };
+        let DataSource::Prometheus(config) = config;
         let config = rmp_serde::to_vec(&config)?;
         let response_message = match runtime
             .invoke_raw(message.data, config)
