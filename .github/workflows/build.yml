@@ -3,9 +3,9 @@ name: Build
 
 on:
   pull_request:
-    branches: [ '*' ]
+    branches: ["*"]
   push:
-    branches: [ 'main' ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,51 +14,53 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    - uses: actions/cache@v2
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Git Log
+        run: git log -2
 
-    - name: Install latest stable
-      uses: actions-rs/toolchain@v1
-      with:
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install latest stable
+        uses: actions-rs/toolchain@v1
+        with:
           toolchain: stable
           default: true
           override: true
           components: rustfmt, clippy
 
-    - name: setup-git-credentials
-      uses: fusion-engineering/setup-git-credentials@v2.0.6
-      with:
-        credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2.0.6
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
 
+      - name: Check format
+        run: cargo fmt -- --check
 
-    - name: Check format
-      run: cargo fmt -- --check
+      - name: Lint code
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features --release
 
-    - name: Lint code
-      uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-features --release
+      - name: Run tests
+        run: cargo test --release
 
-    - name: Run tests
-      run: cargo test --release
+      - name: Build binary
+        run: cargo build --release
 
-    - name: Build binary
-      run: cargo build --release
-
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: proxy
-        path: target/release/proxy
-        if-no-files-found: error
-        retention-days: 1
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: proxy
+          path: target/release/proxy
+          if-no-files-found: error
+          retention-days: 1
