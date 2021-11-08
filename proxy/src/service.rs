@@ -429,10 +429,7 @@ impl ProxyService {
         trace!(?data_source, ?message, "Invoking provider");
         let DataSource::Prometheus(config) = data_source;
         let config = rmp_serde::to_vec(&config)?;
-        let response_message = match runtime
-            .invoke_raw(message.data, config)
-            .await
-        {
+        let response_message = match runtime.invoke_raw(message.data, config).await {
             Ok(data) => {
                 RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
             }
