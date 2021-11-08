@@ -1,4 +1,4 @@
-use fp_provider_runtime::spec::types::{DataSource as RuntimeDataSource, PrometheusDataSource};
+use fp_provider_runtime::spec::types::Config;
 use proxy_types::DataSourceType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,21 +14,13 @@ use std::ops::Deref;
 // additional fields to DataSources without worrying about conflicts with the
 // parameters defined by individual data sources.
 pub enum DataSource {
-    Prometheus(PrometheusDataSource),
+    Prometheus(Config),
 }
 
 impl DataSource {
     pub fn ty(&self) -> &str {
         match self {
             DataSource::Prometheus(_) => "prometheus",
-        }
-    }
-}
-
-impl From<DataSource> for RuntimeDataSource {
-    fn from(d: DataSource) -> Self {
-        match d {
-            DataSource::Prometheus(options) => RuntimeDataSource::Prometheus(options),
         }
     }
 }

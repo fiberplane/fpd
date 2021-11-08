@@ -1,17 +1,16 @@
-pub use fp_provider_runtime::spec::types::{FetchError, Instant, Series, TimeRange, Timestamp};
+pub use fp_provider_runtime::spec::types::{Instant, Series, TimeRange, Timestamp};
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
-use thiserror::Error;
 pub use uuid::Uuid;
 
 /// Messages intended for the Server to handle
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum ServerMessage {
-    FetchData(FetchDataMessage),
+    InvokeProxy(InvokeProxyMessage),
 }
 
 impl ServerMessage {
@@ -25,40 +24,39 @@ impl ServerMessage {
 
     pub fn op_id(&self) -> Option<Uuid> {
         match self {
-            ServerMessage::FetchData(ref message) => Some(message.op_id),
+            ServerMessage::InvokeProxy(message) => Some(message.op_id),
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FetchDataMessage {
+pub struct InvokeProxyMessage {
     pub op_id: Uuid,
     pub data_source_name: String,
-    pub query: String,
-    pub query_type: QueryType,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
-pub enum QueryType {
-    // From, To
-    Series(TimeRange),
-
-    // Time instant
-    Instant(Timestamp),
+    #[serde(with = "serde_bytes")]
+    pub data: Vec<u8>,
 }
 
 /// Messages intended for the Relay to handle
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum RelayMessage {
     SetDataSources(SetDataSourcesMessage),
-    FetchDataResult(FetchDataResultMessage),
+    InvokeProxyResponse(InvokeProxyResponseMessage),
     Error(ErrorMessage),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvokeProxyResponseMessage {
+    pub op_id: Uuid,
+    #[serde(with = "serde_bytes")]
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ErrorMessage {
     pub op_id: Uuid,
     pub message: String,
@@ -75,15 +73,15 @@ impl RelayMessage {
 
     pub fn op_id(&self) -> Option<Uuid> {
         match self {
-            RelayMessage::FetchDataResult(ref message) => Some(message.op_id),
-            RelayMessage::Error(ref error) => Some(error.op_id),
+            RelayMessage::InvokeProxyResponse(message) => Some(message.op_id),
+            RelayMessage::Error(error) => Some(error.op_id),
             RelayMessage::SetDataSources(_) => None,
         }
     }
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum DataSourceType {
     Prometheus,
 }
@@ -97,7 +95,7 @@ impl Display for DataSourceType {
     }
 }
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 #[error("Unexpected data source type: {0}")]
 pub struct UnexpectedDataSourceType(String);
 
@@ -113,17 +111,3 @@ impl FromStr for DataSourceType {
 
 /// This is a map from the data source name to the data source's type
 pub type SetDataSourcesMessage = HashMap<String, DataSourceType>;
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchDataResultMessage {
-    pub op_id: Uuid,
-    pub result: QueryResult,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "type", content = "payload", rename_all = "snake_case")]
-pub enum QueryResult {
-    Series(Result<Vec<Series>, FetchError>),
-    Instant(Result<Vec<Instant>, FetchError>),
-}

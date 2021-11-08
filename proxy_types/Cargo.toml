@@ -10,5 +10,6 @@ fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", b
 # fp-provider-runtime = { path = "../../providers/runtimes/fp-provider-runtime/"  }
 rmp-serde = "0.15.5"
 serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11.5"
 thiserror = "1.0.30"
 uuid = { version = "0.8.2", features = ["serde", "v4"] }

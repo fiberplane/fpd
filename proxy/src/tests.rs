@@ -1,13 +1,14 @@
 use crate::data_sources::{DataSource, DataSources};
 use crate::service::ProxyService;
-use fp_provider_runtime::spec::types::{PrometheusDataSource, RequestError};
+use fp_provider_runtime::spec::types::{
+    Config, Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse,
+    QueryInstant,
+};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{header::HeaderValue, Body, Server};
-use proxy_types::{
-    DataSourceType, FetchDataMessage, QueryResult, QueryType, RelayMessage, ServerMessage, Uuid,
-};
+use proxy_types::{DataSourceType, InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::Path;
@@ -57,14 +58,14 @@ async fn sends_data_sources_on_connect() {
     let mut data_sources = HashMap::new();
     data_sources.insert(
         "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: "prometheus.example".to_string(),
+        DataSource::Prometheus(Config {
+            url: Some("prometheus.example".to_string()),
         }),
     );
     data_sources.insert(
         "data source 2".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: "prometheus.example".to_string(),
+        DataSource::Prometheus(Config {
+            url: Some("prometheus.example".to_string()),
         }),
     );
     let service = ProxyService::new(
@@ -181,11 +182,10 @@ async fn returns_error_for_query_to_unknown_provider() {
         ws.next().await.unwrap().unwrap();
 
         let op_id = Uuid::new_v4();
-        let message = ServerMessage::FetchData(FetchDataMessage {
+        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
-            query: "test query".to_string(),
-            query_type: QueryType::Instant(0.0),
+            data: b"fake payload".to_vec(),
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -198,7 +198,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         };
         let error = match response {
             RelayMessage::Error(error) => error,
-            _ => panic!("wrong message type"),
+            other => panic!("wrong message type {:?}", other),
         };
         assert_eq!(error.op_id, op_id);
         assert!(error.message.contains("unknown data source"));
@@ -220,7 +220,32 @@ async fn calls_provider_with_query_and_sends_result() {
         Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(|_| async {
             Ok::<_, Infallible>(service_fn(|req: Request<Body>| async move {
                 assert_eq!(req.uri(), "/api/v1/query");
-                Ok::<_, Infallible>(Response::builder().status(418).body(Body::empty()).unwrap())
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(200)
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(
+                            r#"
+                            {
+                               "status" : "success",
+                               "data" : {
+                                  "resultType" : "vector",
+                                  "result" : [
+                                     {
+                                        "metric" : {
+                                           "__name__" : "up",
+                                           "job" : "prometheus",
+                                           "instance" : "localhost:9090"
+                                        },
+                                        "value": [ 1435781451.781, "1" ]
+                                     }
+                                  ]
+                               }
+                            }
+                            "#,
+                        ))
+                        .unwrap(),
+                )
             }))
         }));
     let fake_prometheus_addr = fake_prometheus_server.local_addr();
@@ -235,8 +260,8 @@ async fn calls_provider_with_query_and_sends_result() {
     let mut data_sources = HashMap::new();
     data_sources.insert(
         "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: format!("http://{}", fake_prometheus_addr),
+        DataSource::Prometheus(Config {
+            url: Some(format!("http://{}", fake_prometheus_addr)),
         }),
     );
     let service = ProxyService::init(
@@ -263,11 +288,14 @@ async fn calls_provider_with_query_and_sends_result() {
 
         // Send query
         let op_id = Uuid::new_v4();
-        let message = ServerMessage::FetchData(FetchDataMessage {
+        let request = ProviderRequest::Instant(QueryInstant {
+            query: "test query".to_string(),
+            timestamp: 0.0,
+        });
+        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
             data_source_name: "data source 1".to_string(),
-            query: "test query".to_string(),
-            query_type: QueryType::Instant(0.0),
+            data: rmp_serde::to_vec(&request).unwrap(),
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -279,19 +307,122 @@ async fn calls_provider_with_query_and_sends_result() {
             _ => panic!("wrong message type"),
         };
         let result = match response {
-            RelayMessage::FetchDataResult(result) => result,
-            _ => panic!("wrong message type"),
+            RelayMessage::InvokeProxyResponse(message) => message,
+            other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
-        match result.result {
-            QueryResult::Instant(Err(proxy_types::FetchError::RequestError {
-                payload:
-                    RequestError::ServerError {
-                        status_code,
-                        response: _,
+        match rmp_serde::from_slice(&result.data) {
+            Ok(ProviderResponse::Instant { instants }) => {
+                assert_eq!(instants[0].metric.name, "up");
+            }
+            Err(e) => panic!(
+                "error deserializing provider repsonse: {:?} {:?}",
+                e, result.data
+            ),
+            Ok(response) => panic!("wrong response {:?}", response),
+        }
+    };
+
+    let (tx, _) = broadcast::channel(3);
+    select! {
+      result = service.connect(tx).fuse() => result.unwrap(),
+      _ = handle_connection.fuse() => {}
+    }
+}
+
+#[test(tokio::test)]
+async fn calls_provider_with_query_and_sends_error() {
+    // Note that the fake Prometheus returns an error just to test that
+    // the error code is relayed back through the proxy
+    // because we're not testing the Prometheus provider functionality here
+    let fake_prometheus_server =
+        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(|_| async {
+            Ok::<_, Infallible>(service_fn(|req: Request<Body>| async move {
+                assert_eq!(req.uri(), "/api/v1/query");
+                Ok::<_, Infallible>(Response::builder().status(418).body(Body::empty()).unwrap())
+            }))
+        }));
+    let fake_prometheus_addr = fake_prometheus_server.local_addr();
+
+    tokio::spawn(async move {
+        fake_prometheus_server.await.unwrap();
+    });
+
+    // Create a websocket listener for the proxy to connect to
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let mut data_sources = HashMap::new();
+    data_sources.insert(
+        "data source 1".to_string(),
+        DataSource::Prometheus(Config {
+            url: Some(format!("http://{}", fake_prometheus_addr)),
+        }),
+    );
+    let service = ProxyService::init(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        Path::new("../providers"),
+        DataSources(data_sources),
+        5,
+    )
+    .await
+    .unwrap();
+
+    // After the proxy connects, send it a query
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
+        ws.next().await.unwrap().unwrap();
+
+        // Send query
+        let op_id = Uuid::new_v4();
+        let request = ProviderRequest::Instant(QueryInstant {
+            query: "test query".to_string(),
+            timestamp: 0.0,
+        });
+        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
+            op_id,
+            data_source_name: "data source 1".to_string(),
+            data: rmp_serde::to_vec(&request).unwrap(),
+        });
+        let message = message.serialize_msgpack();
+        ws.send(Message::Binary(message)).await.unwrap();
+
+        // Parse the query result
+        let response = ws.next().await.unwrap().unwrap();
+        let response = match response {
+            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            _ => panic!("wrong message type"),
+        };
+        let result = match response {
+            RelayMessage::InvokeProxyResponse(message) => message,
+            other => panic!("wrong message type: {:?}", other),
+        };
+        assert_eq!(result.op_id, op_id);
+        match rmp_serde::from_slice(&result.data) {
+            Ok(ProviderResponse::Error {
+                error:
+                    ProviderError::Http {
+                        error:
+                            HttpRequestError::ServerError {
+                                status_code,
+                                response: _,
+                            },
                     },
-            })) => assert_eq!(status_code, 418),
-            _ => panic!("wrong response"),
+            }) => {
+                assert_eq!(status_code, 418);
+            }
+            Err(e) => panic!(
+                "error deserializing provider repsonse: {:?} {:?}",
+                e, result.data
+            ),
+            Ok(response) => panic!("wrong response {:?}", response),
         }
     };
 

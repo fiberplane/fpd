@@ -1,6 +1,5 @@
-use crate::data_sources::DataSources;
+use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
-use fp_provider_runtime::spec::types::{QueryInstantOptions, QuerySeriesOptions};
 use fp_provider_runtime::Runtime;
 use futures::select;
 use futures::sink::SinkExt;
@@ -9,8 +8,8 @@ use futures::{FutureExt, StreamExt};
 use hyper_tungstenite::tungstenite::Message;
 use hyper_tungstenite::WebSocketStream;
 use proxy_types::{
-    ErrorMessage, FetchDataMessage, FetchDataResultMessage, QueryResult, QueryType, RelayMessage,
-    ServerMessage, SetDataSourcesMessage,
+    ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
+    SetDataSourcesMessage,
 };
 use rmp_serde::Serializer;
 use serde::Serialize;
@@ -261,6 +260,7 @@ impl ProxyService {
                 // We are only interested in Binary and Close messages.
                 match message {
                     Binary(msg) => {
+                        trace!(?conn_id, "received binary message");
                         let message = match ServerMessage::deserialize_msgpack(msg) {
                             Ok(message) => message,
                             Err(err) => {
@@ -383,15 +383,15 @@ impl ProxyService {
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
         match message {
-            ServerMessage::FetchData(message) => {
-                self.handle_relay_query_message(message, reply).await
+            ServerMessage::InvokeProxy(message) => {
+                self.handle_invoke_proxy_message(message, reply).await
             }
         }
     }
 
-    async fn handle_relay_query_message(
+    async fn handle_invoke_proxy_message(
         &self,
-        message: FetchDataMessage,
+        message: InvokeProxyMessage,
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
         let op_id = message.op_id;
@@ -426,38 +426,20 @@ impl ProxyService {
             }
         };
 
-        // Execute either a series or an instant query
-        let result = match message.query_type {
-            QueryType::Series(time_range) => {
-                let options = QuerySeriesOptions {
-                    data_source: data_source.into(),
-                    time_range,
-                };
-                runtime
-                    .fetch_series(message.query, options)
-                    .await
-                    .with_context(|| "Wasmer runtime error while running fetch_series query")
-                    .map(QueryResult::Series)
+        trace!(?data_source, ?message, "Invoking provider");
+        let DataSource::Prometheus(config) = data_source;
+        let config = rmp_serde::to_vec(&config)?;
+        let response_message = match runtime.invoke_raw(message.data, config).await {
+            Ok(data) => {
+                RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
             }
-            QueryType::Instant(time) => {
-                let options = QueryInstantOptions {
-                    data_source: data_source.into(),
-                    time,
-                };
-                runtime
-                    .fetch_instant(message.query, options)
-                    .await
-                    .with_context(|| "Wasmer runtime error while running fetch_instant query")
-                    .map(QueryResult::Instant)
+            Err(err) => {
+                debug!(?err, "error invoking provider");
+                RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: format!("Provider runtime error: {:?}", err),
+                })
             }
-        };
-
-        let response_message = match result {
-            Ok(result) => RelayMessage::FetchDataResult(FetchDataResultMessage { op_id, result }),
-            Err(e) => RelayMessage::Error(ErrorMessage {
-                op_id,
-                message: format!("Provider runtime error: {:?}", e),
-            }),
         };
 
         reply.send(response_message)?;
