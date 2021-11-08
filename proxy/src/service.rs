@@ -20,9 +20,10 @@ use std::sync::Arc;
 use stream_cancel::StreamExt as CancelStreamExt;
 use tokio::fs;
 use tokio::net::TcpStream;
+use tokio::runtime::Builder;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinError;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::task::LocalSet;
 use tokio::time::{sleep, Duration};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_tungstenite::{connect_async, MaybeTlsStream};
@@ -48,6 +49,7 @@ struct Inner {
     data_sources: DataSources,
     wasm_modules: WasmModuleMap,
     max_retries: u32,
+    local_task_handler: SingleThreadTaskHandler,
 }
 
 impl ProxyService {
@@ -83,6 +85,7 @@ impl ProxyService {
                 wasm_modules,
                 data_sources,
                 max_retries,
+                local_task_handler: SingleThreadTaskHandler::new(),
             }),
         }
     }
@@ -143,8 +146,7 @@ impl ProxyService {
             // We use a local task set because the Wasmer runtime embedded in the ProxyService
             // cannot be moved across threads (which would be necessary to spawn a task that
             // includes the service)
-            let local = tokio::task::LocalSet::new();
-            let read_handle = local.run_until(Self::handle_read_loop(
+            let read_handle = tokio::spawn(Self::handle_read_loop(
                 shutdown.clone(),
                 conn_id.clone(),
                 read_ws,
@@ -220,88 +222,85 @@ impl ProxyService {
         read_ws: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
         tx_relay_messages: UnboundedSender<RelayMessage>,
         service: ProxyService,
-    ) -> Result<bool, JoinError> {
+    ) -> bool {
         use hyper_tungstenite::tungstenite::Message::*;
 
-        tokio::task::spawn_local(async move {
-            let mut should_reconnect = false;
-            let mut should_shutdown = shutdown.subscribe();
+        let mut should_reconnect = false;
+        let mut should_shutdown = shutdown.subscribe();
 
-            // Wrap the stream in a new TakeUntilIf stream, which will stop
-            // processing once we receive something on the shutdown channel.
-            let mut read_ws = Box::pin(read_ws.take_until_if(should_shutdown.recv().map(|_| true)));
+        // Wrap the stream in a new TakeUntilIf stream, which will stop
+        // processing once we receive something on the shutdown channel.
+        let mut read_ws = Box::pin(read_ws.take_until_if(should_shutdown.recv().map(|_| true)));
 
-            loop {
-                // First make sure we actually received a message or
-                // that the connection is closed.
-                let message = match read_ws.next().await {
-                    Some(Ok(message)) => message,
-                    Some(Err(err)) => {
-                        warn!(
-                            ?err,
-                            ?conn_id,
-                            "unable to read message from web-socket connection"
-                        );
-                        should_reconnect = true;
-                        if let Err(e) = shutdown.send(()) {
-                            warn!(?e, "unable to send shutdown signal");
-                        };
-                        break;
-                    }
-                    None => {
-                        trace!(?conn_id, "stopping read loop; shutdown was invoked, or the connection is already closed");
-                        if let Err(e) = shutdown.send(()) {
-                            warn!(?e, "unable to send shutdown signal");
-                        };
-                        break;
-                    }
-                };
+        loop {
+            // First make sure we actually received a message or
+            // that the connection is closed.
+            let message = match read_ws.next().await {
+                Some(Ok(message)) => message,
+                Some(Err(err)) => {
+                    warn!(
+                        ?err,
+                        ?conn_id,
+                        "unable to read message from web-socket connection"
+                    );
+                    should_reconnect = true;
+                    if let Err(e) = shutdown.send(()) {
+                        warn!(?e, "unable to send shutdown signal");
+                    };
+                    break;
+                }
+                None => {
+                    trace!(?conn_id, "stopping read loop; shutdown was invoked, or the connection is already closed");
+                    if let Err(e) = shutdown.send(()) {
+                        warn!(?e, "unable to send shutdown signal");
+                    };
+                    break;
+                }
+            };
 
-                // We are only interested in Binary and Close messages.
-                match message {
-                    Binary(msg) => {
-                        trace!(?conn_id, "received binary message");
-                        let message = match ServerMessage::deserialize_msgpack(msg) {
-                            Ok(message) => message,
-                            Err(err) => {
-                                warn!(
-                                    ?err,
-                                    ?conn_id,
-                                    "unable to deserialize msgpack encoded server message"
-                                );
-                                continue;
-                            }
-                        };
-
-                        let op_id = message.op_id();
-                        let result = service
-                            .handle_message(message, tx_relay_messages.clone())
-                            .await;
-                        if let Err(err) = result {
+            // We are only interested in Binary and Close messages.
+            match message {
+                Binary(msg) => {
+                    trace!(?conn_id, "received binary message");
+                    let message = match ServerMessage::deserialize_msgpack(msg) {
+                        Ok(message) => message,
+                        Err(err) => {
                             warn!(
                                 ?err,
                                 ?conn_id,
-                                ?op_id,
-                                "service was unable to handle message"
+                                "unable to deserialize msgpack encoded server message"
                             );
-                        };
-                    }
-                    Close(_) => {
-                        trace!(?conn_id, "received close message");
-                        if let Err(e) = shutdown.send(()) {
-                            warn!(?e, "unable to send shutdown signal");
-                        };
-                        break;
-                    }
-                    Text(_) => error!(?conn_id, "Received Text"),
-                    Ping(_) => trace!(?conn_id, "Received Ping"),
-                    Pong(_) => trace!(?conn_id, "Received Pong"),
-                }
-            }
+                            continue;
+                        }
+                    };
 
-            should_reconnect
-        })
-        .await
+                    let op_id = message.op_id();
+                    let result = service
+                        .handle_message(message, tx_relay_messages.clone())
+                        .await;
+                    if let Err(err) = result {
+                        warn!(
+                            ?err,
+                            ?conn_id,
+                            ?op_id,
+                            "service was unable to handle message"
+                        );
+                    };
+                }
+                Close(_) => {
+                    trace!(?conn_id, "received close message");
+                    if let Err(e) = shutdown.send(()) {
+                        warn!(?e, "unable to send shutdown signal");
+                    };
+                    break;
+                }
+                Text(_) => error!(?conn_id, "Received Text"),
+                Ping(_) => trace!(?conn_id, "Received Ping"),
+                Pong(_) => trace!(?conn_id, "Received Pong"),
+            }
+        }
+
+        should_reconnect
     }
 
     /// Handle any outgoing relay messages (`rx_relay_messages`) by sending them
@@ -415,6 +414,7 @@ impl ProxyService {
                 return Ok(());
             }
         };
+
         let runtime = match self.create_runtime(data_source.ty()).await {
             Ok(runtime) => runtime,
             Err(e) => {
@@ -429,20 +429,17 @@ impl ProxyService {
         trace!(?data_source, ?message, "Invoking provider");
         let DataSource::Prometheus(config) = data_source;
         let config = rmp_serde::to_vec(&config)?;
-        let response_message = match runtime.invoke_raw(message.data, config).await {
-            Ok(data) => {
-                RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
-            }
-            Err(err) => {
-                debug!(?err, "error invoking provider");
-                RelayMessage::Error(ErrorMessage {
-                    op_id,
-                    message: format!("Provider runtime error: {:?}", err),
-                })
-            }
+        let request = message.data;
+
+        let task = Task {
+            runtime,
+            op_id,
+            request,
+            config,
+            reply,
         };
 
-        reply.send(response_message)?;
+        self.inner.local_task_handler.queue_task(task)?;
 
         Ok(())
     }
@@ -499,4 +496,75 @@ fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
     let store = Store::new(&engine);
     let runtime = Runtime::new(store, wasm_module)?;
     Ok(runtime)
+}
+
+struct Task {
+    runtime: Runtime,
+    op_id: uuid::Uuid,
+    request: Vec<u8>,
+    config: Vec<u8>,
+    reply: UnboundedSender<RelayMessage>,
+}
+
+/// A SingleThreadTaskHandler will make sure that all tasks that are run on it
+/// will be run in a single threaded tokio runtime. This allows us to execute
+/// work that has !Send.
+#[derive(Debug, Clone)]
+struct SingleThreadTaskHandler {
+    tx: mpsc::UnboundedSender<Task>,
+}
+
+impl SingleThreadTaskHandler {
+    pub fn new() -> Self {
+        let (tx, mut rx) = mpsc::unbounded_channel::<Task>();
+
+        // Start a new tokio runtime which will only use the current thread
+        let rt = Builder::new_current_thread().enable_all().build().unwrap();
+
+        std::thread::spawn(move || {
+            let local = LocalSet::new();
+
+            local.spawn_local(async move {
+                while let Some(task) = rx.recv().await {
+                    tokio::task::spawn_local(Self::handle_task(task));
+                }
+                // If the while loop returns, then all the LocalSpawner
+                // objects have have been dropped.
+            });
+
+            // This will return once all senders are dropped and all
+            // spawned tasks have returned.
+            rt.block_on(local);
+        });
+
+        Self { tx }
+    }
+
+    async fn handle_task(task: Task) {
+        let op_id = task.op_id;
+        let runtime = task.runtime;
+
+        let response_message = match runtime.invoke_raw(task.request, task.config).await {
+            Ok(data) => {
+                RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
+            }
+            Err(err) => {
+                debug!(?err, "error invoking provider");
+                RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: format!("Provider runtime error: {:?}", err),
+                })
+            }
+        };
+
+        if let Err(send_err) = task.reply.send(response_message) {
+            error!(?send_err, "unable to send error to relay");
+        };
+    }
+
+    pub fn queue_task(&self, task: Task) -> Result<()> {
+        self.tx
+            .send(task)
+            .map_err(|err| anyhow!("unable to queue task {}", err))
+    }
 }

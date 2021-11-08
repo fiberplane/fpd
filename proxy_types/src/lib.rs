@@ -61,6 +61,21 @@ pub struct ErrorMessage {
     pub message: String,
 }
 
+impl ErrorMessage {
+    pub fn new(op_id: Uuid, message: impl Into<String>) -> Self {
+        Self {
+            op_id,
+            message: message.into(),
+        }
+    }
+}
+
+impl Into<RelayMessage> for ErrorMessage {
+    fn into(self) -> RelayMessage {
+        RelayMessage::Error(self)
+    }
+}
+
 impl RelayMessage {
     pub fn deserialize_msgpack(input: Vec<u8>) -> Result<RelayMessage, decode::Error> {
         rmp_serde::from_read_ref(&input)
