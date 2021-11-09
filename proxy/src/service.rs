@@ -9,7 +9,7 @@ use hyper_tungstenite::tungstenite::Message;
 use hyper_tungstenite::WebSocketStream;
 use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
-    SetDataSourcesMessage,
+    SetDataSourcesMessage, Uuid,
 };
 use rmp_serde::Serializer;
 use serde::Serialize;
@@ -498,9 +498,11 @@ fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
     Ok(runtime)
 }
 
+/// This includes everything needed to handle a provider request
+/// and reply with the response
 struct Task {
     runtime: Runtime,
-    op_id: uuid::Uuid,
+    op_id: Uuid,
     request: Vec<u8>,
     config: Vec<u8>,
     reply: UnboundedSender<RelayMessage>,
@@ -509,38 +511,48 @@ struct Task {
 /// A SingleThreadTaskHandler will make sure that all tasks that are run on it
 /// will be run in a single threaded tokio runtime. This allows us to execute
 /// work that has !Send.
+///
+/// (This is necessary for the Proxy because the Wasmer runtime's exported
+/// functions are !Send and thus cannot be used with the normal tokio::spawn.)
 #[derive(Debug, Clone)]
 struct SingleThreadTaskHandler {
     tx: mpsc::UnboundedSender<Task>,
 }
 
 impl SingleThreadTaskHandler {
+    /// Spawn a new thread to handle the given tasks
     pub fn new() -> Self {
         let (tx, mut rx) = mpsc::unbounded_channel::<Task>();
 
-        // Start a new tokio runtime which will only use the current thread
-        let rt = Builder::new_current_thread().enable_all().build().unwrap();
-
+        // Spawn a new OS thread that will run a single-threaded Tokio runtime to handle messages
         std::thread::spawn(move || {
+            let rt = Builder::new_current_thread().enable_all().build().unwrap();
             let local = LocalSet::new();
-
-            local.spawn_local(async move {
+            local.block_on(&rt, async move {
+                // Process all messages from the channel by spawning a local task
+                // (on this same thread) that will call the provider
                 while let Some(task) = rx.recv().await {
-                    tokio::task::spawn_local(Self::handle_task(task));
+                    // Spawn a task so that the runtime will alternate between
+                    // accepting new tasks and running each existing one to completion
+                    tokio::task::spawn_local(Self::invoke_proxy_and_send_response(task));
                 }
+                debug!("SingleThreadTaskHandler was dropped, no more messages to process");
                 // If the while loop returns, then all the LocalSpawner
                 // objects have have been dropped.
             });
-
-            // This will return once all senders are dropped and all
-            // spawned tasks have returned.
-            rt.block_on(local);
+            debug!("SingleThreadTaskHandler spawned thread shutting down");
         });
 
         Self { tx }
     }
 
-    async fn handle_task(task: Task) {
+    pub fn queue_task(&self, task: Task) -> Result<()> {
+        self.tx
+            .send(task)
+            .map_err(|err| anyhow!("unable to queue task {}", err))
+    }
+
+    async fn invoke_proxy_and_send_response(task: Task) {
         let op_id = task.op_id;
         let runtime = task.runtime;
 
@@ -560,11 +572,5 @@ impl SingleThreadTaskHandler {
         if let Err(send_err) = task.reply.send(response_message) {
             error!(?send_err, "unable to send error to relay");
         };
-    }
-
-    pub fn queue_task(&self, task: Task) -> Result<()> {
-        self.tx
-            .send(task)
-            .map_err(|err| anyhow!("unable to queue task {}", err))
     }
 }
