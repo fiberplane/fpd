@@ -1,4 +1,3 @@
-pub use fp_provider_runtime::spec::types::{Instant, Series, TimeRange, Timestamp};
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
