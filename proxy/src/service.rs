@@ -347,7 +347,7 @@ impl ProxyService {
                                     ?err,
                                     ?conn_id,
                                     ?op_id,
-                                    "unable to serialize message to msgpack"
+                                    "unable to send message to relay"
                                 );
                                 break;
                             }
