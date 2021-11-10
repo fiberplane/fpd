@@ -440,19 +440,21 @@ async fn handles_multiple_concurrent_messages() {
             {
                 // Check that the second query comes back first
                 assert_eq!(message.op_id, op_2);
-                return;
-            }
-        }
-        if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
-            if let RelayMessage::InvokeProxyResponse(message) =
-                RelayMessage::deserialize_msgpack(message).unwrap()
-            {
-                assert_eq!(message.op_id, op_1);
-                return;
+
+                // Now we will wait for the first query
+                if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
+                    if let RelayMessage::InvokeProxyResponse(message) =
+                        RelayMessage::deserialize_msgpack(message).unwrap()
+                    {
+                        assert_eq!(message.op_id, op_1);
+                        return;
+                        // Everything is fine so just stop handle_connection
+                    }
+                }
             }
         }
 
-        panic!("wrong response type");
+        panic!("received the wrong response type or wrong order");
     };
 
     let (tx, _) = broadcast::channel(3);
