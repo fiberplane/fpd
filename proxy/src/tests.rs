@@ -12,11 +12,14 @@ use proxy_types::{DataSourceType, InvokeProxyMessage, RelayMessage, ServerMessag
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use test_env_log::test;
 use tokio::join;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tokio::time::sleep;
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
 #[test(tokio::test)]
@@ -213,9 +216,6 @@ async fn returns_error_for_query_to_unknown_provider() {
 
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_result() {
-    // Note that the fake Prometheus returns an error just to test that
-    // the error code is relayed back through the proxy
-    // because we're not testing the Prometheus provider functionality here
     let fake_prometheus_server =
         Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(|_| async {
             Ok::<_, Infallible>(service_fn(|req: Request<Body>| async move {
@@ -321,6 +321,140 @@ async fn calls_provider_with_query_and_sends_result() {
             ),
             Ok(response) => panic!("wrong response {:?}", response),
         }
+    };
+
+    let (tx, _) = broadcast::channel(3);
+    select! {
+      result = service.connect(tx).fuse() => result.unwrap(),
+      _ = handle_connection.fuse() => {}
+    }
+}
+
+#[test(tokio::test)]
+async fn handles_multiple_concurrent_messages() {
+    // Slow down the first query so that it definitely happens after the second one
+    let is_first_query = Arc::new(AtomicBool::from(true));
+    let fake_prometheus_server =
+        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(move |_| {
+            let is_first_query = is_first_query.clone();
+            async move {
+                Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                    let is_first_query = is_first_query.clone();
+                    async move {
+                        assert_eq!(req.uri(), "/api/v1/query");
+                        if is_first_query.fetch_and(false, Ordering::SeqCst) {
+                            sleep(Duration::from_millis(200)).await;
+                        }
+
+                        Ok::<_, Infallible>(
+                            Response::builder()
+                                .status(200)
+                                .header("Content-Type", "application/json")
+                                .body(Body::from(
+                                    r#"
+                            {
+                               "status" : "success",
+                               "data" : {
+                                  "resultType" : "vector",
+                                  "result" : []
+                               }
+                            }
+                            "#,
+                                ))
+                                .unwrap(),
+                        )
+                    }
+                }))
+            }
+        }));
+    let fake_prometheus_addr = fake_prometheus_server.local_addr();
+
+    tokio::spawn(async move {
+        fake_prometheus_server.await.unwrap();
+    });
+
+    // Create a websocket listener for the proxy to connect to
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let mut data_sources = HashMap::new();
+    data_sources.insert(
+        "data source 1".to_string(),
+        DataSource::Prometheus(Config {
+            url: Some(format!("http://{}", fake_prometheus_addr)),
+        }),
+    );
+    let service = ProxyService::init(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        Path::new("../providers"),
+        DataSources(data_sources),
+        5,
+    )
+    .await
+    .unwrap();
+
+    // After the proxy connects, send it a query
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
+        // Ignore the data sources message
+        ws.next().await.unwrap().unwrap();
+
+        // Send two queries
+        let op_1 = Uuid::new_v4();
+        let message_1 = ServerMessage::InvokeProxy(InvokeProxyMessage {
+            op_id: op_1,
+            data_source_name: "data source 1".to_string(),
+            data: rmp_serde::to_vec(&ProviderRequest::Instant(QueryInstant {
+                query: "query 1".to_string(),
+                timestamp: 0.0,
+            }))
+            .unwrap(),
+        })
+        .serialize_msgpack();
+        ws.send(Message::Binary(message_1)).await.unwrap();
+
+        let op_2 = Uuid::new_v4();
+        let message_2 = ServerMessage::InvokeProxy(InvokeProxyMessage {
+            op_id: op_2,
+            data_source_name: "data source 1".to_string(),
+            data: rmp_serde::to_vec(&ProviderRequest::Instant(QueryInstant {
+                query: "query 2".to_string(),
+                timestamp: 0.0,
+            }))
+            .unwrap(),
+        })
+        .serialize_msgpack();
+        ws.send(Message::Binary(message_2)).await.unwrap();
+
+        // Parse the query result
+        if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
+            if let RelayMessage::InvokeProxyResponse(message) =
+                RelayMessage::deserialize_msgpack(message).unwrap()
+            {
+                // Check that the second query comes back first
+                assert_eq!(message.op_id, op_2);
+
+                // Now we will wait for the first query
+                if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
+                    if let RelayMessage::InvokeProxyResponse(message) =
+                        RelayMessage::deserialize_msgpack(message).unwrap()
+                    {
+                        assert_eq!(message.op_id, op_1);
+                        return;
+                        // Everything is fine so just stop handle_connection
+                    }
+                }
+            }
+        }
+
+        panic!("received the wrong response type or wrong order");
     };
 
     let (tx, _) = broadcast::channel(3);

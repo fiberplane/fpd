@@ -46,6 +46,12 @@ pub enum RelayMessage {
     Error(ErrorMessage),
 }
 
+impl From<ErrorMessage> for RelayMessage {
+    fn from(message: ErrorMessage) -> Self {
+        RelayMessage::Error(message)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvokeProxyResponseMessage {
@@ -59,6 +65,15 @@ pub struct InvokeProxyResponseMessage {
 pub struct ErrorMessage {
     pub op_id: Uuid,
     pub message: String,
+}
+
+impl ErrorMessage {
+    pub fn new(op_id: Uuid, message: impl Into<String>) -> Self {
+        Self {
+            op_id,
+            message: message.into(),
+        }
+    }
 }
 
 impl RelayMessage {
