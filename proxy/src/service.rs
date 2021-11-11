@@ -3,11 +3,20 @@ use anyhow::{anyhow, Context, Result};
 use fp_provider_runtime::Runtime;
 use futures::select;
 use futures::FutureExt;
+use http::Method;
+use http::StatusCode;
+use http::{Request, Response};
+use hyper::{
+    service::{make_service_fn, service_fn},
+    Body, Server,
+};
 use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage, Uuid,
 };
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
@@ -37,6 +46,7 @@ struct Inner {
     wasm_modules: WasmModuleMap,
     max_retries: u32,
     local_task_handler: SingleThreadTaskHandler,
+    listen_address: Option<SocketAddr>,
 }
 
 impl ProxyService {
@@ -47,6 +57,7 @@ impl ProxyService {
         wasm_dir: &Path,
         data_sources: DataSources,
         max_retries: u32,
+        listen_address: Option<SocketAddr>,
     ) -> Result<Self> {
         let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await?;
         Ok(ProxyService::new(
@@ -55,6 +66,7 @@ impl ProxyService {
             wasm_modules,
             data_sources,
             max_retries,
+            listen_address,
         ))
     }
 
@@ -64,6 +76,7 @@ impl ProxyService {
         wasm_modules: WasmModuleMap,
         data_sources: DataSources,
         max_retries: u32,
+        listen_address: Option<SocketAddr>,
     ) -> Self {
         ProxyService {
             inner: Arc::new(Inner {
@@ -73,6 +86,7 @@ impl ProxyService {
                 data_sources,
                 max_retries,
                 local_task_handler: SingleThreadTaskHandler::new(),
+                listen_address,
             }),
         }
     }
@@ -99,6 +113,17 @@ impl ProxyService {
         ws.send(message).await?;
 
         let (reply_sender, mut reply_receiver) = unbounded_channel::<RelayMessage>();
+
+        // Health check endpoints
+        let ws_clone = ws.clone();
+        if let Some(listen_address) = self.inner.listen_address {
+            tokio::spawn(async move {
+                if let Err(err) = serve_health_check_endpionts(listen_address, ws_clone).await {
+                    // TODO should we shut the server down?
+                    error!(?err, "Error serving health check endpoints");
+                }
+            });
+        }
 
         // Spawn a separate task for handling outgoing messages
         // so that incoming and outgoing do not interfere with one another
@@ -394,4 +419,43 @@ impl SingleThreadTaskHandler {
             error!(?send_err, "unable to send error to relay");
         };
     }
+}
+
+/// Listen on the given address and return a 200 for GET /
+/// and either 200 or 502 for GET /health, depending on the WebSocket connection status
+async fn serve_health_check_endpionts(addr: SocketAddr, ws: ReconnectingWebSocket) -> Result<()> {
+    let make_svc = make_service_fn(move |_conn| {
+        let ws = ws.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                let ws = ws.clone();
+                async move {
+                    let (status, body) = match (request.method(), request.uri().path()) {
+                        (&Method::GET, "/") | (&Method::GET, "") => (
+                            StatusCode::OK,
+                            Body::from("Hi, I'm your friendly neighborhood proxy.".to_string()),
+                        ),
+                        (&Method::GET, "/health") => {
+                            if ws.is_connected() {
+                                (StatusCode::OK, Body::from("Connected".to_string()))
+                            } else {
+                                (
+                                    StatusCode::BAD_GATEWAY,
+                                    Body::from("Disconnected".to_string()),
+                                )
+                            }
+                        }
+                        (_, _) => (StatusCode::NOT_FOUND, Body::empty()),
+                    };
+
+                    Ok::<_, Infallible>(Response::builder().status(status).body(body).unwrap())
+                }
+            }))
+        }
+    });
+
+    debug!(?addr, "Serving health check endpoints");
+
+    let server = Server::bind(&addr).serve(make_svc);
+    Ok(server.await?)
 }

@@ -5,7 +5,7 @@ use fp_provider_runtime::spec::types::{
     QueryInstant,
 };
 use futures::{select, FutureExt, SinkExt, StreamExt};
-use http::{Request, Response};
+use http::{Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{header::HeaderValue, Body, Server};
 use proxy_types::{DataSourceType, InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
@@ -33,6 +33,7 @@ async fn sends_auth_token_in_header() {
         HashMap::new(),
         DataSources(HashMap::new()),
         5,
+        None,
     );
 
     let handle_connection = async move {
@@ -77,6 +78,7 @@ async fn sends_data_sources_on_connect() {
         HashMap::new(),
         DataSources(data_sources),
         5,
+        None,
     );
 
     let handle_connection = async move {
@@ -126,6 +128,7 @@ async fn sends_pings() {
         HashMap::new(),
         DataSources(HashMap::new()),
         5,
+        None,
     );
 
     tokio::time::pause();
@@ -161,6 +164,66 @@ async fn sends_pings() {
 }
 
 #[test(tokio::test)]
+async fn health_check_endpoints() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let service_addr = TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap()
+        .local_addr()
+        .unwrap();
+
+    let service = ProxyService::new(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        HashMap::new(),
+        DataSources(HashMap::new()),
+        5,
+        Some(service_addr),
+    );
+
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_hdr_async(stream, |req: &Request<()>, mut res: Response<()>| {
+            assert_eq!(req.headers().get("fp-auth-token").unwrap(), "auth token");
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
+        ws.next().await.unwrap().unwrap();
+
+        let check_endpoint = |path: &'static str| async move {
+            reqwest::get(format!("http://{}{}", service_addr, path))
+                .await
+                .unwrap()
+                .status()
+        };
+
+        // Check status while connected
+        assert_eq!(StatusCode::OK, check_endpoint("").await);
+        assert_eq!(StatusCode::OK, check_endpoint("/health").await);
+
+        // Check status after disconnect
+        drop(ws);
+        assert_eq!(StatusCode::OK, check_endpoint("").await);
+        assert_eq!(StatusCode::BAD_GATEWAY, check_endpoint("/health").await);
+    };
+
+    let connect = async move {
+        let (tx, _) = broadcast::channel(3);
+        service.connect(tx).await.unwrap();
+    };
+
+    select! {
+      _ = connect.fuse() => {}
+      _ = handle_connection.fuse() => {}
+    }
+}
+
+#[test(tokio::test)]
 async fn returns_error_for_query_to_unknown_provider() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -170,6 +233,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         HashMap::new(),
         DataSources(HashMap::new()),
         5,
+        None,
     );
 
     let handle_connection = async move {
@@ -270,6 +334,7 @@ async fn calls_provider_with_query_and_sends_result() {
         Path::new("../providers"),
         DataSources(data_sources),
         5,
+        None,
     )
     .await
     .unwrap();
@@ -389,6 +454,7 @@ async fn handles_multiple_concurrent_messages() {
         Path::new("../providers"),
         DataSources(data_sources),
         5,
+        None,
     )
     .await
     .unwrap();
@@ -498,6 +564,7 @@ async fn calls_provider_with_query_and_sends_error() {
         Path::new("../providers"),
         DataSources(data_sources),
         5,
+        None,
     )
     .await
     .unwrap();
@@ -577,6 +644,7 @@ async fn reconnects_if_websocket_closes() {
         HashMap::new(),
         DataSources(HashMap::new()),
         1,
+        None,
     );
 
     tokio::time::pause();
@@ -629,6 +697,7 @@ async fn service_shutdown() {
         HashMap::new(),
         DataSources(HashMap::new()),
         1,
+        None,
     );
 
     let (tx, _) = broadcast::channel(3);
