@@ -78,7 +78,6 @@ impl ProxyService {
     }
 
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
-        let mut shutdown = shutdown.subscribe();
         info!("connecting to fiberplane");
         let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
         let mut conn_id: Option<String> = conn_id_receiver.borrow().clone();
@@ -100,16 +99,40 @@ impl ProxyService {
         ws.send(message).await?;
 
         let (reply_sender, mut reply_receiver) = unbounded_channel::<RelayMessage>();
+
+        // Spawn a separate task for handling outgoing messages
+        // so that incoming and outgoing do not interfere with one another
+        let mut conn_id_receiver_clone = conn_id_receiver.clone();
+        let ws_clone = ws.clone();
+        let mut shutdown_clone = shutdown.subscribe();
+        tokio::spawn(async move {
+            let mut conn_id: Option<String> = conn_id_receiver_clone.borrow().clone();
+            loop {
+                select! {
+                    outgoing = reply_receiver.recv().fuse() => {
+                        if let Some(message) = outgoing {
+                            trace!(?conn_id, ?message, "sending outgoing message");
+                            let message = Message::Binary(message.serialize_msgpack());
+                            if let Err(err) = ws_clone.send(message).await {
+                                error!(?conn_id, ?err, "error sending outgoing message to WebSocket");
+                            }
+                        }
+                    },
+                    _ = conn_id_receiver_clone.changed().fuse() => {
+                        conn_id = conn_id_receiver_clone.borrow().clone();
+                    }
+                    _ = shutdown_clone.recv().fuse() => {
+                        drop(ws_clone);
+                        break;
+                    }
+                }
+            }
+        });
+
         loop {
             let reply_sender = reply_sender.clone();
+            let mut shutdown = shutdown.subscribe();
             select! {
-                outgoing = reply_receiver.recv().fuse() => {
-                    if let Some(message) = outgoing {
-                        trace!(?conn_id, ?message, "sending outgoing message");
-                        let message = Message::Binary(message.serialize_msgpack());
-                        ws.send(message).await?;
-                    }
-                },
                 incoming = ws.recv().fuse() => {
                     match incoming? {
                         Message::Binary(message) => {
@@ -128,7 +151,7 @@ impl ProxyService {
                 },
                 _ = conn_id_receiver.changed().fuse() => {
                     let new_id = conn_id_receiver.borrow().clone();
-                    trace!("conn id {:?} changed to {:?}", conn_id, new_id);
+                    trace!("conn_id {:?} changed to {:?}", conn_id, new_id);
                     conn_id = new_id;
                 }
                 _ = shutdown.recv().fuse() => {
