@@ -13,5 +13,6 @@ ARG PROXY_PATH=target/debug/proxy
 COPY ${PROXY_PATH} /app/proxy
 
 ENV WASM_DIR=/app/providers
+ENV RUST_LOG=proxy=info
 WORKDIR /app
 ENTRYPOINT ["/app/proxy"]
