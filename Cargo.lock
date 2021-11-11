@@ -1900,7 +1900,7 @@ dependencies = [
 [[package]]
 name = "tokio-tungstenite-reconnect"
 version = "0.1.0"
-source = "git+ssh://git@github.com/emschwartz/tokio-tungstenite-reconnect.git?branch=main#2a2c51ab0a3d34508c5f18199b907a16e80547b8"
+source = "git+ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git?branch=main#3c3ffa68cca644f0228d028bac5e98612fd2b0a8"
 dependencies = [
  "async-channel",
  "futures",
