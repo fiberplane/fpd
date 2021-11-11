@@ -14,6 +14,7 @@ use tokio::fs;
 use tokio::runtime::Builder;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
+use tokio::sync::watch;
 use tokio::task::LocalSet;
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, trace};
@@ -79,7 +80,8 @@ impl ProxyService {
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
         let mut shutdown = shutdown.subscribe();
         info!("connecting to fiberplane");
-        let (ws, conn_id) = self.connect_websocket().await?;
+        let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
+        let mut conn_id: Option<String> = conn_id_receiver.borrow().clone();
         info!(?conn_id, "connection established");
 
         // Send the list of data sources to the relay
@@ -89,7 +91,10 @@ impl ProxyService {
             .iter()
             .map(|(name, data_source)| (name.clone(), data_source.into()))
             .collect();
-        debug!("sending data sources to relay: {:?}", data_sources);
+        debug!(
+            ?conn_id,
+            "sending data sources to relay: {:?}", data_sources
+        );
         let message = RelayMessage::SetDataSources(data_sources);
         let message = Message::Binary(message.serialize_msgpack());
         ws.send(message).await?;
@@ -100,7 +105,7 @@ impl ProxyService {
             select! {
                 outgoing = reply_receiver.recv().fuse() => {
                     if let Some(message) = outgoing {
-                        trace!(?message, "sending outgoing message");
+                        trace!(?conn_id, ?message, "sending outgoing message");
                         let message = Message::Binary(message.serialize_msgpack());
                         ws.send(message).await?;
                     }
@@ -110,19 +115,24 @@ impl ProxyService {
                         Message::Binary(message) => {
                             match ServerMessage::deserialize_msgpack(message) {
                                 Ok(message) => {
-                                    trace!(?message, "got incoming message");
+                                    trace!(?conn_id, ?message, "got incoming message");
                                     self.handle_message(message, reply_sender).await?;
                                 },
                                 Err(err) => {
-                                    error!(?err, "Error deserializing MessagePack message");
+                                    error!(?conn_id, ?err, "Error deserializing MessagePack message");
                                 }
                             }
                         },
-                        message => debug!("ignoring websocket message of unexpected type {:?}", message)
+                        message => debug!(?conn_id, "ignoring websocket message of unexpected type {:?}", message)
                     }
                 },
+                _ = conn_id_receiver.changed().fuse() => {
+                    let new_id = conn_id_receiver.borrow().clone();
+                    trace!("conn id {:?} changed to {:?}", conn_id, new_id);
+                    conn_id = new_id;
+                }
                 _ = shutdown.recv().fuse() => {
-                    trace!("shutdown");
+                    trace!(?conn_id, "shutdown");
                     drop(ws);
                     break;
                 }
@@ -133,7 +143,9 @@ impl ProxyService {
 
     /// Connects to a web-socket server and returns the connection id and the
     /// web-socket stream.
-    async fn connect_websocket(&self) -> Result<(ReconnectingWebSocket, String)> {
+    async fn connect_websocket(
+        &self,
+    ) -> Result<(ReconnectingWebSocket, watch::Receiver<Option<String>>)> {
         // Create a request object. If this fails there is no point in
         // retrying so just return the error object.
         let request = http::Request::builder()
@@ -141,33 +153,25 @@ impl ProxyService {
             .header("fp-auth-token", self.inner.auth_token.clone())
             .body(())?;
 
-        let (header_sender, mut header_receiver) = mpsc::channel(1);
+        let (conn_id_sender, conn_id_receiver) = watch::channel(None);
         let ws = ReconnectingWebSocket::builder(request)?
             .max_retries(self.inner.max_retries)
             .connect_response_handler(move |response| {
-                let header_sender = header_sender.clone();
-                tokio::spawn(async move {
-                    header_sender
-                        .send(
-                            response
-                                .headers()
-                                .get("x-fp-conn-id")
-                                .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok()),
-                        )
-                        .await
-                });
+                let conn_id = response
+                    .headers()
+                    .get("x-fp-conn-id")
+                    .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok());
+                conn_id_sender.send_replace(conn_id);
             })
             .build();
 
         ws.connect().await?;
 
-        let conn_id = header_receiver
-            .recv()
-            .await
-            .flatten()
-            .ok_or_else(|| anyhow!("no connection id was returned"))?;
-
-        Ok((ws, conn_id))
+        if conn_id_receiver.borrow().is_some() {
+            Ok((ws, conn_id_receiver))
+        } else {
+            Err(anyhow!("no connection id was returned"))
+        }
     }
 
     async fn handle_message(
