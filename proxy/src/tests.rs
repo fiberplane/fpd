@@ -615,7 +615,7 @@ async fn reconnects_if_websocket_closes() {
     };
     assert_eq!(
         format!("{}", result.unwrap_err()),
-        "unable to connect, exceeded max tries"
+        "Exceeded maximum number of retries without successfully connecting"
     );
 }
 

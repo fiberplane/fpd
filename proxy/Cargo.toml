@@ -14,16 +14,13 @@ fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", b
 futures = "0.3.17"
 http = "0.2.4"
 hyper = { version = "0.14.12", features = ["full"] }
-hyper-tungstenite = "0.4.0"
 proxy_types = { path = "../proxy_types" }
 rmp-serde = "0.15.5"
 routerify = "2.2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8.21"
-stream-cancel = "0.8.1"
 tokio = { version = "1.10.1", features = ["full"] }
-tokio-stream = "0.1.7"
-tokio-tungstenite = { version = "0.15.0", features = ["rustls-tls"] }
+tokio-tungstenite-reconnect = { git = "ssh://git@github.com/emschwartz/tokio-tungstenite-reconnect.git", branch = "main" }
 tracing = "0.1"
 tracing-subscriber = "0.2"
 url = "2.2.2"
@@ -32,3 +29,4 @@ wasmer = { version = "2.0.0", features = ["singlepass"] }
 [dev-dependencies]
 test-env-log = { version = "0.2.7", default-features = false, features = [ "trace" ]}
 tokio = { version = "1.10.1", features = ["full", "test-util"] }
+tokio-tungstenite = { version = "0.15.0", features = ["rustls-tls"] }

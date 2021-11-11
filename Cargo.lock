@@ -42,6 +42,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee10e43ae4a853c0a3591d4e2ada1719e553be18199d9da9d4a83f5927c2f5c7"
 
 [[package]]
+name = "async-channel"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2114d64672151c0c5eaa5e131ec84a74f06e1e559830dabba01ca30605d66319"
+dependencies = [
+ "concurrent-queue",
+ "event-listener",
+ "futures-core",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -113,6 +124,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
+name = "cache-padded"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "631ae5198c9be5e753e5cc215e1bd73c2b466a3565173db433f52bb9d3e66dba"
+
+[[package]]
 name = "cc"
 version = "1.0.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -165,6 +182,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "concurrent-queue"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30ed07550be01594c6026cff2a1d7fe9c8f683caa798e12b68694ac9e88286a3"
+dependencies = [
+ "cache-padded",
 ]
 
 [[package]]
@@ -426,6 +452,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "event-listener"
+version = "2.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7531096570974c3a9dcf9e4b8e1cede1ec26cf5046219fb3b9d897503b9be59"
 
 [[package]]
 name = "fallible-iterator"
@@ -711,18 +743,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "webpki",
-]
-
-[[package]]
-name = "hyper-tungstenite"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34fd1ff17853595d9aa45aeaa535a9b64c0c9473f0d8f002a332d56c891e1de7"
-dependencies = [
- "hyper",
- "pin-project",
- "tokio",
- "tokio-tungstenite",
 ]
 
 [[package]]
@@ -1168,17 +1188,15 @@ dependencies = [
  "futures",
  "http",
  "hyper",
- "hyper-tungstenite",
  "proxy_types",
  "rmp-serde 0.15.5",
  "routerify",
  "serde",
  "serde_yaml",
- "stream-cancel",
  "test-env-log",
  "tokio",
- "tokio-stream",
  "tokio-tungstenite",
+ "tokio-tungstenite-reconnect",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -1711,17 +1729,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
-name = "stream-cancel"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b0a9eb2715209fb8cc0d942fcdff45674bfc9f0090a0d897e85a22955ad159b"
-dependencies = [
- "futures-core",
- "pin-project",
- "tokio",
-]
-
-[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1874,17 +1881,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-stream"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50145484efff8818b5ccd256697f36863f587da82cf8b409c53adf1e840798e3"
-dependencies = [
- "futures-core",
- "pin-project-lite",
- "tokio",
-]
-
-[[package]]
 name = "tokio-tungstenite"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1899,6 +1895,20 @@ dependencies = [
  "tungstenite",
  "webpki",
  "webpki-roots",
+]
+
+[[package]]
+name = "tokio-tungstenite-reconnect"
+version = "0.1.0"
+source = "git+ssh://git@github.com/emschwartz/tokio-tungstenite-reconnect.git?branch=main#2a2c51ab0a3d34508c5f18199b907a16e80547b8"
+dependencies = [
+ "async-channel",
+ "futures",
+ "http",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
 ]
 
 [[package]]
