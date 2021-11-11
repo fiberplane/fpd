@@ -27,7 +27,7 @@ pub struct Arguments {
         long,
         short,
         env = "FIBERPLANE_ENDPOINT",
-        default_value = "wss://fiberplane.io",
+        default_value = "wss://fiberplane.com",
         about = "Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)"
     )]
     fiberplane_endpoint: Url,
