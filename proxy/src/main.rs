@@ -63,10 +63,9 @@ pub struct Arguments {
         long,
         short,
         env = "LISTEN_ADDRESS",
-        default_value = "127.0.0.1:3002",
         about = "Address to bind HTTP server to (used for health check endpoints)"
     )]
-    listen_address: SocketAddr,
+    listen_address: Option<SocketAddr>,
 }
 
 #[tokio::main]
@@ -95,7 +94,7 @@ async fn main() {
         args.wasm_dir.as_path(),
         data_sources,
         args.max_retries,
-        Some(args.listen_address),
+        args.listen_address,
     )
     .await
     .expect("Error initializing proxy");
