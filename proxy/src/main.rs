@@ -1,6 +1,7 @@
 use crate::service::ProxyService;
 use clap::{AppSettings, Clap};
 use data_sources::DataSources;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process;
 use tokio::fs;
@@ -57,6 +58,14 @@ pub struct Arguments {
         about = "Max retries to connect to the fiberplane server before giving up on failed connections"
     )]
     max_retries: u32,
+
+    #[clap(
+        long,
+        short,
+        env = "LISTEN_ADDRESS",
+        about = "Address to bind HTTP server to (used for health check endpoints)"
+    )]
+    listen_address: Option<SocketAddr>,
 }
 
 #[tokio::main]
@@ -85,6 +94,7 @@ async fn main() {
         args.wasm_dir.as_path(),
         data_sources,
         args.max_retries,
+        args.listen_address,
     )
     .await
     .expect("Error initializing proxy");
