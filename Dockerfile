@@ -14,5 +14,6 @@ COPY ${PROXY_PATH} /app/proxy
 
 ENV WASM_DIR=/app/providers
 ENV RUST_LOG=proxy=info
+ENV LISTEN_ADDRESS=127.0.0.1:3000
 WORKDIR /app
 ENTRYPOINT ["/app/proxy"]
