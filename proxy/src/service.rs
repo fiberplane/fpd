@@ -2,37 +2,24 @@ use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
 use fp_provider_runtime::Runtime;
 use futures::select;
-use futures::sink::SinkExt;
-use futures::stream::{SplitSink, SplitStream};
-use futures::{FutureExt, StreamExt};
-use hyper_tungstenite::tungstenite::Message;
-use hyper_tungstenite::WebSocketStream;
+use futures::FutureExt;
 use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage, Uuid,
 };
-use rmp_serde::Serializer;
-use serde::Serialize;
-use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
-use stream_cancel::StreamExt as CancelStreamExt;
 use tokio::fs;
-use tokio::net::TcpStream;
 use tokio::runtime::Builder;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
+use tokio::sync::watch;
 use tokio::task::LocalSet;
-use tokio::time::{sleep, Duration};
-use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_tungstenite::{connect_async, MaybeTlsStream};
-use tracing::{debug, error, info, trace, warn};
+use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
+use tracing::{debug, error, info, trace};
 use url::Url;
 use wasmer::{Singlepass, Store, Universal};
-
-const WS_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(45);
-const MAX_EXPONENTIAL_BACKOFF_DURATION: u64 = 10000;
 
 /// This is a mapping from the provider type to the bytes of the wasm module
 pub type WasmModuleMap = HashMap<String, Vec<u8>>;
@@ -91,99 +78,89 @@ impl ProxyService {
     }
 
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
-        let mut current_try = 0;
-        loop {
-            current_try += 1;
-            let current_retries = current_try - 1;
+        info!("connecting to fiberplane");
+        let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
+        let mut conn_id: Option<String> = conn_id_receiver.borrow().clone();
+        info!(?conn_id, "connection established");
 
-            if current_retries > self.inner.max_retries {
-                return Err(anyhow!("unable to connect, exceeded max tries"));
-            } else if current_retries > 0 {
-                let sleep_duration = {
-                    let base: u64 = 2;
-                    let duration = base.pow(current_try + 6);
-                    let duration = cmp::min(duration, MAX_EXPONENTIAL_BACKOFF_DURATION);
-                    Duration::from_millis(duration)
-                };
+        // Send the list of data sources to the relay
+        let data_sources: SetDataSourcesMessage = self
+            .inner
+            .data_sources
+            .iter()
+            .map(|(name, data_source)| (name.clone(), data_source.into()))
+            .collect();
+        debug!(
+            ?conn_id,
+            "sending data sources to relay: {:?}", data_sources
+        );
+        let message = RelayMessage::SetDataSources(data_sources);
+        let message = Message::Binary(message.serialize_msgpack());
+        ws.send(message).await?;
 
-                info!(?sleep_duration, "waiting before trying to reconnect");
-                tokio::time::sleep(sleep_duration).await;
-            }
+        let (reply_sender, mut reply_receiver) = unbounded_channel::<RelayMessage>();
 
-            info!(?current_try, "connecting to fiberplane");
-
-            let (ws_stream, conn_id) = match self.connect_websocket().await {
-                Ok(result) => result,
-                Err(err) => {
-                    error!(?err, "unable to connect to web-socket server");
-                    continue;
-                }
-            };
-
-            info!(?conn_id, "connection established");
-
-            let (mut write_ws, read_ws) = ws_stream.split();
-
-            // Send the list of data sources to the relay
-            let data_sources: SetDataSourcesMessage = self
-                .inner
-                .data_sources
-                .iter()
-                .map(|(name, data_source)| (name.clone(), data_source.into()))
-                .collect();
-            debug!("sending data sources to relay: {:?}", data_sources);
-            let message = RelayMessage::SetDataSources(data_sources);
-            let message = Message::Binary(message.serialize_msgpack());
-            write_ws.send(message).await?;
-
-            // At this point we are fairly confident that the server is
-            // connected and working. So we will reset the current_try
-            current_try = 0;
-
-            let (tx_relay_messages, rx_relay_messages) =
-                tokio::sync::mpsc::unbounded_channel::<RelayMessage>();
-
-            // We use a local task set because the Wasmer runtime embedded in the ProxyService
-            // cannot be moved across threads (which would be necessary to spawn a task that
-            // includes the service)
-            let read_handle = tokio::spawn(Self::handle_read_loop(
-                shutdown.clone(),
-                conn_id.clone(),
-                read_ws,
-                tx_relay_messages,
-                self.clone(),
-            ));
-
-            let write_handle = tokio::spawn(Self::handle_write_loop(
-                shutdown.clone(),
-                conn_id.clone(),
-                rx_relay_messages,
-                write_ws,
-            ));
-
-            // keep connection open and handle incoming connections
-            let (read, write) = futures::join!(read_handle, write_handle);
-
-            match (read, write) {
-                (Ok(should_reconnect), Ok(_)) => {
-                    if should_reconnect {
-                        warn!(?conn_id, "reconnecting web-socket connection");
-                    } else {
-                        trace!(?conn_id, "shutdown web-socket connection successfully");
+        // Spawn a separate task for handling outgoing messages
+        // so that incoming and outgoing do not interfere with one another
+        let mut conn_id_receiver_clone = conn_id_receiver.clone();
+        let ws_clone = ws.clone();
+        let mut shutdown_clone = shutdown.subscribe();
+        tokio::spawn(async move {
+            let mut conn_id: Option<String> = conn_id_receiver_clone.borrow().clone();
+            loop {
+                select! {
+                    outgoing = reply_receiver.recv().fuse() => {
+                        if let Some(message) = outgoing {
+                            trace!(?conn_id, ?message, "sending outgoing message");
+                            let message = Message::Binary(message.serialize_msgpack());
+                            if let Err(err) = ws_clone.send(message).await {
+                                error!(?conn_id, ?err, "error sending outgoing message to WebSocket");
+                            }
+                        }
+                    },
+                    _ = conn_id_receiver_clone.changed().fuse() => {
+                        conn_id = conn_id_receiver_clone.borrow().clone();
+                    }
+                    _ = shutdown_clone.recv().fuse() => {
+                        drop(ws_clone);
                         break;
                     }
                 }
-                (read, write) => {
-                    error!(
-                        ?read,
-                        ?write,
-                        ?conn_id,
-                        "unexpected error occurred in the read or write loop"
-                    );
-                }
-            };
-        }
+            }
+        });
 
+        loop {
+            let reply_sender = reply_sender.clone();
+            let mut shutdown = shutdown.subscribe();
+            select! {
+                incoming = ws.recv().fuse() => {
+                    match incoming? {
+                        Message::Binary(message) => {
+                            match ServerMessage::deserialize_msgpack(message) {
+                                Ok(message) => {
+                                    trace!(?conn_id, ?message, "got incoming message");
+                                    self.handle_message(message, reply_sender).await?;
+                                },
+                                Err(err) => {
+                                    error!(?conn_id, ?err, "Error deserializing MessagePack message");
+                                }
+                            }
+                        },
+                        message => debug!(?conn_id, "ignoring websocket message of unexpected type {:?}", message)
+                    }
+                },
+                _ = conn_id_receiver.changed().fuse() => {
+                    let new_id = conn_id_receiver.borrow().clone();
+                    trace!("conn_id {:?} changed to {:?}", conn_id, new_id);
+                    conn_id = new_id;
+                }
+                _ = shutdown.recv().fuse() => {
+                    trace!(?conn_id, "shutdown");
+                    drop(ws);
+                    break;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -191,7 +168,7 @@ impl ProxyService {
     /// web-socket stream.
     async fn connect_websocket(
         &self,
-    ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, String)> {
+    ) -> Result<(ReconnectingWebSocket, watch::Receiver<Option<String>>)> {
         // Create a request object. If this fails there is no point in
         // retrying so just return the error object.
         let request = http::Request::builder()
@@ -199,180 +176,24 @@ impl ProxyService {
             .header("fp-auth-token", self.inner.auth_token.clone())
             .body(())?;
 
-        let (ws_stream, resp) = connect_async(request).await?;
+        let (conn_id_sender, conn_id_receiver) = watch::channel(None);
+        let ws = ReconnectingWebSocket::builder(request)?
+            .max_retries(self.inner.max_retries)
+            .connect_response_handler(move |response| {
+                let conn_id = response
+                    .headers()
+                    .get("x-fp-conn-id")
+                    .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok());
+                conn_id_sender.send_replace(conn_id);
+            })
+            .build();
 
-        let conn_id = resp
-            .headers()
-            .get("x-fp-conn-id")
-            .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok())
-            .ok_or_else(|| anyhow!("no connection id was returned"))?;
+        ws.connect().await?;
 
-        Ok((ws_stream, conn_id))
-    }
-
-    /// Handle any incoming web socket messages (`read_ws`) by sending them
-    /// to the service for processing.
-    ///
-    /// This will block until a message is broadcast on the `shutdown` channel.
-    /// It can also exit if an error occurred during receiving or sending a
-    /// message from the channel.
-    async fn handle_read_loop(
-        shutdown: Sender<()>,
-        conn_id: String,
-        read_ws: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-        tx_relay_messages: UnboundedSender<RelayMessage>,
-        service: ProxyService,
-    ) -> bool {
-        use hyper_tungstenite::tungstenite::Message::*;
-
-        let mut should_reconnect = false;
-        let mut should_shutdown = shutdown.subscribe();
-
-        // Wrap the stream in a new TakeUntilIf stream, which will stop
-        // processing once we receive something on the shutdown channel.
-        let mut read_ws = Box::pin(read_ws.take_until_if(should_shutdown.recv().map(|_| true)));
-
-        loop {
-            // First make sure we actually received a message or
-            // that the connection is closed.
-            let message = match read_ws.next().await {
-                Some(Ok(message)) => message,
-                Some(Err(err)) => {
-                    warn!(
-                        ?err,
-                        ?conn_id,
-                        "unable to read message from web-socket connection"
-                    );
-                    should_reconnect = true;
-                    if let Err(e) = shutdown.send(()) {
-                        warn!(?e, "unable to send shutdown signal");
-                    };
-                    break;
-                }
-                None => {
-                    trace!(?conn_id, "stopping read loop; shutdown was invoked, or the connection is already closed");
-                    if let Err(e) = shutdown.send(()) {
-                        warn!(?e, "unable to send shutdown signal");
-                    };
-                    break;
-                }
-            };
-
-            // We are only interested in Binary and Close messages.
-            match message {
-                Binary(msg) => {
-                    trace!(?conn_id, "received binary message");
-                    let message = match ServerMessage::deserialize_msgpack(msg) {
-                        Ok(message) => message,
-                        Err(err) => {
-                            warn!(
-                                ?err,
-                                ?conn_id,
-                                "unable to deserialize msgpack encoded server message"
-                            );
-                            continue;
-                        }
-                    };
-
-                    let op_id = message.op_id();
-                    let result = service
-                        .handle_message(message, tx_relay_messages.clone())
-                        .await;
-                    if let Err(err) = result {
-                        warn!(
-                            ?err,
-                            ?conn_id,
-                            ?op_id,
-                            "service was unable to handle message"
-                        );
-                    };
-                }
-                Close(_) => {
-                    trace!(?conn_id, "received close message");
-                    if let Err(e) = shutdown.send(()) {
-                        warn!(?e, "unable to send shutdown signal");
-                    };
-                    break;
-                }
-                Text(_) => error!(?conn_id, "Received Text"),
-                Ping(_) => trace!(?conn_id, "Received Ping"),
-                Pong(_) => trace!(?conn_id, "Received Pong"),
-            }
-        }
-
-        should_reconnect
-    }
-
-    /// Handle any outgoing relay messages (`rx_relay_messages`) by sending them
-    /// to the outgoing web socket connection (`write_ws`).
-    ///
-    /// This will block until a message is broadcast on the `shutdown` channel.
-    /// It can also exit if an error occurred during sending or receiving a
-    /// message from the channel.
-    async fn handle_write_loop(
-        shutdown: Sender<()>,
-        conn_id: String,
-        rx_relay_messages: UnboundedReceiver<RelayMessage>,
-        mut write_ws: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-    ) {
-        let mut should_shutdown = shutdown.subscribe();
-
-        // Wrap the channel in a stream and then in a new TakeUntilIf stream,
-        // which will stop processing once we receive something on the shutdown
-        // channel.
-        let rx_relay_messages = UnboundedReceiverStream::new(rx_relay_messages);
-        let mut rx_relay_messages =
-            Box::pin(rx_relay_messages.take_until_if(should_shutdown.recv().map(|_| true)));
-
-        loop {
-            select! {
-                message = rx_relay_messages.next().fuse() => {
-                    match message {
-                        Some(message) => {
-                            let op_id = message.op_id();
-
-                            let mut buf = Vec::new();
-                            if let Err(err) = message.serialize(&mut Serializer::new(&mut buf)) {
-                                error!(
-                                    ?err,
-                                    ?conn_id,
-                                    ?op_id,
-                                    "unable to serialize message to msgpack"
-                                );
-                            };
-
-                            if let Err(err) = write_ws.send(Message::Binary(buf)).await {
-                                error!(
-                                    ?err,
-                                    ?conn_id,
-                                    ?op_id,
-                                    "unable to send message to relay"
-                                );
-                                break;
-                            }
-
-                            trace!(
-                                ?conn_id,
-                                "handle_command: sending message to relay complete"
-                            );
-                        }
-                        None => {
-                            trace!(?conn_id, "stopping write loop; shutdown was invoked, or the connection is already closed");
-                            if let Err(e) = shutdown.send(()) {
-                                warn!(?e, "unable to send shutdown signal");
-                            };
-                            break;
-                        }
-                    }
-                }
-                // Send a Ping message to the web socket connection if we have
-                // not send anything for some amount of time.
-                _ = sleep(WS_INACTIVITY_TIMEOUT).fuse() => {
-                    if let Err(err) = write_ws.send(Message::Ping(b"ping".to_vec())).await {
-                        warn!(?err, ?conn_id, "unable to send ping to server");
-                    };
-                }
-            }
+        if conn_id_receiver.borrow().is_some() {
+            Ok((ws, conn_id_receiver))
+        } else {
+            Err(anyhow!("no connection id was returned"))
         }
     }
 
