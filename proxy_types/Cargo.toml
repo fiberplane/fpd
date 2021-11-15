@@ -3,11 +3,8 @@ name = "proxy_types"
 version = "0.1.0"
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "main"  }
-# fp-provider-runtime = { path = "../../providers/runtimes/fp-provider-runtime/"  }
+fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "main" }
 rmp-serde = "0.15.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11.5"

@@ -487,7 +487,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#06a6062ecd730f16f71c9c072d2069a12cd31e4a"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#32b7ea987cc7af544be4d69ea4722bb7fd08495b"
 dependencies = [
  "rand",
  "reqwest",
@@ -1258,7 +1258,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "wasmer",
 ]
 
 [[package]]
