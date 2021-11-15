@@ -3,3 +3,6 @@ members = [
     "proxy_types",
     "proxy",
 ]
+
+# [patch."ssh://git@github.com/fiberplane/providers.git"]
+# fp-provider-runtime = { path = "../providers/runtimes/fp-provider-runtime/" }

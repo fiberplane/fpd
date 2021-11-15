@@ -28,7 +28,6 @@ use tokio::task::LocalSet;
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, trace};
 use url::Url;
-use wasmer::{Singlepass, Store, Universal};
 
 /// This is a mapping from the provider type to the bytes of the wasm module
 pub type WasmModuleMap = HashMap<String, Vec<u8>>;
@@ -337,10 +336,7 @@ async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Resul
 }
 
 fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
-    // TODO can any of these objects be safely cloned between instances?
-    let engine = Universal::new(Singlepass::default()).engine();
-    let store = Store::new(&engine);
-    let runtime = Runtime::new(store, wasm_module)?;
+    let runtime = Runtime::new(wasm_module)?;
     Ok(runtime)
 }
 

@@ -501,6 +501,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "fp-provider-runtime"
+version = "1.0.0-alpha.1"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=wasmer_store#b1763b345ed92f203323a50c9866cc8ffc62d162"
+dependencies = [
+ "rand",
+ "reqwest",
+ "rmp-serde 1.0.0-beta.2",
+ "serde",
+ "serde_bytes",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "wasmer",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1241,7 +1257,7 @@ dependencies = [
  "anyhow",
  "clap",
  "ctrlc",
- "fp-provider-runtime",
+ "fp-provider-runtime 1.0.0-alpha.1 (git+ssh://git@github.com/fiberplane/providers.git?branch=wasmer_store)",
  "futures",
  "http",
  "hyper",
@@ -1258,14 +1274,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "wasmer",
 ]
 
 [[package]]
 name = "proxy_types"
 version = "0.1.0"
 dependencies = [
- "fp-provider-runtime",
+ "fp-provider-runtime 1.0.0-alpha.1 (git+ssh://git@github.com/fiberplane/providers.git?branch=main)",
  "rmp-serde 0.15.5",
  "serde",
  "serde_bytes",
