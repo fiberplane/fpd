@@ -9,7 +9,7 @@ edition = "2018"
 anyhow = "1.0.44"
 clap = "=3.0.0-beta.4"
 ctrlc = "3.2.1"
-fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "wasmer_store"  }
+fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "main" }
 futures = "0.3.17"
 http = "0.2.4"
 hyper = { version = "0.14.12", features = ["full"] }
