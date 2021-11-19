@@ -473,7 +473,7 @@ async fn handles_multiple_concurrent_messages() {
         ws.next().await.unwrap().unwrap();
 
         // Send two queries
-        let op_1 = Uuid::new_v4();
+        let op_1 = Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
         let message_1 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_1,
             data_source_name: "data source 1".to_string(),
@@ -486,7 +486,7 @@ async fn handles_multiple_concurrent_messages() {
         .serialize_msgpack();
         ws.send(Message::Binary(message_1)).await.unwrap();
 
-        let op_2 = Uuid::new_v4();
+        let op_2 = Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
         let message_2 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_2,
             data_source_name: "data source 1".to_string(),
@@ -683,7 +683,7 @@ async fn reconnects_if_websocket_closes() {
     };
     assert_eq!(
         format!("{}", result.unwrap_err()),
-        "Exceeded maximum number of retries without successfully connecting"
+        "HTTP error: 500 Internal Server Error"
     );
 }
 
