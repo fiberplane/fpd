@@ -1226,7 +1226,7 @@ dependencies = [
  "serde_yaml",
  "test-env-log",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.15.0",
  "tokio-tungstenite-reconnect",
  "tracing",
  "tracing-subscriber",
@@ -1935,22 +1935,33 @@ dependencies = [
  "rustls",
  "tokio",
  "tokio-rustls",
- "tungstenite",
+ "tungstenite 0.14.0",
  "webpki",
  "webpki-roots",
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e057364a4dd37870b33bf8dc1885d29187d90770f488d599d3ee8d9e4916fbd3"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.16.0",
+]
+
+[[package]]
 name = "tokio-tungstenite-reconnect"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git?branch=main#3c3ffa68cca644f0228d028bac5e98612fd2b0a8"
+source = "git+ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git?branch=main#c078b6e16028baf0cca053581c8790560c445b55"
 dependencies = [
  "async-channel",
  "futures",
  "http",
- "thiserror",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.16.0",
  "tracing",
 ]
 
@@ -2061,6 +2072,25 @@ dependencies = [
  "url",
  "utf-8",
  "webpki",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ad3713a14ae247f22a728a0456a545df14acf3867f905adff84be99e23b3ad1"
+dependencies = [
+ "base64",
+ "byteorder",
+ "bytes",
+ "http",
+ "httparse",
+ "log",
+ "rand",
+ "sha-1",
+ "thiserror",
+ "url",
+ "utf-8",
 ]
 
 [[package]]

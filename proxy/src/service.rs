@@ -127,6 +127,7 @@ impl ProxyService {
         // Spawn a separate task for handling outgoing messages
         // so that incoming and outgoing do not interfere with one another
         let mut conn_id_receiver_clone = conn_id_receiver.clone();
+        conn_id_receiver_clone.borrow_and_update();
         let ws_clone = ws.clone();
         let mut shutdown_clone = shutdown.subscribe();
         tokio::spawn(async move {
@@ -158,8 +159,8 @@ impl ProxyService {
             let mut shutdown = shutdown.subscribe();
             select! {
                 incoming = ws.recv().fuse() => {
-                    match incoming? {
-                        Message::Binary(message) => {
+                    match incoming {
+                        Some(Ok(Message::Binary(message))) => {
                             match ServerMessage::deserialize_msgpack(message) {
                                 Ok(message) => {
                                     trace!(?conn_id, ?message, "got incoming message");
@@ -170,6 +171,14 @@ impl ProxyService {
                                 }
                             }
                         },
+                        Some(Err(err)) => {
+                            error!(?conn_id, ?err, "websocket error");
+                            return Err(err.into())
+                        },
+                        None => {
+                            debug!(?conn_id, "websocket connection closed");
+                            break;
+                        }
                         message => debug!(?conn_id, "ignoring websocket message of unexpected type {:?}", message)
                     }
                 },
@@ -208,7 +217,9 @@ impl ProxyService {
                     .headers()
                     .get("x-fp-conn-id")
                     .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok());
-                conn_id_sender.send_replace(conn_id);
+                if *conn_id_sender.subscribe().borrow() != conn_id {
+                    conn_id_sender.send_replace(conn_id);
+                }
             })
             .build();
 

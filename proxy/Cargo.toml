@@ -20,6 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8.21"
 tokio = { version = "1.10.1", features = ["full"] }
 tokio-tungstenite-reconnect = { git = "ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git", branch = "main" }
+# tokio-tungstenite-reconnect = { path = "../../tokio-tungstenite-reconnect" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2.2.2"
