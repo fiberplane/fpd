@@ -1,6 +1,6 @@
 use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
-use fp_provider_runtime::Runtime;
+use fp_provider_runtime::spec::Runtime;
 use futures::select;
 use futures::FutureExt;
 use http::Method;
@@ -262,10 +262,10 @@ impl ProxyService {
 
         let runtime = match self.create_runtime(data_source.ty()).await {
             Ok(runtime) => runtime,
-            Err(e) => {
+            Err(err) => {
                 reply.send(RelayMessage::Error(ErrorMessage {
                     op_id,
-                    message: format!("error creating provider runtime: {:?}", e),
+                    message: format!("error creating provider runtime: {:?}", err),
                 }))?;
                 return Ok(());
             }
@@ -301,7 +301,9 @@ impl ProxyService {
                 )
             });
 
-        compile_wasm(wasm_module)
+        let runtime = Runtime::new(wasm_module)?;
+
+        Ok(runtime)
     }
 }
 
@@ -321,7 +323,7 @@ async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Resul
             .with_context(|| format!("Error loading wasm file: {}", wasm_path.display()))?;
 
         // Make sure the wasm file can compile
-        compile_wasm(&wasm_module).with_context(|| {
+        let compiled_wasm = Runtime::compile(&wasm_module).with_context(|| {
             format!(
                 "Error compiling wasm file for provider: {}",
                 &data_source_type
@@ -329,15 +331,10 @@ async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Resul
         })?;
 
         debug!("loaded provider: {}", data_source_type);
-        wasm_modules.insert(data_source_type, wasm_module);
+        wasm_modules.insert(data_source_type, compiled_wasm);
     }
 
     Ok(wasm_modules)
-}
-
-fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
-    let runtime = Runtime::new(wasm_module)?;
-    Ok(runtime)
 }
 
 /// This includes everything needed to handle a provider request
