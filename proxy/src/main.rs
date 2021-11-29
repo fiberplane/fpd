@@ -1,6 +1,7 @@
 use crate::service::ProxyService;
 use clap::{AppSettings, Clap};
 use data_sources::DataSources;
+use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process;
@@ -66,12 +67,16 @@ pub struct Arguments {
         about = "Address to bind HTTP server to (used for health check endpoints)"
     )]
     listen_address: Option<SocketAddr>,
+
+    #[clap(long, env = "LOG_JSON")]
+    log_json: bool,
 }
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
     let mut args = Arguments::parse();
+
+    initialize_logger(args.log_json);
 
     // Update the endpoint to include the default path if nothing is set
     if args.fiberplane_endpoint.path() == "/" {
@@ -116,8 +121,25 @@ async fn main() {
             info!("proxy shutdown successfully");
         }
         Err(err) => {
-            error!(?err, "proxy encounterd a error");
+            error!(?err, "proxy encountered a error");
             process::exit(1);
         }
     };
+}
+
+fn initialize_logger(log_json: bool) {
+    // Initialize the builder with some defaults
+    let builder = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(io::stderr);
+
+    if log_json {
+        // Add a JSON formatter
+        builder
+            .json()
+            .try_init()
+            .expect("unable to initialize logging");
+    } else {
+        builder.try_init().expect("unable to initialize logging");
+    }
 }
