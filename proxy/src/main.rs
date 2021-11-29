@@ -121,7 +121,7 @@ async fn main() {
             info!("proxy shutdown successfully");
         }
         Err(err) => {
-            error!(?err, "proxy encounterd a error");
+            error!(?err, "proxy encountered a error");
             process::exit(1);
         }
     };
