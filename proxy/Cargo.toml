@@ -22,7 +22,7 @@ tokio = { version = "1.10.1", features = ["full"] }
 tokio-tungstenite-reconnect = { git = "ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git", branch = "main" }
 # tokio-tungstenite-reconnect = { path = "../../tokio-tungstenite-reconnect" }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2.2.2"
 
 [dev-dependencies]
