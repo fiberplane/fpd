@@ -26,7 +26,7 @@ use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
 use tokio::sync::watch;
 use tokio::task::LocalSet;
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
 
 /// This is a mapping from the provider type to the bytes of the wasm module
@@ -90,11 +90,33 @@ impl ProxyService {
         }
     }
 
+    #[instrument(err, skip_all)]
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
         info!("connecting to fiberplane");
         let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
-        let mut conn_id: Option<String> = conn_id_receiver.borrow().clone();
-        info!(?conn_id, "connection established");
+        conn_id_receiver.borrow_and_update();
+
+        let span = if let Some(conn_id) = conn_id_receiver.borrow().clone() {
+            info_span!("websocket", conn_id = conn_id.as_str())
+        } else {
+            info_span!("websocket", conn_id = tracing::field::Empty)
+        };
+        let _enter = span.enter();
+        info!("connection established");
+
+        // Update the conn_id if it changes
+        tokio::spawn(
+            async move {
+                while conn_id_receiver.changed().await.is_ok() {
+                    if let Some(conn_id) = conn_id_receiver.borrow().clone() {
+                        Span::current().record("conn_id", &conn_id.as_str());
+                    } else {
+                        Span::current().record("conn_id", &tracing::field::Empty);
+                    }
+                }
+            }
+            .in_current_span(),
+        );
 
         // Send the list of data sources to the relay
         let data_sources: SetDataSourcesMessage = self
@@ -103,10 +125,7 @@ impl ProxyService {
             .iter()
             .map(|(name, data_source)| (name.clone(), data_source.into()))
             .collect();
-        debug!(
-            ?conn_id,
-            "sending data sources to relay: {:?}", data_sources
-        );
+        debug!("sending data sources to relay: {:?}", data_sources);
         let message = RelayMessage::SetDataSources(data_sources);
         let message = Message::Binary(message.serialize_msgpack());
         ws.send(message).await?;
@@ -116,43 +135,43 @@ impl ProxyService {
         // Health check endpoints
         let ws_clone = ws.clone();
         if let Some(listen_address) = self.inner.listen_address {
-            tokio::spawn(async move {
-                if let Err(err) = serve_health_check_endpionts(listen_address, ws_clone).await {
-                    // TODO should we shut the server down?
-                    error!(?err, "Error serving health check endpoints");
+            tokio::spawn(
+                async move {
+                    if let Err(err) = serve_health_check_endpionts(listen_address, ws_clone).await {
+                        // TODO should we shut the server down?
+                        error!(?err, "Error serving health check endpoints");
+                    }
                 }
-            });
+                .in_current_span(),
+            );
         }
 
         // Spawn a separate task for handling outgoing messages
         // so that incoming and outgoing do not interfere with one another
-        let mut conn_id_receiver_clone = conn_id_receiver.clone();
-        conn_id_receiver_clone.borrow_and_update();
         let ws_clone = ws.clone();
         let mut shutdown_clone = shutdown.subscribe();
-        tokio::spawn(async move {
-            let mut conn_id: Option<String> = conn_id_receiver_clone.borrow().clone();
-            loop {
-                select! {
-                    outgoing = reply_receiver.recv().fuse() => {
-                        if let Some(message) = outgoing {
-                            trace!(?conn_id, ?message, "sending outgoing message");
-                            let message = Message::Binary(message.serialize_msgpack());
-                            if let Err(err) = ws_clone.send(message).await {
-                                error!(?conn_id, ?err, "error sending outgoing message to WebSocket");
+        tokio::spawn(
+            async move {
+                loop {
+                    select! {
+                        outgoing = reply_receiver.recv().fuse() => {
+                            if let Some(message) = outgoing {
+                                trace!(?message, "sending outgoing message");
+                                let message = Message::Binary(message.serialize_msgpack());
+                                if let Err(err) = ws_clone.send(message).await {
+                                    error!(?err, "error sending outgoing message to WebSocket");
+                                }
                             }
+                        },
+                        _ = shutdown_clone.recv().fuse() => {
+                            drop(ws_clone);
+                            break;
                         }
-                    },
-                    _ = conn_id_receiver_clone.changed().fuse() => {
-                        conn_id = conn_id_receiver_clone.borrow().clone();
-                    }
-                    _ = shutdown_clone.recv().fuse() => {
-                        drop(ws_clone);
-                        break;
                     }
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         loop {
             let reply_sender = reply_sender.clone();
@@ -163,34 +182,27 @@ impl ProxyService {
                         Some(Ok(Message::Binary(message))) => {
                             match ServerMessage::deserialize_msgpack(message) {
                                 Ok(message) => {
-                                    trace!(?conn_id, ?message, "got incoming message");
+                                    trace!(?message, "got incoming message");
                                     self.handle_message(message, reply_sender).await?;
                                 },
                                 Err(err) => {
-                                    error!(?conn_id, ?err, "Error deserializing MessagePack message");
+                                    error!(?err, "Error deserializing MessagePack message");
                                 }
                             }
                         },
                         Some(Err(err)) => {
-                            error!(?conn_id, ?err, "websocket error");
+                            error!(?err, "websocket error");
                             return Err(err.into())
                         },
                         None => {
-                            debug!(?conn_id, "websocket connection closed");
+                            debug!("websocket disconnected");
                             break;
                         }
-                        message => debug!(?conn_id, "ignoring websocket message of unexpected type {:?}", message)
+                        message => debug!(?message, "ignoring websocket message of unexpected type")
                     }
                 },
-                _ = conn_id_receiver.changed().fuse() => {
-                    let new_id = conn_id_receiver.borrow().clone();
-                    if conn_id != new_id {
-                        trace!("conn_id {:?} changed to {:?}", conn_id, new_id);
-                    }
-                    conn_id = new_id;
-                }
                 _ = shutdown.recv().fuse() => {
-                    trace!(?conn_id, "shutdown");
+                    trace!("shutdown");
                     drop(ws);
                     break;
                 }
@@ -246,6 +258,7 @@ impl ProxyService {
         }
     }
 
+    #[instrument(err, skip_all, fields(trace_id = ?message.op_id, data_source_name = ?message.data_source_name))]
     async fn handle_invoke_proxy_message(
         &self,
         message: InvokeProxyMessage,
@@ -253,15 +266,13 @@ impl ProxyService {
     ) -> Result<()> {
         let op_id = message.op_id;
         let data_source_name = message.data_source_name.as_str();
-        debug!(
-            "received a relay message for data source {}: {:?}",
-            data_source_name, message
-        );
+        trace!(?message, "received a relay message");
 
         // Try to create the runtime for the given data source
         let data_source = match self.inner.data_sources.get(data_source_name) {
             Some(data_source) => data_source.clone(),
             None => {
+                error!("received relay message for unknown data source");
                 reply.send(RelayMessage::Error(ErrorMessage {
                     op_id,
                     message: format!(
@@ -275,16 +286,17 @@ impl ProxyService {
 
         let runtime = match self.create_runtime(data_source.ty()).await {
             Ok(runtime) => runtime,
-            Err(e) => {
+            Err(err) => {
+                error!(?err, "error creating provider runtime");
                 reply.send(RelayMessage::Error(ErrorMessage {
                     op_id,
-                    message: format!("error creating provider runtime: {:?}", e),
+                    message: format!("error creating provider runtime: {:?}", err),
                 }))?;
                 return Ok(());
             }
         };
 
-        trace!(?data_source, ?message, "Invoking provider");
+        trace!(?data_source, "invoking provider");
         let DataSource::Prometheus(config) = data_source;
         let config = rmp_serde::to_vec(&config)?;
         let request = message.data;
@@ -295,6 +307,7 @@ impl ProxyService {
             request,
             config,
             reply,
+            span: Span::current(),
         };
 
         self.inner.local_task_handler.queue_task(task)?;
@@ -361,6 +374,7 @@ struct Task {
     request: Vec<u8>,
     config: Vec<u8>,
     reply: UnboundedSender<RelayMessage>,
+    span: Span,
 }
 
 /// A SingleThreadTaskHandler will make sure that all tasks that are run on it
@@ -408,6 +422,7 @@ impl SingleThreadTaskHandler {
     }
 
     async fn invoke_proxy_and_send_response(task: Task) {
+        let _enter = task.span.enter();
         let op_id = task.op_id;
         let runtime = task.runtime;
 
@@ -424,8 +439,12 @@ impl SingleThreadTaskHandler {
             }
         };
 
-        if let Err(send_err) = task.reply.send(response_message) {
-            error!(?send_err, "unable to send error to relay");
+        match task.reply.send(response_message) {
+            Ok(_) => debug!("sending provider response"),
+            Err(send_err) => error!(
+                ?send_err,
+                "unable to send response message to outgoing channel"
+            ),
         };
     }
 }
