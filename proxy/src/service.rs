@@ -184,7 +184,9 @@ impl ProxyService {
                 },
                 _ = conn_id_receiver.changed().fuse() => {
                     let new_id = conn_id_receiver.borrow().clone();
-                    trace!("conn_id {:?} changed to {:?}", conn_id, new_id);
+                    if conn_id != new_id {
+                        trace!("conn_id {:?} changed to {:?}", conn_id, new_id);
+                    }
                     conn_id = new_id;
                 }
                 _ = shutdown.recv().fuse() => {
