@@ -20,7 +20,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8.21"
 tokio = { version = "1.10.1", features = ["full"] }
 tokio-tungstenite-reconnect = { git = "ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git", branch = "main" }
-# tokio-tungstenite-reconnect = { path = "../../tokio-tungstenite-reconnect" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 url = "2.2.2"
@@ -29,4 +28,4 @@ url = "2.2.2"
 reqwest = { version = "0.11.6", features = ["rustls-tls"] }
 test-env-log = { version = "0.2.7", default-features = false, features = ["trace"] }
 tokio = { version = "1.10.1", features = ["full", "test-util"] }
-tokio-tungstenite = { version = "0.15.0", features = ["rustls-tls"] }
+tokio-tungstenite = { version = "0.16", features = ["rustls-tls-native-roots"] }
