@@ -137,7 +137,7 @@ impl ProxyService {
         if let Some(listen_address) = self.inner.listen_address {
             tokio::spawn(
                 async move {
-                    if let Err(err) = serve_health_check_endpionts(listen_address, ws_clone).await {
+                    if let Err(err) = serve_health_check_endpoints(listen_address, ws_clone).await {
                         // TODO should we shut the server down?
                         error!(?err, "Error serving health check endpoints");
                     }
@@ -451,7 +451,7 @@ impl SingleThreadTaskHandler {
 
 /// Listen on the given address and return a 200 for GET /
 /// and either 200 or 502 for GET /health, depending on the WebSocket connection status
-async fn serve_health_check_endpionts(addr: SocketAddr, ws: ReconnectingWebSocket) -> Result<()> {
+async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocket) -> Result<()> {
     let make_svc = make_service_fn(move |_conn| {
         let ws = ws.clone();
         async move {
