@@ -4,6 +4,12 @@ ARG BASE_IMAGE_VERSION=11-slim
 # Runtime image
 FROM debian:${BASE_IMAGE_VERSION}
 
+RUN apt-get update \
+ && apt-get install -y --force-yes --no-install-recommends ca-certificates \
+ && apt-get clean \
+ && apt-get autoremove \
+ && rm -rf /var/lib/apt/lists/*
+
 # This needs to be the path to the directory containing the providers
 ARG PROVIDERS_PATH=providers
 COPY ${PROVIDERS_PATH} /app/providers
