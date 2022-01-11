@@ -95,7 +95,7 @@ impl RelayMessage {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub enum DataSourceType {
     Prometheus,
 }
@@ -125,3 +125,10 @@ impl FromStr for DataSourceType {
 
 /// This is a map from the data source name to the data source's type
 pub type SetDataSourcesMessage = HashMap<String, DataSourceType>;
+
+#[test]
+fn data_source_type_should_serialize_to_plain_string() {
+    let ty = DataSourceType::Prometheus;
+    let serialized = serde_json::to_string(&ty).unwrap();
+    assert_eq!(serialized, "\"prometheus\"");
+}
