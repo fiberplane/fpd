@@ -1221,6 +1221,7 @@ dependencies = [
  "rmp-serde 0.15.5",
  "serde",
  "serde_bytes",
+ "serde_json",
  "thiserror",
  "uuid",
 ]
