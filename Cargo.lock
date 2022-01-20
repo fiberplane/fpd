@@ -1280,7 +1280,6 @@ dependencies = [
 name = "proxy_types"
 version = "0.1.0"
 dependencies = [
- "fp-provider-runtime",
  "rmp-serde",
  "serde",
  "serde_bytes",
