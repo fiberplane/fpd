@@ -15,12 +15,14 @@ use std::ops::Deref;
 // parameters defined by individual data sources.
 pub enum DataSource {
     Prometheus(Config),
+    Elasticsearch(Config),
 }
 
 impl DataSource {
     pub fn ty(&self) -> &str {
         match self {
             DataSource::Prometheus(_) => "prometheus",
+            DataSource::Elasticsearch(_) => "elasticsearch",
         }
     }
 }
@@ -29,6 +31,7 @@ impl From<&DataSource> for DataSourceType {
     fn from(d: &DataSource) -> Self {
         match d {
             DataSource::Prometheus(_) => DataSourceType::Prometheus,
+            DataSource::Elasticsearch(_) => DataSourceType::Elasticsearch,
         }
     }
 }

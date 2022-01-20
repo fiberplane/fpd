@@ -296,21 +296,41 @@ impl ProxyService {
             }
         };
 
-        trace!(?data_source, "invoking provider");
-        let DataSource::Prometheus(config) = data_source;
-        let config = rmp_serde::to_vec(&config)?;
-        let request = message.data;
+        match data_source {
+            DataSource::Prometheus(config) => {
+                // trace!(?data_source, "invoking provider");
+                let config = rmp_serde::to_vec(&config)?;
+                let request = message.data;
 
-        let task = Task {
-            runtime,
-            op_id,
-            request,
-            config,
-            reply,
-            span: Span::current(),
-        };
+                let task = Task {
+                    runtime,
+                    op_id,
+                    request,
+                    config,
+                    reply,
+                    span: Span::current(),
+                };
 
-        self.inner.local_task_handler.queue_task(task)?;
+                self.inner.local_task_handler.queue_task(task)?;
+            }
+            DataSource::Elasticsearch(config) => {
+                // trace!(?data_source, "invoking provider");
+                // let DataSource::Prometheus(config) = data_source;
+                let config = rmp_serde::to_vec(&config)?;
+                let request = message.data;
+
+                let task = Task {
+                    runtime,
+                    op_id,
+                    request,
+                    config,
+                    reply,
+                    span: Span::current(),
+                };
+
+                self.inner.local_task_handler.queue_task(task)?;
+            }
+        }
 
         Ok(())
     }
