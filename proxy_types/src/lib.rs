@@ -98,12 +98,16 @@ impl RelayMessage {
 #[serde(rename_all = "camelCase")]
 pub enum DataSourceType {
     Prometheus,
+    Elasticsearch,
+    Loki,
 }
 
 impl Display for DataSourceType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             DataSourceType::Prometheus => "prometheus",
+            DataSourceType::Elasticsearch => "elasticsearch",
+            DataSourceType::Loki => "loki",
         };
         f.write_str(s)
     }

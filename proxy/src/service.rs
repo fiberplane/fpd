@@ -1,6 +1,6 @@
 use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
-use fp_provider_runtime::Runtime;
+use fp_provider_runtime::spec::Runtime;
 use futures::select;
 use futures::FutureExt;
 use http::Method;
