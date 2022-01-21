@@ -13,6 +13,10 @@ jobs:
   tag:
     runs-on: ubuntu-latest
     steps:
+      - name: Set outputs
+        id: vars
+        run: echo "::set-output name=major::$(echo '${{ github.event.release.tag_name }}' | cut -c1-2"
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -36,10 +40,13 @@ jobs:
           SOURCE_TAG: "main-${{ github.sha }}"
           PUBLIC_IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
           TAG: "release-${{ github.event.release.tag_name }}"
+          MAJOR_TAG: "${{ steps.vars.outputs.major }}"
         run: |
           if docker pull "$PRIVATE_IMAGE:$SOURCE_TAG" ; then
             docker tag "$PRIVATE_IMAGE:$SOURCE_TAG" "$PUBLIC_IMAGE:$TAG"
             docker push "$PUBLIC_IMAGE:$TAG"
+            docker tag "$PRIVATE_IMAGE:$SOURCE_TAG" "$PUBLIC_IMAGE:$MAJOR_TAG"
+            docker push "$PUBLIC_IMAGE:$MAJOR_TAG"
           else
             echo "::error::Image was not found, please wait until it is finished uploading"
             exit 1
@@ -51,10 +58,13 @@ jobs:
           SOURCE_TAG: "main-${{ github.sha }}"
           PUBLIC_IMAGE: "fiberplane/proxy"
           TAG: "${{ github.event.release.tag_name }}"
+          MAJOR_TAG: "${{ steps.vars.outputs.major }}"
         run: |
           if docker pull "$PRIVATE_IMAGE:$SOURCE_TAG" ; then
             docker tag "$PRIVATE_IMAGE:$SOURCE_TAG" "$PUBLIC_IMAGE:$TAG"
             docker push "$PUBLIC_IMAGE:$TAG"
+            docker tag "$PRIVATE_IMAGE:$SOURCE_TAG" "$PUBLIC_IMAGE:$MAJOR_TAG"
+            docker push "$PUBLIC_IMAGE:$MAJOR_TAG"
           else
             echo "::error::Image was not found, please wait until it is finished uploading"
             exit 1
