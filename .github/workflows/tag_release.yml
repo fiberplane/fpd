@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Set outputs
         id: vars
-        run: echo "::set-output name=major::$(echo '${{ github.event.release.tag_name }}' | cut -c1-2"
+        run: echo "::set-output name=major::$(echo '${{ github.event.release.tag_name }}' | awk '{ split($0,version,".") ; print version[1] }'"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
