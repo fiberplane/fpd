@@ -34,6 +34,7 @@ impl From<&DataSource> for DataSourceType {
         match d {
             DataSource::Prometheus(_) => DataSourceType::Prometheus,
             DataSource::Elasticsearch(_) => DataSourceType::Elasticsearch,
+            DataSource::Loki(_) => DataSourceType::Loki,
         }
     }
 }
