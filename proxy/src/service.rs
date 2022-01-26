@@ -327,6 +327,21 @@ impl ProxyService {
 
                 self.inner.local_task_handler.queue_task(task)?;
             }
+            DataSource::Loki(config) => {
+                let config = rmp_serde::to_vec(&config)?;
+                let request = message.data;
+
+                let task = Task {
+                    runtime,
+                    op_id,
+                    request,
+                    config,
+                    reply,
+                    span: Span::current(),
+                };
+
+                self.inner.local_task_handler.queue_task(task)?;
+            }
         }
 
         Ok(())
