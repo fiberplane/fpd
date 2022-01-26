@@ -122,6 +122,7 @@ impl FromStr for DataSourceType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "prometheus" => Ok(DataSourceType::Prometheus),
+            "elasticsearch" => Ok(DataSourceType::Elasticsearch),
             _ => Err(UnexpectedDataSourceType(s.to_string())),
         }
     }
