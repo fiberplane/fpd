@@ -16,6 +16,7 @@ use std::ops::Deref;
 pub enum DataSource {
     Prometheus(Config),
     Elasticsearch(Config),
+    Loki(Config),
 }
 
 impl DataSource {
@@ -23,6 +24,7 @@ impl DataSource {
         match self {
             DataSource::Prometheus(_) => "prometheus",
             DataSource::Elasticsearch(_) => "elasticsearch",
+            DataSource::Loki(_) => "loki",
         }
     }
 }

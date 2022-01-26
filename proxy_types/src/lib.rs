@@ -123,6 +123,7 @@ impl FromStr for DataSourceType {
         match s {
             "prometheus" => Ok(DataSourceType::Prometheus),
             "elasticsearch" => Ok(DataSourceType::Elasticsearch),
+            "loki" => Ok(DataSourceType::Loki),
             _ => Err(UnexpectedDataSourceType(s.to_string())),
         }
     }
