@@ -296,53 +296,24 @@ impl ProxyService {
             }
         };
 
-        match data_source {
-            DataSource::Prometheus(config) => {
-                let config = rmp_serde::to_vec(&config)?;
-                let request = message.data;
+        let config = match data_source {
+            DataSource::Prometheus(config) => rmp_serde::to_vec(&config)?,
+            DataSource::Elasticsearch(config) => rmp_serde::to_vec(&config)?,
+            DataSource::Loki(config) => rmp_serde::to_vec(&config)?,
+        };
 
-                let task = Task {
-                    runtime,
-                    op_id,
-                    request,
-                    config,
-                    reply,
-                    span: Span::current(),
-                };
+        let request = message.data;
 
-                self.inner.local_task_handler.queue_task(task)?;
-            }
-            DataSource::Elasticsearch(config) => {
-                let config = rmp_serde::to_vec(&config)?;
-                let request = message.data;
+        let task = Task {
+            runtime,
+            op_id,
+            request,
+            config,
+            reply,
+            span: Span::current(),
+        };
 
-                let task = Task {
-                    runtime,
-                    op_id,
-                    request,
-                    config,
-                    reply,
-                    span: Span::current(),
-                };
-
-                self.inner.local_task_handler.queue_task(task)?;
-            }
-            DataSource::Loki(config) => {
-                let config = rmp_serde::to_vec(&config)?;
-                let request = message.data;
-
-                let task = Task {
-                    runtime,
-                    op_id,
-                    request,
-                    config,
-                    reply,
-                    span: Span::current(),
-                };
-
-                self.inner.local_task_handler.queue_task(task)?;
-            }
-        }
+        self.inner.local_task_handler.queue_task(task)?;
 
         Ok(())
     }
