@@ -6,16 +6,15 @@
 
 include('../relay/Tiltfile')
 
-proxy_token = 'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk';
-fiberplane_endpoint = 'ws://localhost:3001' if os.getenv('LOCAL_PROXY') or os.getenv('LOCAL_RELAY') else 'ws://relay'
+env={
+  'LISTEN_ADDRESS': 'localhost:3002',
+  'FIBERPLANE_ENDPOINT': 'ws://localhost:3001' if os.getenv('LOCAL_PROXY') or os.getenv('LOCAL_RELAY') else 'ws://relay',
+  'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
+}
 
 if os.getenv('LOCAL_PROXY'):
   local_resource('proxy', 
-    serve_env={
-      'LISTEN_ADDRESS': 'localhost:3002',
-      'FIBERPLANE_ENDPOINT': 'ws://localhost:3001',
-      'AUTH_TOKEN': proxy_token
-    },
+    serve_env=env,
     serve_cmd='cargo run --bin proxy',
     dir='proxy',
     deps=['Cargo.toml', 'Cargo.lock', 'src', 'migrations'], 
@@ -26,35 +25,4 @@ else:
   docker_build('proxy:latest', '.', dockerfile='./Dockerfile.dev', ssh='default')
   k8s_resource(workload='proxy', resource_deps=['relay'], port_forwards=3002, labels=['customer'])
 
-  k8s_yaml(blob('''
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: proxy
-    labels:
-      app: proxy
-  spec:
-    selector:
-      matchLabels:
-        app: proxy
-    template:
-      metadata:
-        labels:
-          app: proxy
-      spec:
-        containers:
-        - name: proxy
-          image: proxy:latest
-          imagePullPolicy: Always
-          env:
-            - name: RUST_LOG
-              value: proxy=trace
-            - name: AUTH_TOKEN
-              value: {}
-            - name: LISTEN_ADDRESS
-              value: 0.0.0.0:3002
-            - name: FIBERPLANE_ENDPOINT
-              value: {}
-          ports:
-          - containerPort: 3002
-  '''.format(proxy_token, fiberplane_endpoint)))
+  k8s_yaml(local('./scripts/template.sh deployment/deployment.template.yaml', env=env))
