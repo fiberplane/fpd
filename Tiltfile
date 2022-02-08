@@ -6,46 +6,42 @@
 
 include('../relay/Tiltfile')
 
+# Mapping from the provider name to the port it listens on
+all_providers = {
+  'elasticsearch': 9200,
+  'loki': 3100,
+  'prometheus': 9090,
+}
+
 # Run the data source providers
 data_sources_yaml = ''
 providers = []
 if os.getenv('PROVIDERS'):
   if os.getenv('PROVIDERS') == 'all':
-    providers = ['elasticsearch', 'prometheus']
+    providers = all_providers.keys()
   else:
     providers = os.getenv('PROVIDERS').split(',')
 
-# Elasticsearch
-if 'elasticsearch' in providers:
+for provider in providers:
+  if provider not in all_providers:
+    print('Provider %s not found. Available providers: %s' % (provider, ', '.join(all_providers.keys())))
+    continue
+  port = all_providers[provider]
+  # If the proxy is running outside of docker, it will access the providers via ports on localhost
+  # Otherwise, it will access them via the provider-specific kubernetes service
+  url = 'http://{}:{}'.format('localhost' if os.getenv('LOCAL_PROXY') else provider, port)
   k8s_yaml([
-    './deployment/local/elasticsearch_deployment.yaml',
-    './deployment/local/elasticsearch_service.yaml',
+    './deployment/local/%s_deployment.yaml' % provider,
+    './deployment/local/%s_service.yaml' % provider,
   ])
-  k8s_resource('elasticsearch', port_forwards=9200, labels=['customer'])
-  elasticsearch_url = 'http://localhost:9200' if os.getenv('LOCAL_PROXY') else 'http://elasticsearch:9200'
-  # Append the elasticsearch configuration to the data sources file
+  k8s_resource(provider, port_forwards=port, labels=['customer'])
+  # Append the configuration to the data sources file used to configure the proxy
   data_sources_yaml += '''
-Elasticsearch:
-  type: elasticsearch
+{}:
+  type: {}
   options:
-    url: %s
-''' % elasticsearch_url
-
-# Prometheus
-if 'prometheus' in providers:
-  k8s_yaml([
-    './deployment/local/prometheus_deployment.yaml',
-    './deployment/local/prometheus_service.yaml',
-  ])
-  k8s_resource('prometheus', port_forwards=9090, labels=['customer'])
-  prometheus_url = 'http://localhost:9090' if os.getenv('LOCAL_PROXY') else 'http://prometheus:9090'
-  # Append the prometheus configuration to the data sources file
-  data_sources_yaml += '''
-Prometheus:
-  type: prometheus
-  options:
-    url: %s
-''' % prometheus_url
+    url: {}
+'''.format(provider.capitalize(), provider, url)
 
 resource_deps = ['relay']
 if len(providers) > 0:
