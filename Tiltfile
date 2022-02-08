@@ -20,33 +20,48 @@ if 'elasticsearch' in providers:
   data_sources_yaml += '''
 Elasticsearch:
   type: elasticsearch
-  url: %s''' % elasticsearch_url
-  
-print('Using data sources:')
-print(data_sources_yaml)
+  options:
+    url: %s
+''' % elasticsearch_url
 
 # TODO how should we get the data sources into the dockerfile? env var? volume (can we write to a file here?)?
 
 resource_deps = ['relay']
 resource_deps.extend(providers)
 env={
-  'LISTEN_ADDRESS': 'localhost:3002',
+  'RUST_LOG': 'proxy=trace',
+  'LISTEN_ADDRESS': '127.0.0.1:3002',
   'FIBERPLANE_ENDPOINT': 'ws://localhost:3001' if os.getenv('LOCAL_PROXY') or os.getenv('LOCAL_RELAY') else 'ws://relay',
   'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 
 if os.getenv('LOCAL_PROXY'):
+  env['DATA_SOURCES'] = 'deployment/local/data_sources.yaml'
+  local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
   local_resource('proxy', 
     serve_env=env,
     serve_cmd='cargo run --bin proxy',
     dir='proxy',
     deps=['Cargo.toml', 'Cargo.lock', 'src', 'migrations'], 
     resource_deps=resource_deps, 
-    readiness_probe=probe(http_get=http_get_action(3002, path='/healthz')))
+    # Note: this endpoint is called "/health" rather than "healthz"
+    readiness_probe=probe(http_get=http_get_action(3002, path='/health')))
 else:
   # Run docker with ssh option to access private git repositories
   docker_build('proxy:latest', '.', dockerfile='./Dockerfile.dev', ssh='default')
-  k8s_resource(workload='proxy', resource_deps=resource_deps, port_forwards=3002, labels=['customer'])
+  k8s_resource(workload='proxy', resource_deps=resource_deps, objects=['proxy:configmap'], port_forwards=3002, labels=['customer'])
 
   k8s_yaml(local('./scripts/template.sh deployment/deployment.template.yaml', env=env))
+
+  configmap = '''
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: proxy
+    namespace: default
+  data:
+    data_sources.yaml: |
+      %s
+  ''' % data_sources_yaml.replace('\n', '\n      ')
+  k8s_yaml(blob(configmap))
   
