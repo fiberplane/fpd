@@ -8,8 +8,10 @@ include('../relay/Tiltfile')
 
 # Run the data source providers
 data_sources_yaml = ''
-all_providers = ['elasticsearch']
+all_providers = ['elasticsearch', 'prometheus']
 providers = all_providers if os.getenv('PROVIDERS') == 'all' else list(os.getenv('PROVIDERS', '').split(','))
+
+# Elasticsearch
 if 'elasticsearch' in providers:
   k8s_yaml([
     './deployment/local/elasticsearch_deployment.yaml',
@@ -24,6 +26,22 @@ Elasticsearch:
   options:
     url: %s
 ''' % elasticsearch_url
+
+# Prometheus
+if 'prometheus' in providers:
+  k8s_yaml([
+    './deployment/local/prometheus_deployment.yaml',
+    './deployment/local/prometheus_service.yaml',
+  ])
+  k8s_resource('prometheus', port_forwards=9090, labels=['customer'])
+  prometheus_url = 'http://localhost:9090' if os.getenv('LOCAL_PROXY') else 'http://prometheus:9090'
+  # Append the prometheus configuration to the data sources file
+  data_sources_yaml += '''
+Prometheus:
+  type: prometheus
+  options:
+    url: %s
+''' % prometheus_url
 
 resource_deps = ['relay']
 resource_deps.extend(providers)
