@@ -8,8 +8,12 @@ include('../relay/Tiltfile')
 
 # Run the data source providers
 data_sources_yaml = ''
-all_providers = ['elasticsearch', 'prometheus']
-providers = all_providers if os.getenv('PROVIDERS') == 'all' else list(os.getenv('PROVIDERS', '').split(','))
+providers = []
+if os.getenv('PROVIDERS'):
+  if os.getenv('PROVIDERS') == 'all':
+    providers = ['elasticsearch', 'prometheus']
+  else:
+    providers = os.getenv('PROVIDERS').split(',')
 
 # Elasticsearch
 if 'elasticsearch' in providers:
@@ -44,7 +48,8 @@ Prometheus:
 ''' % prometheus_url
 
 resource_deps = ['relay']
-resource_deps.extend(providers)
+if len(providers) > 0:
+  resource_deps.extend(providers)
 env={
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
