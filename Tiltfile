@@ -66,4 +66,3 @@ else:
       %s
   ''' % data_sources_yaml.replace('\n', '\n      ')
   k8s_yaml(blob(configmap))
-  
