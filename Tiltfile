@@ -17,14 +17,13 @@ if 'elasticsearch' in providers:
   ])
   k8s_resource('elasticsearch', port_forwards=9200, labels=['customer'])
   elasticsearch_url = 'http://localhost:9200' if os.getenv('LOCAL_PROXY') else 'http://elasticsearch:9200'
+  # Append the elasticsearch configuration to the data sources file
   data_sources_yaml += '''
 Elasticsearch:
   type: elasticsearch
   options:
     url: %s
 ''' % elasticsearch_url
-
-# TODO how should we get the data sources into the dockerfile? env var? volume (can we write to a file here?)?
 
 resource_deps = ['relay']
 resource_deps.extend(providers)
@@ -36,8 +35,10 @@ env={
 }
 
 if os.getenv('LOCAL_PROXY'):
+  # Write the data_sources.yaml to disk and point the proxy to it
   env['DATA_SOURCES'] = 'deployment/local/data_sources.yaml'
   local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
+
   local_resource('proxy', 
     serve_env=env,
     serve_cmd='cargo run --bin proxy',
@@ -53,6 +54,7 @@ else:
 
   k8s_yaml(local('./scripts/template.sh deployment/deployment.template.yaml', env=env))
 
+  # Apply the data sources configuration using k8s configmap
   configmap = '''
   apiVersion: v1
   kind: ConfigMap
