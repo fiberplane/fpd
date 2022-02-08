@@ -6,55 +6,82 @@
 
 include('../relay/Tiltfile')
 
-proxy_token = 'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk';
-fiberplane_endpoint = 'ws://localhost:3001' if os.getenv('LOCAL_PROXY') or os.getenv('LOCAL_RELAY') else 'ws://relay'
+# Mapping from the provider name to the port it listens on
+all_providers = {
+  'elasticsearch': 9200,
+  'loki': 3100,
+  'prometheus': 9090,
+}
+
+# Run the data source providers
+data_sources_yaml = ''
+providers = []
+if os.getenv('PROVIDERS'):
+  if os.getenv('PROVIDERS') == 'all':
+    providers = all_providers.keys()
+  else:
+    providers = os.getenv('PROVIDERS').split(',')
+
+for provider in providers:
+  if provider not in all_providers:
+    print('Provider %s not found. Available providers: %s' % (provider, ', '.join(all_providers.keys())))
+    continue
+  port = all_providers[provider]
+  # If the proxy is running outside of docker, it will access the providers via ports on localhost
+  # Otherwise, it will access them via the provider-specific kubernetes service
+  url = 'http://{}:{}'.format('localhost' if os.getenv('LOCAL_PROXY') else provider, port)
+  k8s_yaml([
+    './deployment/local/%s_deployment.yaml' % provider,
+    './deployment/local/%s_service.yaml' % provider,
+  ])
+  k8s_resource(provider, port_forwards=port, labels=['customer'])
+  # Append the configuration to the data sources file used to configure the proxy
+  data_sources_yaml += '''
+{}:
+  type: {}
+  options:
+    url: {}
+'''.format(provider.capitalize(), provider, url)
+
+resource_deps = ['relay']
+if len(providers) > 0:
+  resource_deps.extend(providers)
+env={
+  'RUST_LOG': 'proxy=trace',
+  'LISTEN_ADDRESS': '127.0.0.1:3002',
+  'FIBERPLANE_ENDPOINT': 'ws://localhost:3001' if os.getenv('LOCAL_PROXY') or os.getenv('LOCAL_RELAY') else 'ws://relay',
+  'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
+}
 
 if os.getenv('LOCAL_PROXY'):
+  # Write the data_sources.yaml to disk and point the proxy to it
+  env['DATA_SOURCES'] = 'deployment/local/data_sources.yaml'
+  local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
+
   local_resource('proxy', 
-    serve_env={
-      'LISTEN_ADDRESS': 'localhost:3002',
-      'FIBERPLANE_ENDPOINT': 'ws://localhost:3001',
-      'AUTH_TOKEN': proxy_token
-    },
+    serve_env=env,
     serve_cmd='cargo run --bin proxy',
     dir='proxy',
     deps=['Cargo.toml', 'Cargo.lock', 'src', 'migrations'], 
-    resource_deps=['relay'], 
-    readiness_probe=probe(http_get=http_get_action(3002, path='/healthz')))
+    resource_deps=resource_deps, 
+    # Note: this endpoint is called "/health" rather than "healthz"
+    readiness_probe=probe(http_get=http_get_action(3002, path='/health')))
 else:
   # Run docker with ssh option to access private git repositories
   docker_build('proxy:latest', '.', dockerfile='./Dockerfile.dev', ssh='default')
-  k8s_resource(workload='proxy', resource_deps=['relay'], port_forwards=3002, labels=['customer'])
+  k8s_resource(workload='proxy', resource_deps=resource_deps, objects=['proxy:configmap'], port_forwards=3002, labels=['customer'])
 
-  k8s_yaml(blob('''
-  apiVersion: apps/v1
-  kind: Deployment
+  k8s_yaml(local('./scripts/template.sh deployment/deployment.template.yaml', env=env))
+
+  # Apply the data sources configuration using k8s configmap
+  configmap = '''
+  apiVersion: v1
+  kind: ConfigMap
   metadata:
     name: proxy
-    labels:
-      app: proxy
-  spec:
-    selector:
-      matchLabels:
-        app: proxy
-    template:
-      metadata:
-        labels:
-          app: proxy
-      spec:
-        containers:
-        - name: proxy
-          image: proxy:latest
-          imagePullPolicy: Always
-          env:
-            - name: RUST_LOG
-              value: proxy=trace
-            - name: AUTH_TOKEN
-              value: {}
-            - name: LISTEN_ADDRESS
-              value: 0.0.0.0:3002
-            - name: FIBERPLANE_ENDPOINT
-              value: {}
-          ports:
-          - containerPort: 3002
-  '''.format(proxy_token, fiberplane_endpoint)))
+    namespace: default
+  data:
+    data_sources.yaml: |
+      %s
+  ''' % data_sources_yaml.replace('\n', '\n      ')
+  k8s_yaml(blob(configmap))
