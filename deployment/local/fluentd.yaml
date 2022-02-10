@@ -86,6 +86,18 @@ spec:
               value: "elastic"
             - name: FLUENT_ELASTICSEARCH_PASSWORD
               value: "changeme"
+            - name: FLUENTD_SYSTEMD_CONF
+              value: disable
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: "FLUENT_CONTAINER_TAIL_PARSER_TYPE"
+              value: "json_in_json"
+            - name: FLUENT_CONTAINER_TAIL_EXCLUDE_PATH
+              value: /var/log/containers/fluent*
+            - name: FLUENT_CONTAINER_TAIL_PARSER_TYPE
+              value: /^(?<time>.+) (?<stream>stdout|stderr)( (?<logtag>.))? (?<log>.*)$/
           resources:
             limits:
               memory: 200Mi
