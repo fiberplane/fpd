@@ -46,6 +46,14 @@ for provider in providers:
     url: {}
 '''.format(provider.capitalize(), provider, url)
 
+# If elasticsearch is running, add fluentd to forward logs to it
+if 'elasticsearch' in providers:
+  k8s_yaml('./deployment/local/fluentd.yaml')
+  k8s_resource('fluentd',
+    resource_deps=['elasticsearch'],
+    objects=['fluentd:serviceaccount', 'fluentd:clusterrole', 'fluentd:clusterrolebinding'],
+    labels=['customer'])
+
 resource_deps = ['relay']
 if len(providers) > 0:
   resource_deps.extend(providers)
