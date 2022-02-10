@@ -6,6 +6,9 @@
 
 include('../relay/Tiltfile')
 
+run_proxy_on_host = 'proxy' in os.getenv('RUN_ON_HOST', '').split(',') or os.getenv('RUN_ON_HOST') == 'all'
+run_relay_on_host = 'relay' in os.getenv('RUN_ON_HOST', '').split(',') or os.getenv('RUN_ON_HOST') == 'all'
+
 # Mapping from the provider name to the port it listens on
 all_providers = {
   'elasticsearch': 9200,
@@ -29,7 +32,7 @@ for provider in providers:
   port = all_providers[provider]
   # If the proxy is running outside of docker, it will access the providers via ports on localhost
   # Otherwise, it will access them via the provider-specific kubernetes service
-  url = 'http://{}:{}'.format('localhost' if os.getenv('LOCAL_PROXY') else provider, port)
+  url = 'http://{}:{}'.format('localhost' if run_proxy_on_host else provider, port)
   k8s_yaml([
     './deployment/local/%s_deployment.yaml' % provider,
     './deployment/local/%s_service.yaml' % provider,
@@ -49,7 +52,7 @@ if len(providers) > 0:
 env={
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
-  'FIBERPLANE_ENDPOINT': 'ws://localhost:3001' if os.getenv('LOCAL_PROXY') or os.getenv('LOCAL_RELAY') else 'ws://relay',
+  'FIBERPLANE_ENDPOINT': 'ws://localhost:3001' if run_proxy_on_host or run_relay_on_host else 'ws://relay',
   'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 
