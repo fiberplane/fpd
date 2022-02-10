@@ -100,9 +100,9 @@ spec:
               mountPath: /var/lib/docker/containers
               readOnly: true
             # When actual pod logs in /var/log/pods, the following lines should be used.
-            - name: dockercontainerlogdirectory
-              mountPath: /var/log/pods
-              readOnly: true
+            # - name: dockercontainerlogdirectory
+            # mountPath: /var/log/pods
+            # readOnly: true
       terminationGracePeriodSeconds: 30
       volumes:
         - name: varlog
@@ -113,6 +113,6 @@ spec:
           hostPath:
             path: /var/lib/docker/containers
         # When actual pod logs in /var/log/pods, the following lines should be used.
-        - name: dockercontainerlogdirectory
-          hostPath:
-            path: /var/log/pods
+        # - name: dockercontainerlogdirectory
+        # hostPath:
+        # path: /var/log/pods
