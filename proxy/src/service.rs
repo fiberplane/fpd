@@ -158,8 +158,9 @@ impl ProxyService {
                             if let Some(message) = outgoing {
                                 let trace_id = message.op_id();
                                 let message = Message::Binary(message.serialize_msgpack());
+                                let message_length = message.len();
                                 match ws_clone.send(message).await {
-                                    Ok(_) => debug!(?trace_id, "sent response message"),
+                                    Ok(_) => debug!(?trace_id, %message_length, "sent response message"),
                                     Err(err) => error!(?err, "error sending outgoing message to WebSocket"),
                                 }
                             }
