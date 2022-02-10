@@ -260,8 +260,8 @@ impl ProxyService {
     }
 
     #[instrument(err, skip_all, fields(
-        trace_id = ?message.op_id, 
-        data_source_name = ?message.data_source_name, 
+        trace_id = ?message.op_id,
+        data_source_name = ?message.data_source_name,
         message.data = %msgpack_to_json(&message.data)?
     ))]
     async fn handle_invoke_proxy_message(
