@@ -479,7 +479,7 @@ async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocke
                         }
                         (_, _) => (StatusCode::NOT_FOUND, Body::empty()),
                     };
-                    trace!(http_status_code = %status, http_method = %request.method(), path = request.uri().path());
+                    trace!(http_status_code = %status.as_u16(), http_method = %request.method(), path = request.uri().path());
 
                     Ok::<_, Infallible>(Response::builder().status(status).body(body).unwrap())
                 }
