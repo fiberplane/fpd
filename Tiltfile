@@ -49,10 +49,16 @@ for provider in providers:
 resource_deps = ['relay']
 if len(providers) > 0:
   resource_deps.extend(providers)
+if run_relay_on_host and run_proxy_on_host:
+  fiberplane_endpoint = 'ws://localhost:3001'
+elif run_relay_on_host:
+  fiberplane_endpoint = 'ws://host.docker.internal:3001'
+else:
+  fiberplane_endpoint = 'ws://relay'
 env={
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
-  'FIBERPLANE_ENDPOINT': 'ws://localhost:3001' if run_proxy_on_host or run_relay_on_host else 'ws://relay',
+  'FIBERPLANE_ENDPOINT': fiberplane_endpoint,
   'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 

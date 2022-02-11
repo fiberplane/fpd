@@ -156,10 +156,12 @@ impl ProxyService {
                     select! {
                         outgoing = reply_receiver.recv().fuse() => {
                             if let Some(message) = outgoing {
-                                trace!(?message, "sending outgoing message");
+                                let trace_id = message.op_id();
                                 let message = Message::Binary(message.serialize_msgpack());
-                                if let Err(err) = ws_clone.send(message).await {
-                                    error!(?err, "error sending outgoing message to WebSocket");
+                                let message_length = message.len();
+                                match ws_clone.send(message).await {
+                                    Ok(_) => debug!(?trace_id, %message_length, "sent response message"),
+                                    Err(err) => error!(?err, "error sending outgoing message to WebSocket"),
                                 }
                             }
                         },
@@ -182,7 +184,6 @@ impl ProxyService {
                         Some(Ok(Message::Binary(message))) => {
                             match ServerMessage::deserialize_msgpack(message) {
                                 Ok(message) => {
-                                    trace!(?message, "got incoming message");
                                     self.handle_message(message, reply_sender).await?;
                                 },
                                 Err(err) => {
@@ -258,7 +259,11 @@ impl ProxyService {
         }
     }
 
-    #[instrument(err, skip_all, fields(trace_id = ?message.op_id, data_source_name = ?message.data_source_name))]
+    #[instrument(err, skip_all, fields(
+        trace_id = ?message.op_id,
+        data_source_name = ?message.data_source_name,
+        message.data = %msgpack_to_json(&message.data)?
+    ))]
     async fn handle_invoke_proxy_message(
         &self,
         message: InvokeProxyMessage,
@@ -266,7 +271,7 @@ impl ProxyService {
     ) -> Result<()> {
         let op_id = message.op_id;
         let data_source_name = message.data_source_name.as_str();
-        trace!(?message, "received a relay message");
+        debug!("received a relay message");
 
         // Try to create the runtime for the given data source
         let data_source = match self.inner.data_sources.get(data_source_name) {
@@ -442,12 +447,8 @@ impl SingleThreadTaskHandler {
             }
         };
 
-        match task.reply.send(response_message) {
-            Ok(_) => debug!("sending provider response"),
-            Err(send_err) => error!(
-                ?send_err,
-                "unable to send response message to outgoing channel"
-            ),
+        if let Err(err) = task.reply.send(response_message) {
+            error!(?err, "unable to send response message to outgoing channel");
         };
     }
 }
@@ -478,6 +479,7 @@ async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocke
                         }
                         (_, _) => (StatusCode::NOT_FOUND, Body::empty()),
                     };
+                    trace!(http_status_code = %status.as_u16(), http_method = %request.method(), path = request.uri().path());
 
                     Ok::<_, Infallible>(Response::builder().status(status).body(body).unwrap())
                 }
@@ -489,4 +491,11 @@ async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocke
 
     let server = Server::bind(&addr).serve(make_svc);
     Ok(server.await?)
+}
+
+fn msgpack_to_json(input: &[u8]) -> Result<String> {
+    let mut deserializer = rmp_serde::Deserializer::new(input);
+    let mut serializer = serde_json::Serializer::new(Vec::new());
+    serde_transcode::transcode(&mut deserializer, &mut serializer)?;
+    Ok(String::from_utf8(serializer.into_inner())?)
 }
