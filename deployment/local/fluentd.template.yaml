@@ -93,11 +93,9 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: "FLUENT_CONTAINER_TAIL_PARSER_TYPE"
-              value: "json_in_json"
+              value: "${FLUENT_CONTAINER_TAIL_PARSER_TYPE-json_in_json}"
             - name: FLUENT_CONTAINER_TAIL_EXCLUDE_PATH
               value: /var/log/containers/fluent*
-            - name: FLUENT_CONTAINER_TAIL_PARSER_TYPE
-              value: /^(?<time>.+) (?<stream>stdout|stderr)( (?<logtag>.))? (?<log>.*)$/
           resources:
             limits:
               memory: 200Mi

@@ -48,7 +48,14 @@ for provider in providers:
 
 # If elasticsearch is running, add fluentd to forward logs to it
 if 'elasticsearch' in providers:
-  k8s_yaml('./deployment/local/fluentd.yaml')
+  fluentd_env={}
+  # In some k8s versions, logging is done with a different standard
+  # so this configures fluentd to understand the correct one
+  # See https://github.com/fluent/fluentd-kubernetes-daemonset/tree/master#use-cri-parser-for-containerdcri-o-logs
+  if k8s_context() in ['kind-kind']:
+    fluentd_env['FLUENT_CONTAINER_TAIL_PARSER_TYPE'] = '/^(?<time>.+) (?<stream>stdout|stderr)( (?<logtag>.))? (?<log>.*)$/'
+
+  k8s_yaml(local('./scripts/template.sh ./deployment/local/fluentd.template.yaml', env=fluentd_env))
   k8s_resource('fluentd',
     resource_deps=['elasticsearch'],
     objects=['fluentd:serviceaccount', 'fluentd:clusterrole', 'fluentd:clusterrolebinding'],
@@ -69,12 +76,12 @@ if os.getenv('LOCAL_PROXY'):
   env['DATA_SOURCES'] = 'deployment/local/data_sources.yaml'
   local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
 
-  local_resource('proxy', 
+  local_resource('proxy',
     serve_env=env,
     serve_cmd='cargo run --bin proxy',
     dir='proxy',
-    deps=['Cargo.toml', 'Cargo.lock', 'src', 'migrations'], 
-    resource_deps=resource_deps, 
+    deps=['Cargo.toml', 'Cargo.lock', 'src', 'migrations'],
+    resource_deps=resource_deps,
     # Note: this endpoint is called "/health" rather than "healthz"
     readiness_probe=probe(http_get=http_get_action(3002, path='/health')))
 else:
