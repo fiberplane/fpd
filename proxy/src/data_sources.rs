@@ -1,5 +1,5 @@
+use fiberplane::protocols::core::DataSourceType;
 use fp_provider_runtime::spec::types::Config;
-use proxy_types::DataSourceType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::From;

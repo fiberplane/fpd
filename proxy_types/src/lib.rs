@@ -1,8 +1,7 @@
+use fiberplane::protocols::core::DataSourceType;
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fmt::{Debug, Display};
-use std::str::FromStr;
+use std::{collections::HashMap, fmt::Debug};
 pub use uuid::Uuid;
 
 /// Messages intended for the Server to handle
@@ -109,41 +108,6 @@ impl RelayMessage {
             RelayMessage::InvokeProxyResponse(message) => Some(message.op_id),
             RelayMessage::Error(error) => Some(error.op_id),
             RelayMessage::SetDataSources(_) => None,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum DataSourceType {
-    Prometheus,
-    Elasticsearch,
-    Loki,
-}
-
-impl Display for DataSourceType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            DataSourceType::Prometheus => "prometheus",
-            DataSourceType::Elasticsearch => "elasticsearch",
-            DataSourceType::Loki => "loki",
-        };
-        f.write_str(s)
-    }
-}
-
-#[derive(thiserror::Error, Debug, PartialEq)]
-#[error("Unexpected data source type: {0}")]
-pub struct UnexpectedDataSourceType(String);
-
-impl FromStr for DataSourceType {
-    type Err = UnexpectedDataSourceType;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "prometheus" => Ok(DataSourceType::Prometheus),
-            "elasticsearch" => Ok(DataSourceType::Elasticsearch),
-            "loki" => Ok(DataSourceType::Loki),
-            _ => Err(UnexpectedDataSourceType(s.to_string())),
         }
     }
 }
