@@ -29,7 +29,7 @@ url = "2.2.2"
 
 [dev-dependencies]
 reqwest = { version = "0.11.6", features = ["rustls-tls"] }
-test-env-log = { version = "0.2.7", default-features = false, features = [
+test-log = { version = "0.2.8", default-features = false, features = [
     "trace",
 ] }
 tokio = { version = "1.10.1", features = ["full", "test-util"] }

@@ -1,5 +1,5 @@
 use crate::service::ProxyService;
-use clap::{AppSettings, Parser};
+use clap::Parser;
 use data_sources::DataSources;
 use std::io;
 use std::net::SocketAddr;
@@ -15,7 +15,7 @@ mod service;
 mod tests;
 
 #[derive(Parser)]
-#[clap(author, about, version, setting = AppSettings::ColoredHelp)]
+#[clap(author, about, version)]
 pub struct Arguments {
     #[clap(long, env = "WASM_DIR", default_value = "./providers")]
     //Path to directory containing provider WASM files
