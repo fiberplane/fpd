@@ -64,12 +64,14 @@ async fn sends_data_sources_on_connect() {
         "data source 1".to_string(),
         DataSource::Prometheus(Config {
             url: Some("prometheus.example".to_string()),
+            options: Default::default(),
         }),
     );
     data_sources.insert(
         "data source 2".to_string(),
         DataSource::Prometheus(Config {
             url: Some("prometheus.example".to_string()),
+            options: Default::default(),
         }),
     );
     let service = ProxyService::new(
@@ -326,6 +328,7 @@ async fn calls_provider_with_query_and_sends_result() {
         "data source 1".to_string(),
         DataSource::Prometheus(Config {
             url: Some(format!("http://{}", fake_prometheus_addr)),
+            options: Default::default(),
         }),
     );
     let service = ProxyService::init(
@@ -446,6 +449,7 @@ async fn handles_multiple_concurrent_messages() {
         "data source 1".to_string(),
         DataSource::Prometheus(Config {
             url: Some(format!("http://{}", fake_prometheus_addr)),
+            options: Default::default(),
         }),
     );
     let service = ProxyService::init(
@@ -556,6 +560,7 @@ async fn calls_provider_with_query_and_sends_error() {
         "data source 1".to_string(),
         DataSource::Prometheus(Config {
             url: Some(format!("http://{}", fake_prometheus_addr)),
+            options: Default::default(),
         }),
     );
     let service = ProxyService::init(
