@@ -522,9 +522,8 @@ dependencies = [
 [[package]]
 name = "fp-bindgen-macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#ef0f7e5a95fb1bac9f3064e60692750b31a97bd7"
+source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#b2c3f49d2f9866ed52e0498f767a1e2c49fbb19a"
 dependencies = [
- "once_cell",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -534,7 +533,7 @@ dependencies = [
 [[package]]
 name = "fp-bindgen-support"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#ef0f7e5a95fb1bac9f3064e60692750b31a97bd7"
+source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#b2c3f49d2f9866ed52e0498f767a1e2c49fbb19a"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
@@ -1273,6 +1272,8 @@ dependencies = [
  "rmp-serde",
  "routerify",
  "serde",
+ "serde-transcode",
+ "serde_json",
  "serde_yaml",
  "test-env-log",
  "tokio",
@@ -1699,6 +1700,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce31e24b01e1e524df96f1c2fdd054405f8d7376249a5110886fb4b658484789"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-transcode"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "590c0e25c2a5bb6e85bf5c1bce768ceb86b316e7a01bdf07d2cb4ec2271990e2"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

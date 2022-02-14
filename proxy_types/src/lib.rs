@@ -1,7 +1,7 @@
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::str::FromStr;
 pub use uuid::Uuid;
 
@@ -28,13 +28,23 @@ impl ServerMessage {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvokeProxyMessage {
     pub op_id: Uuid,
     pub data_source_name: String,
     #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
+}
+
+impl Debug for InvokeProxyMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InvokeProxyMessage")
+            .field("op_id", &self.op_id)
+            .field("data_source_name", &self.data_source_name)
+            .field("data", &format!("[{} bytes]", self.data.len()))
+            .finish()
+    }
 }
 
 /// Messages intended for the Relay to handle
@@ -52,12 +62,21 @@ impl From<ErrorMessage> for RelayMessage {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvokeProxyResponseMessage {
     pub op_id: Uuid,
     #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
+}
+
+impl Debug for InvokeProxyResponseMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InvokeProxyResponseMessage")
+            .field("op_id", &self.op_id)
+            .field("data", &format!("[{} bytes]", self.data.len()))
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -123,6 +142,7 @@ impl FromStr for DataSourceType {
         match s {
             "prometheus" => Ok(DataSourceType::Prometheus),
             "elasticsearch" => Ok(DataSourceType::Elasticsearch),
+            "loki" => Ok(DataSourceType::Loki),
             _ => Err(UnexpectedDataSourceType(s.to_string())),
         }
     }
