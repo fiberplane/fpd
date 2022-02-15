@@ -1,4 +1,4 @@
-use crate::service::{DataSources, ProxyService};
+use crate::service::{parse_data_sources_yaml, DataSources, ProxyService};
 use clap::Parser;
 use std::io;
 use std::net::SocketAddr;
@@ -67,7 +67,7 @@ async fn main() {
         .await
         .expect("error reading data sources YAML file");
     let data_sources: DataSources =
-        serde_yaml::from_str(&data_sources).expect("invalid data sources file");
+        parse_data_sources_yaml(&data_sources).expect("invalid data sources file");
 
     let proxy = ProxyService::init(
         args.fiberplane_endpoint,

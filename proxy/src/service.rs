@@ -14,6 +14,7 @@ use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage, Uuid,
 };
+use serde_yaml::Value;
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -506,4 +507,35 @@ fn msgpack_to_json(input: &[u8]) -> Result<String> {
     let mut serializer = serde_json::Serializer::new(Vec::new());
     serde_transcode::transcode(&mut deserializer, &mut serializer)?;
     Ok(String::from_utf8(serializer.into_inner())?)
+}
+
+pub fn parse_data_sources_yaml(yaml: &str) -> Result<DataSources> {
+    match serde_yaml::from_str(yaml) {
+        Ok(data_sources) => Ok(data_sources),
+        // Try parsing the old format that has a separate options key
+        Err(err) => match serde_yaml::from_str::<Value>(yaml) {
+            Ok(Value::Mapping(map)) => {
+                let value = map
+                    .into_iter()
+                    .map(|(key, mut value)| {
+                        if let Value::Mapping(ref mut value) = value {
+                            // Flatten the options into the top level map
+                            if let Some(Value::Mapping(options)) =
+                                value.remove(&Value::String("options".to_string()))
+                            {
+                                value.extend(options);
+                            }
+                        }
+                        (key, value)
+                    })
+                    .collect();
+                let data_sources = serde_yaml::from_value::<DataSources>(Value::Mapping(value))?;
+                Ok(data_sources)
+            }
+            Ok(_) => Err(anyhow!(
+                "Unable to parse data sources YAML: Expected a mapping"
+            )),
+            Err(_) => Err(anyhow!("Unable to parse data sources YAML: {}", err)),
+        },
+    }
 }

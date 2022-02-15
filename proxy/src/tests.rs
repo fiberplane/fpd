@@ -1,4 +1,4 @@
-use crate::service::{DataSources, ProxyService, WasmModules};
+use crate::service::{parse_data_sources_yaml, DataSources, ProxyService, WasmModules};
 use fiberplane::protocols::core::{DataSource, DataSourceType, PrometheusDataSource};
 use fp_provider_runtime::spec::types::{
     Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse, QueryInstant,
@@ -30,7 +30,34 @@ Production Prometheus:
 Dev Elasticsearch:
   type: elasticsearch
   url: http://localhost:9200";
-    let data_sources: DataSources = serde_yaml::from_str(yaml).unwrap();
+    let data_sources: DataSources = parse_data_sources_yaml(yaml).unwrap();
+    assert_eq!(data_sources.len(), 2);
+    match &data_sources["Production Prometheus"] {
+        DataSource::Prometheus(prometheus) => {
+            assert_eq!(prometheus.url, "http://localhost:9090");
+        }
+        _ => panic!("Expected Prometheus data source"),
+    }
+    match &data_sources["Dev Elasticsearch"] {
+        DataSource::Elasticsearch(elasticsearch) => {
+            assert_eq!(elasticsearch.url, "http://localhost:9200");
+        }
+        _ => panic!("Expected Elasticsearch data source"),
+    }
+}
+
+#[test]
+fn parses_old_data_sources_format() {
+    let yaml = "
+Production Prometheus:
+  type: prometheus
+  options:
+    url: http://localhost:9090
+Dev Elasticsearch:
+  type: elasticsearch
+  options:
+    url: http://localhost:9200";
+    let data_sources: DataSources = parse_data_sources_yaml(yaml).unwrap();
     assert_eq!(data_sources.len(), 2);
     match &data_sources["Production Prometheus"] {
         DataSource::Prometheus(prometheus) => {
