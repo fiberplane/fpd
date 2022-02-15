@@ -1,5 +1,5 @@
-use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
+use fiberplane::protocols::core::{DataSource, DataSourceType};
 use fp_provider_runtime::spec::Runtime;
 use futures::select;
 use futures::FutureExt;
@@ -29,8 +29,8 @@ use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
 
-/// This is a mapping from the provider type to the bytes of the wasm module
-pub type WasmModuleMap = HashMap<String, Vec<u8>>;
+pub type WasmModules = HashMap<DataSourceType, Vec<u8>>;
+pub type DataSources = HashMap<String, DataSource>;
 
 #[derive(Clone, Debug)]
 pub struct ProxyService {
@@ -42,7 +42,7 @@ struct Inner {
     endpoint: Url,
     auth_token: String,
     data_sources: DataSources,
-    wasm_modules: WasmModuleMap,
+    wasm_modules: WasmModules,
     max_retries: u32,
     local_task_handler: SingleThreadTaskHandler,
     listen_address: Option<SocketAddr>,
@@ -72,7 +72,7 @@ impl ProxyService {
     pub(crate) fn new(
         fiberplane_endpoint: Url,
         auth_token: String,
-        wasm_modules: WasmModuleMap,
+        wasm_modules: WasmModules,
         data_sources: DataSources,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
@@ -289,7 +289,7 @@ impl ProxyService {
             }
         };
 
-        let runtime = match self.create_runtime(data_source.ty()).await {
+        let runtime = match self.create_runtime((&data_source).into()).await {
             Ok(runtime) => runtime,
             Err(err) => {
                 error!(?err, "error creating provider runtime");
@@ -305,6 +305,17 @@ impl ProxyService {
             DataSource::Prometheus(config) => rmp_serde::to_vec(&config)?,
             DataSource::Elasticsearch(config) => rmp_serde::to_vec(&config)?,
             DataSource::Loki(config) => rmp_serde::to_vec(&config)?,
+            DataSource::Proxy(_) => {
+                error!("received relay message for proxy data source");
+                reply.send(RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: format!(
+                        "cannot send a message from one proxy to another: {}",
+                        data_source_name
+                    ),
+                }))?;
+                return Ok(());
+            }
         };
 
         let request = message.data;
@@ -323,11 +334,11 @@ impl ProxyService {
         Ok(())
     }
 
-    async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
+    async fn create_runtime(&self, data_source_type: DataSourceType) -> Result<Runtime> {
         let wasm_module: &[u8] = self
             .inner
             .wasm_modules
-            .get(data_source_type)
+            .get(&data_source_type)
             .unwrap_or_else(|| {
                 panic!(
                     "should have loaded wasm module for provider {}",
@@ -339,12 +350,9 @@ impl ProxyService {
     }
 }
 
-async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Result<WasmModuleMap> {
-    let data_source_types: HashSet<String> = data_sources
-        .0
-        .values()
-        .map(|d| d.ty().to_string())
-        .collect();
+async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Result<WasmModules> {
+    let data_source_types: HashSet<DataSourceType> =
+        data_sources.values().map(|d| d.into()).collect();
 
     let mut wasm_modules = HashMap::new();
     for data_source_type in data_source_types.into_iter() {

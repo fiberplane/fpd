@@ -1,6 +1,5 @@
-use crate::service::ProxyService;
+use crate::service::{DataSources, ProxyService};
 use clap::Parser;
-use data_sources::DataSources;
 use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -9,7 +8,6 @@ use tokio::fs;
 use tracing::{error, info, trace};
 use url::Url;
 
-mod data_sources;
 mod service;
 #[cfg(test)]
 mod tests;
