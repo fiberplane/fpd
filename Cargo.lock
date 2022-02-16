@@ -516,7 +516,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-type-name#7964c4befe5086c9cd0ffe6aa3df484d9068303a"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-type-name#4d4fb2fd85e16dd5c84c9494fd64f667da715367"
 dependencies = [
  "fp-bindgen",
  "once_cell",
@@ -561,7 +561,7 @@ dependencies = [
 [[package]]
 name = "fp-bindgen"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f86238e73bf9c022a8a08a2ba2cb1ba813a325ea"
+source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f0a4eeef26356d8c8b2848b91001efb280c6ba45"
 dependencies = [
  "Inflector",
  "fp-bindgen-macros",
@@ -577,7 +577,7 @@ dependencies = [
 [[package]]
 name = "fp-bindgen-macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f86238e73bf9c022a8a08a2ba2cb1ba813a325ea"
+source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f0a4eeef26356d8c8b2848b91001efb280c6ba45"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -2028,7 +2028,7 @@ dependencies = [
 [[package]]
 name = "time_util"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-type-name#7964c4befe5086c9cd0ffe6aa3df484d9068303a"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-type-name#4d4fb2fd85e16dd5c84c9494fd64f667da715367"
 dependencies = [
  "anyhow",
  "serde",
