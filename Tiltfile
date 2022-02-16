@@ -86,8 +86,7 @@ if run_proxy_on_host:
   local_resource('proxy',
     serve_env=env,
     serve_cmd='cargo run --bin proxy',
-    dir='proxy',
-    deps=['Cargo.toml', 'Cargo.lock', 'src', 'migrations'],
+    deps=['proxy', 'providers', 'deployment/local/data_sources.yaml'],
     resource_deps=resource_deps,
     # Note: this endpoint is called "/health" rather than "healthz"
     readiness_probe=probe(http_get=http_get_action(3002, path='/health')))
