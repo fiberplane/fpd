@@ -64,7 +64,7 @@ if 'elasticsearch' in providers:
 resource_deps = ['relay']
 if len(providers) > 0:
   resource_deps.extend(providers)
-if run_relay_on_host and run_proxy_on_host:
+if run_proxy_on_host:
   fiberplane_endpoint = 'ws://localhost:3001'
 elif run_relay_on_host:
   fiberplane_endpoint = 'ws://host.docker.internal:3001'
@@ -77,7 +77,7 @@ env={
   'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 
-if os.getenv('LOCAL_PROXY'):
+if run_proxy_on_host:
   # Write the data_sources.yaml to disk and point the proxy to it
   env['DATA_SOURCES'] = 'deployment/local/data_sources.yaml'
   local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
