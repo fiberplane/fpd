@@ -1,5 +1,8 @@
 use crate::service::{parse_data_sources_yaml, DataSources, ProxyService, WasmModules};
-use fiberplane::protocols::core::{DataSource, DataSourceType, PrometheusDataSource};
+use fiberplane::protocols::core::{
+    DataSource, DataSourceType, ElasticsearchDataSource, LokiDataSource, PrometheusDataSource,
+    ProxyDataSource,
+};
 use fp_provider_runtime::spec::types::{
     Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse, QueryInstant,
 };
@@ -10,7 +13,7 @@ use hyper::{header::HeaderValue, Body, Server};
 use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -74,6 +77,74 @@ Dev Elasticsearch:
 }
 
 #[test(tokio::test)]
+async fn only_loads_data_sources_for_providers_it_has() {
+    let mut data_sources = HashMap::new();
+    data_sources.insert(
+        "data source 1".to_string(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: "prometheus.example".to_string(),
+        }),
+    );
+    data_sources.insert(
+        "data source 2".to_string(),
+        DataSource::Elasticsearch(ElasticsearchDataSource {
+            url: "elasticsearch.example".to_string(),
+        }),
+    );
+    data_sources.insert(
+        "data source 3".to_string(),
+        DataSource::Loki(LokiDataSource {
+            url: "loki.example".to_string(),
+        }),
+    );
+    // This one won't be sent because we don't have a provider for it
+    data_sources.insert(
+        "data source for provider we don't have".to_string(),
+        DataSource::Proxy(ProxyDataSource {
+            data_source_name: "other data source".to_string(),
+            data_source_type: DataSourceType::Prometheus,
+            proxy_id: "test".to_string(),
+        }),
+    );
+    data_sources.insert(
+        "data source 4".to_string(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: "prometheus.example".to_string(),
+        }),
+    );
+    let wasm_path: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "providers"]
+        .iter()
+        .collect();
+    let service = ProxyService::init(
+        "ws://fiberplane.example/api/proxies/ws".parse().unwrap(),
+        "auth token".to_string(),
+        &wasm_path,
+        data_sources,
+        5,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(service.inner.data_sources.len(), 4);
+    assert_eq!(
+        service.inner.data_sources["data source 1"].data_source_type(),
+        DataSourceType::Prometheus
+    );
+    assert_eq!(
+        service.inner.data_sources["data source 2"].data_source_type(),
+        DataSourceType::Elasticsearch
+    );
+    assert_eq!(
+        service.inner.data_sources["data source 3"].data_source_type(),
+        DataSourceType::Loki
+    );
+    assert_eq!(
+        service.inner.data_sources["data source 4"].data_source_type(),
+        DataSourceType::Prometheus
+    );
+}
+
+#[test(tokio::test)]
 async fn sends_auth_token_in_header() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -119,8 +190,8 @@ async fn sends_data_sources_on_connect() {
     );
     data_sources.insert(
         "data source 2".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: "prometheus.example".to_string(),
+        DataSource::Elasticsearch(ElasticsearchDataSource {
+            url: "elasticsearch.example".to_string(),
         }),
     );
     let service = ProxyService::new(
@@ -155,7 +226,7 @@ async fn sends_data_sources_on_connect() {
                 );
                 assert_eq!(
                     data_sources.get("data source 2").unwrap(),
-                    &DataSourceType::Prometheus
+                    &DataSourceType::Elasticsearch
                 );
             }
             _ => panic!(),
