@@ -14,6 +14,7 @@ use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage, Uuid,
 };
+use ring::digest::{digest, SHA256};
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -92,7 +93,7 @@ impl ProxyService {
 
     #[instrument(err, skip_all)]
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
-        info!("connecting to fiberplane");
+        info!("connecting to fiberplane: {}", self.inner.endpoint);
         let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
         conn_id_receiver.borrow_and_update();
 
@@ -362,7 +363,13 @@ async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Resul
             )
         })?;
 
-        debug!("loaded provider: {}", data_source_type);
+        let hash = digest(&SHA256, &wasm_module);
+
+        info!(
+            "loaded provider: {} (sha256 digest: {})",
+            data_source_type,
+            encode_hex(hash.as_ref())
+        );
         wasm_modules.insert(data_source_type, wasm_module);
     }
 
@@ -498,4 +505,12 @@ fn msgpack_to_json(input: &[u8]) -> Result<String> {
     let mut serializer = serde_json::Serializer::new(Vec::new());
     serde_transcode::transcode(&mut deserializer, &mut serializer)?;
     Ok(String::from_utf8(serializer.into_inner())?)
+}
+
+fn encode_hex(input: &[u8]) -> String {
+    input
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join("")
 }

@@ -14,6 +14,7 @@ futures = "0.3.17"
 http = "0.2.4"
 hyper = { version = "0.14.12", features = ["full"] }
 proxy_types = { path = "../proxy_types" }
+ring = "0.16.20"
 rmp-serde = "1.0.0"
 routerify = "2.2.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -28,7 +29,7 @@ url = "2.2.2"
 
 [dev-dependencies]
 reqwest = { version = "0.11.6", features = ["rustls-tls"] }
-test-env-log = { version = "0.2.7", default-features = false, features = [
+test-log = { version = "0.2.8", default-features = false, features = [
     "trace",
 ] }
 tokio = { version = "1.10.1", features = ["full", "test-util"] }

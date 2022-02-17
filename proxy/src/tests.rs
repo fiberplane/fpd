@@ -15,7 +15,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use test_env_log::test;
+use test_log::test;
 use tokio::join;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
