@@ -1,5 +1,6 @@
 use crate::data_sources::{DataSource, DataSources};
 use crate::service::ProxyService;
+use fiberplane::protocols::core::DataSourceType;
 use fp_provider_runtime::spec::types::{
     Config, Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse,
     QueryInstant,
@@ -8,7 +9,7 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{header::HeaderValue, Body, Server};
-use proxy_types::{DataSourceType, InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
+use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::Path;
