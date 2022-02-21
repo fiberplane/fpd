@@ -1,8 +1,8 @@
 #!/bin/bash
 
 PROVIDERS=(
-    "prometheus" 
-    "elasticsearch" 
+    "prometheus"
+    "elasticsearch"
     "loki"
 )
 

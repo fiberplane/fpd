@@ -64,7 +64,7 @@ if 'elasticsearch' in providers:
 resource_deps = ['relay']
 if len(providers) > 0:
   resource_deps.extend(providers)
-if run_relay_on_host and run_proxy_on_host:
+if run_proxy_on_host:
   fiberplane_endpoint = 'ws://localhost:3001'
 elif run_relay_on_host:
   fiberplane_endpoint = 'ws://host.docker.internal:3001'
@@ -77,16 +77,16 @@ env={
   'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 
-if os.getenv('LOCAL_PROXY'):
+if run_proxy_on_host:
   # Write the data_sources.yaml to disk and point the proxy to it
   env['DATA_SOURCES'] = 'deployment/local/data_sources.yaml'
-  local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
+  if os.getenv('OVERWRITE_DATA_SOURCES') != '0':
+    local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
 
   local_resource('proxy',
     serve_env=env,
     serve_cmd='cargo run --bin proxy',
-    dir='proxy',
-    deps=['Cargo.toml', 'Cargo.lock', 'src', 'migrations'],
+    deps=['proxy', 'providers', 'deployment/local/data_sources.yaml'],
     resource_deps=resource_deps,
     # Note: this endpoint is called "/health" rather than "healthz"
     readiness_probe=probe(http_get=http_get_action(3002, path='/health')))

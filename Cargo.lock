@@ -1358,6 +1358,7 @@ dependencies = [
  "hyper",
  "proxy_types",
  "reqwest",
+ "ring",
  "rmp-serde",
  "routerify",
  "serde",

@@ -15,6 +15,7 @@ futures = "0.3.17"
 http = "0.2.4"
 hyper = { version = "0.14.12", features = ["full"] }
 proxy_types = { path = "../proxy_types" }
+ring = "0.16.20"
 rmp-serde = "1.0.0"
 routerify = "2.2.0"
 serde = { version = "1.0", features = ["derive"] }
