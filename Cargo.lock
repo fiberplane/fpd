@@ -516,7 +516,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-type-name#930c62d787e4c81883ee087fcf2a8c1e9d9b4c8d"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#e8817443f9c4039eec4627d7536b1d7f5e6369e1"
 dependencies = [
  "fp-bindgen",
  "once_cell",
@@ -2029,7 +2029,7 @@ dependencies = [
 [[package]]
 name = "time_util"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-type-name#930c62d787e4c81883ee087fcf2a8c1e9d9b4c8d"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#e8817443f9c4039eec4627d7536b1d7f5e6369e1"
 dependencies = [
  "anyhow",
  "serde",
