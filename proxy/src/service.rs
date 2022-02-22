@@ -6,6 +6,7 @@ use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Server};
+use lazy_static::lazy_static;
 use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage, Uuid,
@@ -23,6 +24,10 @@ use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span
 use url::Url;
 
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+
+lazy_static! {
+    static ref STATUS_REQUEST: Vec<u8> = rmp_serde::to_vec(&ProviderRequest::Status).unwrap();
+}
 
 /// This is a mapping from the provider type to the bytes of the wasm module
 pub type WasmModuleMap = HashMap<String, Vec<u8>>;
@@ -316,41 +321,60 @@ impl ProxyService {
     /// Invoke each data source provider with the status request
     /// and only return the providers that returned an OK status.
     async fn get_connected_data_sources(&self) -> SetDataSourcesMessage {
-        let status_request = rmp_serde::to_vec(&ProviderRequest::Status).unwrap();
-        // Use the same op_id for all requests
-        let op_id = Uuid::new_v4();
-
-        join_all(self.inner.data_sources.iter().map(move |(name, config)| {
-            let status_request = status_request.clone();
-            async move {
-                let message = InvokeProxyMessage {
-                    op_id,
-                    data_source_name: name.clone(),
-                    data: status_request,
-                };
-                let (reply_sender, mut reply_receiver) = unbounded_channel();
-                let invocation_result = self
-                    .handle_invoke_proxy_message(message, reply_sender)
-                    .await;
-                if invocation_result.is_ok() {
-                    if let Ok(Some(RelayMessage::InvokeProxyResponse(response))) =
-                        timeout(STATUS_REQUEST_TIMEOUT, reply_receiver.recv()).await
-                    {
-                        if let Ok(ProviderResponse::StatusOk) =
-                            rmp_serde::from_slice(&response.data)
-                        {
-                            return Some((name.clone(), config.into()));
-                        }
-                    }
-                }
-                None
-            }
-        }))
+        join_all(
+            self.inner
+                .data_sources
+                .iter()
+                .map(move |(name, data_source)| async move {
+                    self.check_provider_status(name.clone())
+                        .await
+                        .ok()
+                        .map(|_| (name.clone(), data_source.into()))
+                }),
+        )
         .await
         .into_iter()
         // Remove any that returned None
         .filter_map(|option| option)
         .collect()
+    }
+
+    #[instrument(err, skip(self))]
+    async fn check_provider_status(&self, data_source_name: String) -> Result<()> {
+        let message = InvokeProxyMessage {
+            op_id: Uuid::new_v4(),
+            data_source_name,
+            data: STATUS_REQUEST.clone(),
+        };
+        let (reply_sender, mut reply_receiver) = unbounded_channel();
+        self.handle_invoke_proxy_message(message, reply_sender)
+            .await?;
+        let response = timeout(STATUS_REQUEST_TIMEOUT, reply_receiver.recv())
+            .await
+            .with_context(|| "timed out checking provider status")?
+            .ok_or(anyhow!(
+                "Did not receive a status response from the provider"
+            ))?;
+        let response = match response {
+            RelayMessage::InvokeProxyResponse(response) => Ok::<_, anyhow::Error>(response),
+            RelayMessage::Error(err) => {
+                return Err(anyhow!("error invoking provider: {:?}", err));
+            }
+            _ => {
+                return Err(anyhow!("Unexpected response from provider: {:?}", response));
+            }
+        }?;
+        match rmp_serde::from_slice(&response.data) {
+            Ok(ProviderResponse::StatusOk) => {
+                debug!("provider is connected");
+                Ok(())
+            }
+            Ok(ProviderResponse::Error { error }) => {
+                Err(anyhow!("provider returned an error: {:?}", error))
+            }
+            Err(err) => Err(anyhow!("Error deserializing provider response: {:?}", err)),
+            _ => Err(anyhow!("Unexpected provider response: {:?}", response)),
+        }
     }
 
     async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
