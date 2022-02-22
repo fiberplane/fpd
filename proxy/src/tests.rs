@@ -64,25 +64,26 @@ async fn sends_data_sources_on_connect() {
     data_sources.insert(
         "data source 1".to_string(),
         DataSource::Prometheus(Config {
-            url: Some("prometheus.example".to_string()),
+            url: Some("http://prometheus.example".to_string()),
             options: Default::default(),
         }),
     );
     data_sources.insert(
         "data source 2".to_string(),
         DataSource::Prometheus(Config {
-            url: Some("prometheus.example".to_string()),
+            url: Some("http://prometheus.example".to_string()),
             options: Default::default(),
         }),
     );
-    let service = ProxyService::new(
+    let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
-        HashMap::new(),
+        Path::new("../providers"),
         DataSources(data_sources),
         5,
         None,
-    );
+    )
+    .await;
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
@@ -340,8 +341,7 @@ async fn calls_provider_with_query_and_sends_result() {
         5,
         None,
     )
-    .await
-    .unwrap();
+    .await;
 
     // After the proxy connects, send it a query
     let handle_connection = async move {
@@ -461,8 +461,7 @@ async fn handles_multiple_concurrent_messages() {
         5,
         None,
     )
-    .await
-    .unwrap();
+    .await;
 
     // After the proxy connects, send it a query
     let handle_connection = async move {
@@ -572,8 +571,7 @@ async fn calls_provider_with_query_and_sends_error() {
         5,
         None,
     )
-    .await
-    .unwrap();
+    .await;
 
     // After the proxy connects, send it a query
     let handle_connection = async move {

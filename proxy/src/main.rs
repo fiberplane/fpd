@@ -79,8 +79,7 @@ async fn main() {
         args.max_retries,
         args.listen_address,
     )
-    .await
-    .expect("Error initializing proxy");
+    .await;
 
     let (shutdown, _) = tokio::sync::broadcast::channel(3);
 
