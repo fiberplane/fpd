@@ -1,34 +1,28 @@
 use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
+use fp_provider::{ProviderRequest, ProviderResponse};
 use fp_provider_runtime::spec::Runtime;
-use futures::select;
-use futures::FutureExt;
-use http::Method;
-use http::StatusCode;
-use http::{Request, Response};
-use hyper::{
-    service::{make_service_fn, service_fn},
-    Body, Server,
-};
+use futures::{future::join_all, select, FutureExt};
+use http::{Method, Request, Response, StatusCode};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Server};
 use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage, Uuid,
 };
 use ring::digest::{digest, SHA256};
 use std::collections::{HashMap, HashSet};
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::path::Path;
-use std::sync::Arc;
+use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::fs;
 use tokio::runtime::Builder;
-use tokio::sync::broadcast::Sender;
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
-use tokio::sync::watch;
-use tokio::task::LocalSet;
+use tokio::sync::{broadcast::Sender, watch};
+use tokio::{task::LocalSet, time::timeout};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
+
+const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// This is a mapping from the provider type to the bytes of the wasm module
 pub type WasmModuleMap = HashMap<String, Vec<u8>>;
@@ -120,12 +114,7 @@ impl ProxyService {
         );
 
         // Send the list of data sources to the relay
-        let data_sources: SetDataSourcesMessage = self
-            .inner
-            .data_sources
-            .iter()
-            .map(|(name, data_source)| (name.clone(), data_source.into()))
-            .collect();
+        let data_sources = self.get_connected_data_sources().await;
         debug!("sending data sources to relay: {:?}", data_sources);
         let message = RelayMessage::SetDataSources(data_sources);
         let message = Message::Binary(message.serialize_msgpack());
@@ -322,6 +311,46 @@ impl ProxyService {
         self.inner.local_task_handler.queue_task(task)?;
 
         Ok(())
+    }
+
+    /// Invoke each data source provider with the status request
+    /// and only return the providers that returned an OK status.
+    async fn get_connected_data_sources(&self) -> SetDataSourcesMessage {
+        let status_request = rmp_serde::to_vec(&ProviderRequest::Status).unwrap();
+        // Use the same op_id for all requests
+        let op_id = Uuid::new_v4();
+
+        join_all(self.inner.data_sources.iter().map(move |(name, config)| {
+            let status_request = status_request.clone();
+            async move {
+                let message = InvokeProxyMessage {
+                    op_id,
+                    data_source_name: name.clone(),
+                    data: status_request,
+                };
+                let (reply_sender, mut reply_receiver) = unbounded_channel();
+                let invocation_result = self
+                    .handle_invoke_proxy_message(message, reply_sender)
+                    .await;
+                if invocation_result.is_ok() {
+                    if let Ok(Some(RelayMessage::InvokeProxyResponse(response))) =
+                        timeout(STATUS_REQUEST_TIMEOUT, reply_receiver.recv()).await
+                    {
+                        if let Ok(ProviderResponse::StatusOk) =
+                            rmp_serde::from_slice(&response.data)
+                        {
+                            return Some((name.clone(), config.into()));
+                        }
+                    }
+                }
+                None
+            }
+        }))
+        .await
+        .into_iter()
+        // Remove any that returned None
+        .filter_map(|option| option)
+        .collect()
     }
 
     async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
