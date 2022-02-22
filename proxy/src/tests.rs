@@ -12,6 +12,7 @@ use hyper::{header::HeaderValue, Body, Server};
 use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -22,6 +23,26 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
+
+async fn serve_status(status_code: StatusCode) -> SocketAddr {
+    let server =
+        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(move |_| async move {
+            Ok::<_, Infallible>(service_fn(move |_req: Request<Body>| async move {
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(status_code)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+            }))
+        }));
+    let addr = server.local_addr();
+
+    tokio::spawn(async move {
+        server.await.unwrap();
+    });
+    addr
+}
 
 #[test(tokio::test)]
 async fn sends_auth_token_in_header() {
@@ -57,24 +78,35 @@ async fn sends_auth_token_in_header() {
 }
 
 #[test(tokio::test)]
-async fn sends_data_sources_on_connect() {
+async fn sends_connected_data_sources_on_connect() {
+    let one = serve_status(StatusCode::OK).await;
+    let two = serve_status(StatusCode::OK).await;
+    let three = serve_status(StatusCode::INTERNAL_SERVER_ERROR).await;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let mut data_sources = HashMap::new();
-    data_sources.insert(
-        "data source 1".to_string(),
-        DataSource::Prometheus(Config {
-            url: Some("http://prometheus.example".to_string()),
-            options: Default::default(),
-        }),
-    );
-    data_sources.insert(
-        "data source 2".to_string(),
-        DataSource::Prometheus(Config {
-            url: Some("http://prometheus.example".to_string()),
-            options: Default::default(),
-        }),
-    );
+    let data_sources = HashMap::from([
+        (
+            "data source 1".to_string(),
+            DataSource::Prometheus(Config {
+                url: Some(format!("http://{}", one).parse().unwrap()),
+                options: Default::default(),
+            }),
+        ),
+        (
+            "data source 2".to_string(),
+            DataSource::Prometheus(Config {
+                url: Some(format!("http://{}", two).parse().unwrap()),
+                options: Default::default(),
+            }),
+        ),
+        (
+            "data source 3".to_string(),
+            DataSource::Prometheus(Config {
+                url: Some(format!("http://{}", three).parse().unwrap()),
+                options: Default::default(),
+            }),
+        ),
+    ]);
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),

@@ -1,6 +1,6 @@
 use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
-use fp_provider::{ProviderRequest, ProviderResponse};
+use fp_provider::{Error, ProviderRequest, ProviderResponse};
 use fp_provider_runtime::spec::Runtime;
 use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
@@ -327,10 +327,13 @@ impl ProxyService {
                 .iter()
                 .filter(|(_, data_source)| self.inner.wasm_modules.contains_key(data_source.ty()))
                 .map(move |(name, data_source)| async move {
-                    self.check_provider_status(name.clone())
-                        .await
-                        .ok()
-                        .map(|_| (name.clone(), data_source.into()))
+                    match self.check_provider_status(name.clone()).await {
+                        Ok(_) => Some((name.clone(), data_source.into())),
+                        Err(err) => {
+                            error!(data_source_name = ?name, ?err, "Error checking provider status. Ignoring data source");
+                            None
+                        }
+                    }
                 }),
         )
         .await
@@ -340,7 +343,7 @@ impl ProxyService {
         .collect()
     }
 
-    #[instrument(err, skip(self))]
+    #[instrument(skip(self))]
     async fn check_provider_status(&self, data_source_name: String) -> Result<()> {
         let message = InvokeProxyMessage {
             op_id: Uuid::new_v4(),
@@ -367,7 +370,13 @@ impl ProxyService {
         }?;
         match rmp_serde::from_slice(&response.data) {
             Ok(ProviderResponse::StatusOk) => {
-                debug!("provider is connected");
+                debug!("provider status check returned OK");
+                Ok(())
+            }
+            Ok(ProviderResponse::Error {
+                error: Error::UnsupportedRequest,
+            }) => {
+                debug!("provider does not support status request");
                 Ok(())
             }
             Ok(ProviderResponse::Error { error }) => {
