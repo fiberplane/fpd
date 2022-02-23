@@ -516,7 +516,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#e8817443f9c4039eec4627d7536b1d7f5e6369e1"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=tolerant-logs#1335867e3d23e8b5f641ce8c17566d570938a3f3"
 dependencies = [
  "fp-bindgen",
  "once_cell",
@@ -602,12 +602,13 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#361893fefc8617f905bcbbbdce95a017e937d403"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=tolerant-logs#67a605af4eb52364f02f929553f9245389794c10"
 dependencies = [
  "fp-bindgen-support",
  "rand",
  "reqwest",
  "rmp-serde",
+ "rmpv",
  "serde",
  "serde_bytes",
  "thiserror",
@@ -1660,6 +1661,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmpv"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de8813b3a2f95c5138fe5925bfb8784175d88d6bff059ba8ce090aa891319754"
+dependencies = [
+ "num-traits",
+ "rmp",
+ "serde",
+ "serde_bytes",
+]
+
+[[package]]
 name = "routerify"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2029,7 +2042,7 @@ dependencies = [
 [[package]]
 name = "time_util"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#e8817443f9c4039eec4627d7536b1d7f5e6369e1"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=tolerant-logs#1335867e3d23e8b5f641ce8c17566d570938a3f3"
 dependencies = [
  "anyhow",
  "serde",

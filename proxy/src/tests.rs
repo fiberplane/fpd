@@ -89,6 +89,8 @@ async fn only_loads_data_sources_for_providers_it_has() {
         "data source 2".to_string(),
         DataSource::Elasticsearch(ElasticsearchDataSource {
             url: "elasticsearch.example".to_string(),
+            timestamp_field_names: Vec::new(),
+            body_field_names: Vec::new(),
         }),
     );
     data_sources.insert(
@@ -192,6 +194,8 @@ async fn sends_data_sources_on_connect() {
         "data source 2".to_string(),
         DataSource::Elasticsearch(ElasticsearchDataSource {
             url: "elasticsearch.example".to_string(),
+            timestamp_field_names: Vec::new(),
+            body_field_names: Vec::new(),
         }),
     );
     let service = ProxyService::new(
