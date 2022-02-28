@@ -577,7 +577,7 @@ dependencies = [
 [[package]]
 name = "fp-bindgen-macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f0a4eeef26356d8c8b2848b91001efb280c6ba45"
+source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#59d067a6efbf349ab3e9df9e03b10c0804f6f059"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -588,7 +588,7 @@ dependencies = [
 [[package]]
 name = "fp-bindgen-support"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f86238e73bf9c022a8a08a2ba2cb1ba813a325ea"
+source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#59d067a6efbf349ab3e9df9e03b10c0804f6f059"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
@@ -600,9 +600,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "fp-provider"
+version = "1.0.0-alpha.1"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=tolerant-logs#86f528e9c0b089c8443955660a4fa2d97efc1c79"
+dependencies = [
+ "fp-bindgen-support",
+ "once_cell",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_bytes",
+]
+
+[[package]]
 name = "fp-provider-runtime"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=tolerant-logs#67a605af4eb52364f02f929553f9245389794c10"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=tolerant-logs#86f528e9c0b089c8443955660a4fa2d97efc1c79"
 dependencies = [
  "fp-bindgen-support",
  "rand",
@@ -1353,10 +1366,12 @@ dependencies = [
  "clap",
  "ctrlc",
  "fiberplane",
+ "fp-provider",
  "fp-provider-runtime",
  "futures",
  "http",
  "hyper",
+ "lazy_static",
  "proxy_types",
  "reqwest",
  "ring",
