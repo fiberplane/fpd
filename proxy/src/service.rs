@@ -326,7 +326,7 @@ impl ProxyService {
                 .data_sources
                 .iter()
                 .filter(|(_, data_source)| self.inner.wasm_modules.contains_key(data_source.ty()))
-                .map(move |(name, data_source)| async move {
+                .map(|(name, data_source)| async move {
                     match self.check_provider_status(name.clone()).await {
                         Ok(_) => Some((name.clone(), data_source.into())),
                         Err(err) => {
