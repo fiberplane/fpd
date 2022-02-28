@@ -350,8 +350,7 @@ impl ProxyService {
         )
         .await
         .into_iter()
-        // Remove any that returned None
-        .filter_map(|option| option)
+        .flatten()
         .collect()
     }
 
@@ -404,10 +403,7 @@ impl ProxyService {
             .inner
             .wasm_modules
             .get(data_source_type)
-            .ok_or(anyhow!(
-                "no wasm module loaded for provider: {}",
-                data_source_type,
-            ))?;
+            .ok_or_else(|| anyhow!("no wasm module loaded for provider: {}", data_source_type,))?;
 
         compile_wasm(wasm_module)
     }
