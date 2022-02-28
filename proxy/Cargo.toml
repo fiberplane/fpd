@@ -10,10 +10,12 @@ anyhow = "1.0.44"
 clap = { version = "3.0.0", features = ["derive", "env"] }
 ctrlc = "3.2.1"
 fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "main" }
-fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "main" }
+fp-provider = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "fp-1268-status-request" }
+fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/providers.git", branch = "fp-1268-status-request" }
 futures = "0.3.17"
 http = "0.2.4"
 hyper = { version = "0.14.12", features = ["full"] }
+lazy_static = "1.4.0"
 proxy_types = { path = "../proxy_types" }
 ring = "0.16.20"
 rmp-serde = "1.0.0"

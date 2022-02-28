@@ -1,34 +1,33 @@
 use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
+use fp_provider::{Error, ProviderRequest, ProviderResponse};
 use fp_provider_runtime::spec::Runtime;
-use futures::select;
-use futures::FutureExt;
-use http::Method;
-use http::StatusCode;
-use http::{Request, Response};
-use hyper::{
-    service::{make_service_fn, service_fn},
-    Body, Server,
-};
+use futures::{future::join_all, select, FutureExt};
+use http::{Method, Request, Response, StatusCode};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Server};
+use lazy_static::lazy_static;
 use proxy_types::{
     ErrorMessage, InvokeProxyMessage, InvokeProxyResponseMessage, RelayMessage, ServerMessage,
     SetDataSourcesMessage, Uuid,
 };
 use ring::digest::{digest, SHA256};
 use std::collections::{HashMap, HashSet};
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::path::Path;
-use std::sync::Arc;
+use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::fs;
 use tokio::runtime::Builder;
-use tokio::sync::broadcast::Sender;
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
-use tokio::sync::watch;
-use tokio::task::LocalSet;
+use tokio::sync::{broadcast::Sender, watch};
+use tokio::{task::LocalSet, time::timeout};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
+
+const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+
+lazy_static! {
+    static ref STATUS_REQUEST: Vec<u8> = rmp_serde::to_vec(&ProviderRequest::Status).unwrap();
+}
 
 /// This is a mapping from the provider type to the bytes of the wasm module
 pub type WasmModuleMap = HashMap<String, Vec<u8>>;
@@ -58,16 +57,16 @@ impl ProxyService {
         data_sources: DataSources,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
-    ) -> Result<Self> {
-        let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await?;
-        Ok(ProxyService::new(
+    ) -> Self {
+        let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await;
+        ProxyService::new(
             fiberplane_endpoint,
             auth_token,
             wasm_modules,
             data_sources,
             max_retries,
             listen_address,
-        ))
+        )
     }
 
     pub(crate) fn new(
@@ -120,12 +119,7 @@ impl ProxyService {
         );
 
         // Send the list of data sources to the relay
-        let data_sources: SetDataSourcesMessage = self
-            .inner
-            .data_sources
-            .iter()
-            .map(|(name, data_source)| (name.clone(), data_source.into()))
-            .collect();
+        let data_sources = self.get_connected_data_sources().await;
         debug!("sending data sources to relay: {:?}", data_sources);
         let message = RelayMessage::SetDataSources(data_sources);
         let message = Message::Binary(message.serialize_msgpack());
@@ -272,7 +266,7 @@ impl ProxyService {
     ) -> Result<()> {
         let op_id = message.op_id;
         let data_source_name = message.data_source_name.as_str();
-        debug!("received a relay message");
+        debug!("handling relay message");
 
         // Try to create the runtime for the given data source
         let data_source = match self.inner.data_sources.get(data_source_name) {
@@ -324,23 +318,90 @@ impl ProxyService {
         Ok(())
     }
 
+    /// Invoke each data source provider with the status request
+    /// and only return the providers that returned an OK status.
+    async fn get_connected_data_sources(&self) -> SetDataSourcesMessage {
+        join_all(
+            self.inner
+                .data_sources
+                .iter()
+                .filter(|(_, data_source)| self.inner.wasm_modules.contains_key(data_source.ty()))
+                .map(|(name, data_source)| async move {
+                    match self.check_provider_status(name.clone()).await {
+                        Ok(_) => Some((name.clone(), data_source.into())),
+                        Err(err) => {
+                            error!(data_source_name = ?name, ?err, "Error checking provider status. Ignoring data source");
+                            None
+                        }
+                    }
+                }),
+        )
+        .await
+        .into_iter()
+        // Remove any that returned None
+        .filter_map(|option| option)
+        .collect()
+    }
+
+    #[instrument(skip(self))]
+    async fn check_provider_status(&self, data_source_name: String) -> Result<()> {
+        let message = InvokeProxyMessage {
+            op_id: Uuid::new_v4(),
+            data_source_name,
+            data: STATUS_REQUEST.clone(),
+        };
+        let (reply_sender, mut reply_receiver) = unbounded_channel();
+        self.handle_invoke_proxy_message(message, reply_sender)
+            .await?;
+        let response = timeout(STATUS_REQUEST_TIMEOUT, reply_receiver.recv())
+            .await
+            .with_context(|| "timed out checking provider status")?
+            .ok_or(anyhow!(
+                "Did not receive a status response from the provider"
+            ))?;
+        let response = match response {
+            RelayMessage::InvokeProxyResponse(response) => Ok::<_, anyhow::Error>(response),
+            RelayMessage::Error(err) => {
+                return Err(anyhow!("error invoking provider: {:?}", err));
+            }
+            _ => {
+                return Err(anyhow!("Unexpected response from provider: {:?}", response));
+            }
+        }?;
+        match rmp_serde::from_slice(&response.data) {
+            Ok(ProviderResponse::StatusOk) => {
+                debug!("provider status check returned OK");
+                Ok(())
+            }
+            Ok(ProviderResponse::Error {
+                error: Error::UnsupportedRequest,
+            }) => {
+                debug!("provider does not support status request");
+                Ok(())
+            }
+            Ok(ProviderResponse::Error { error }) => {
+                Err(anyhow!("provider returned an error: {:?}", error))
+            }
+            Err(err) => Err(anyhow!("Error deserializing provider response: {:?}", err)),
+            _ => Err(anyhow!("Unexpected provider response: {:?}", response)),
+        }
+    }
+
     async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
         let wasm_module: &[u8] = self
             .inner
             .wasm_modules
             .get(data_source_type)
-            .unwrap_or_else(|| {
-                panic!(
-                    "should have loaded wasm module for provider {}",
-                    data_source_type,
-                )
-            });
+            .ok_or(anyhow!(
+                "no wasm module loaded for provider: {}",
+                data_source_type,
+            ))?;
 
         compile_wasm(wasm_module)
     }
 }
 
-async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Result<WasmModuleMap> {
+async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> WasmModuleMap {
     let data_source_types: HashSet<String> = data_sources
         .0
         .values()
@@ -351,20 +412,31 @@ async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Resul
     for data_source_type in data_source_types.into_iter() {
         // Each provider's wasm module is found in the wasm_dir as provider_name.wasm
         let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
-        let wasm_module = fs::read(wasm_path)
-            .await
-            .with_context(|| format!("Error loading wasm file: {}", wasm_path.display()))?;
+        let wasm_module = match fs::read(wasm_path).await {
+            Ok(wasm_module) => wasm_module,
+            Err(err) => {
+                error!(
+                    ?err,
+                    "Error loading wasm file: {} Ignoring data sources of type: {}",
+                    wasm_path.display(),
+                    data_source_type
+                );
+                continue;
+            }
+        };
 
         // Make sure the wasm file can compile
-        compile_wasm(&wasm_module).with_context(|| {
+        if let Err(err) = compile_wasm(&wasm_module).with_context(|| {
             format!(
                 "Error compiling wasm file for provider: {}",
                 &data_source_type
             )
-        })?;
+        }) {
+            error!(?err, "Error compiling wasm file: {}", wasm_path.display());
+            continue;
+        };
 
         let hash = digest(&SHA256, &wasm_module);
-
         info!(
             "loaded provider: {} (sha256 digest: {})",
             data_source_type,
@@ -373,7 +445,7 @@ async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> Resul
         wasm_modules.insert(data_source_type, wasm_module);
     }
 
-    Ok(wasm_modules)
+    wasm_modules
 }
 
 fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
