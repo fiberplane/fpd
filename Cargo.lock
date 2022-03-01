@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "fp-provider"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=fp-1268-status-request#d5dd4bac524519f859ade391c9241a17966d7e4c"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#13469c5b0c169add6b7d5e6fa1da3acb56680e9c"
 dependencies = [
  "fp-bindgen-support",
  "once_cell",
@@ -614,7 +614,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=fp-1268-status-request#d5dd4bac524519f859ade391c9241a17966d7e4c"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#13469c5b0c169add6b7d5e6fa1da3acb56680e9c"
 dependencies = [
  "fp-bindgen-support",
  "rand",
