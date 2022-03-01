@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "fp-provider"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=tolerant-logs#86f528e9c0b089c8443955660a4fa2d97efc1c79"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#24e654e2c26d90f19f267a988c64661ad6789a64"
 dependencies = [
  "fp-bindgen-support",
  "once_cell",
@@ -615,7 +615,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=tolerant-logs#86f528e9c0b089c8443955660a4fa2d97efc1c79"
+source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#24e654e2c26d90f19f267a988c64661ad6789a64"
 dependencies = [
  "fp-bindgen-support",
  "rand",
