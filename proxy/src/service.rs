@@ -1,5 +1,5 @@
-use crate::data_sources::{DataSource, DataSources};
 use anyhow::{anyhow, Context, Result};
+use fiberplane::protocols::core::{DataSource, DataSourceType};
 use fp_provider::{Error, ProviderRequest, ProviderResponse};
 use fp_provider_runtime::spec::Runtime;
 use futures::{future::join_all, select, FutureExt};
@@ -12,6 +12,7 @@ use proxy_types::{
     SetDataSourcesMessage, Uuid,
 };
 use ring::digest::{digest, SHA256};
+use serde_yaml::Value;
 use std::collections::{HashMap, HashSet};
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::fs;
@@ -23,26 +24,25 @@ use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
 
+pub type WasmModules = HashMap<DataSourceType, Vec<u8>>;
+pub type DataSources = HashMap<String, DataSource>;
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 lazy_static! {
     static ref STATUS_REQUEST: Vec<u8> = rmp_serde::to_vec(&ProviderRequest::Status).unwrap();
 }
 
-/// This is a mapping from the provider type to the bytes of the wasm module
-pub type WasmModuleMap = HashMap<String, Vec<u8>>;
-
 #[derive(Clone, Debug)]
 pub struct ProxyService {
-    inner: Arc<Inner>,
+    pub(crate) inner: Arc<Inner>,
 }
 
 #[derive(Debug)]
-struct Inner {
+pub(crate) struct Inner {
     endpoint: Url,
     auth_token: String,
-    data_sources: DataSources,
-    wasm_modules: WasmModuleMap,
+    pub(crate) data_sources: DataSources,
+    wasm_modules: WasmModules,
     max_retries: u32,
     local_task_handler: SingleThreadTaskHandler,
     listen_address: Option<SocketAddr>,
@@ -58,7 +58,8 @@ impl ProxyService {
         max_retries: u32,
         listen_address: Option<SocketAddr>,
     ) -> Self {
-        let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await;
+        // Load providers and filter data sources so we only send data sources we have providers for
+        let (data_sources, wasm_modules) = load_wasm_modules(wasm_dir, data_sources).await;
         ProxyService::new(
             fiberplane_endpoint,
             auth_token,
@@ -72,7 +73,7 @@ impl ProxyService {
     pub(crate) fn new(
         fiberplane_endpoint: Url,
         auth_token: String,
-        wasm_modules: WasmModuleMap,
+        wasm_modules: WasmModules,
         data_sources: DataSources,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
@@ -284,7 +285,7 @@ impl ProxyService {
             }
         };
 
-        let runtime = match self.create_runtime(data_source.ty()).await {
+        let runtime = match self.create_runtime(&data_source.data_source_type()).await {
             Ok(runtime) => runtime,
             Err(err) => {
                 error!(?err, "error creating provider runtime");
@@ -300,6 +301,17 @@ impl ProxyService {
             DataSource::Prometheus(config) => rmp_serde::to_vec(&config)?,
             DataSource::Elasticsearch(config) => rmp_serde::to_vec(&config)?,
             DataSource::Loki(config) => rmp_serde::to_vec(&config)?,
+            DataSource::Proxy(_) => {
+                error!("received relay message for proxy data source");
+                reply.send(RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: format!(
+                        "cannot send a message from one proxy to another: {}",
+                        data_source_name
+                    ),
+                }))?;
+                return Ok(());
+            }
         };
 
         let request = message.data;
@@ -325,7 +337,7 @@ impl ProxyService {
             self.inner
                 .data_sources
                 .iter()
-                .filter(|(_, data_source)| self.inner.wasm_modules.contains_key(data_source.ty()))
+                .filter(|(_, data_source)| self.inner.wasm_modules.contains_key(&data_source.data_source_type()))
                 .map(|(name, data_source)| async move {
                     match self.check_provider_status(name.clone()).await {
                         Ok(_) => Some((name.clone(), data_source.into())),
@@ -338,8 +350,7 @@ impl ProxyService {
         )
         .await
         .into_iter()
-        // Remove any that returned None
-        .filter_map(|option| option)
+        .flatten()
         .collect()
     }
 
@@ -387,65 +398,75 @@ impl ProxyService {
         }
     }
 
-    async fn create_runtime(&self, data_source_type: &str) -> Result<Runtime> {
+    async fn create_runtime(&self, data_source_type: &DataSourceType) -> Result<Runtime> {
         let wasm_module: &[u8] = self
             .inner
             .wasm_modules
             .get(data_source_type)
-            .ok_or(anyhow!(
-                "no wasm module loaded for provider: {}",
-                data_source_type,
-            ))?;
+            .ok_or_else(|| anyhow!("no wasm module loaded for provider: {}", data_source_type,))?;
 
         compile_wasm(wasm_module)
     }
 }
 
-async fn load_wasm_modules(wasm_dir: &Path, data_sources: &DataSources) -> WasmModuleMap {
-    let data_source_types: HashSet<String> = data_sources
-        .0
-        .values()
-        .map(|d| d.ty().to_string())
-        .collect();
+async fn load_wasm_modules(
+    wasm_dir: &Path,
+    data_sources: DataSources,
+) -> (DataSources, WasmModules) {
+    let data_source_types: HashSet<DataSourceType> =
+        data_sources.values().map(|d| d.into()).collect();
 
     let mut wasm_modules = HashMap::new();
     for data_source_type in data_source_types.into_iter() {
         // Each provider's wasm module is found in the wasm_dir as provider_name.wasm
         let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
-        let wasm_module = match fs::read(wasm_path).await {
-            Ok(wasm_module) => wasm_module,
+        match fs::read(wasm_path).await {
+            Ok(wasm_module) => {
+                // Make sure the wasm file can compile
+                match compile_wasm(&wasm_module) {
+                    Ok(_) => {
+                        let hash = digest(&SHA256, &wasm_module);
+                        info!(
+                            "loaded provider: {} (sha256 digest: {})",
+                            data_source_type,
+                            encode_hex(hash.as_ref())
+                        );
+                        wasm_modules.insert(data_source_type, wasm_module);
+                    }
+                    Err(err) => {
+                        error!(
+                            "Error compiling wasm module: {}. Ignoring data sources of type: {}: {:?}",
+                            wasm_path.display(),
+                            data_source_type, err
+                        );
+                    }
+                }
+            }
             Err(err) => {
                 error!(
                     ?err,
-                    "Error loading wasm file: {} Ignoring data sources of type: {}",
+                    "Error loading wasm module: {}. Ignoring data sources of type: {}",
                     wasm_path.display(),
                     data_source_type
                 );
-                continue;
             }
-        };
-
-        // Make sure the wasm file can compile
-        if let Err(err) = compile_wasm(&wasm_module).with_context(|| {
-            format!(
-                "Error compiling wasm file for provider: {}",
-                &data_source_type
-            )
-        }) {
-            error!(?err, "Error compiling wasm file: {}", wasm_path.display());
-            continue;
-        };
-
-        let hash = digest(&SHA256, &wasm_module);
-        info!(
-            "loaded provider: {} (sha256 digest: {})",
-            data_source_type,
-            encode_hex(hash.as_ref())
-        );
-        wasm_modules.insert(data_source_type, wasm_module);
+        }
     }
 
-    wasm_modules
+    // Only load data sources for providers we actually have the wasm files for
+    let data_sources = data_sources.into_iter()
+        .filter_map(|(name, data_source)| {
+            let data_source_type = data_source.data_source_type();
+            if wasm_modules.contains_key(&data_source_type) {
+                Some((name, data_source))
+            } else {
+                error!("Ignoring data source: \"{}\" because no provider wasm module was found for type: {}", name, data_source_type);
+                None
+            }
+        })
+        .collect();
+
+    (data_sources, wasm_modules)
 }
 
 fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
@@ -585,4 +606,35 @@ fn encode_hex(input: &[u8]) -> String {
         .map(|b| format!("{:02x}", b))
         .collect::<Vec<_>>()
         .join("")
+}
+
+pub fn parse_data_sources_yaml(yaml: &str) -> Result<DataSources> {
+    match serde_yaml::from_str(yaml) {
+        Ok(data_sources) => Ok(data_sources),
+        // Try parsing the old format that has a separate options key
+        Err(err) => match serde_yaml::from_str::<Value>(yaml) {
+            Ok(Value::Mapping(map)) => {
+                let value = map
+                    .into_iter()
+                    .map(|(key, mut value)| {
+                        if let Value::Mapping(ref mut value) = value {
+                            // Flatten the options into the top level map
+                            if let Some(Value::Mapping(options)) =
+                                value.remove(&Value::String("options".to_string()))
+                            {
+                                value.extend(options);
+                            }
+                        }
+                        (key, value)
+                    })
+                    .collect();
+                let data_sources = serde_yaml::from_value::<DataSources>(Value::Mapping(value))?;
+                Ok(data_sources)
+            }
+            Ok(_) => Err(anyhow!(
+                "Unable to parse data sources YAML: Expected a mapping"
+            )),
+            Err(_) => Err(anyhow!("Unable to parse data sources YAML: {}", err)),
+        },
+    }
 }

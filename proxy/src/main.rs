@@ -1,6 +1,5 @@
-use crate::service::ProxyService;
+use crate::service::{parse_data_sources_yaml, DataSources, ProxyService};
 use clap::Parser;
-use data_sources::DataSources;
 use std::io;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -9,7 +8,6 @@ use tokio::fs;
 use tracing::{error, info, trace};
 use url::Url;
 
-mod data_sources;
 mod service;
 #[cfg(test)]
 mod tests;
@@ -69,7 +67,7 @@ async fn main() {
         .await
         .expect("error reading data sources YAML file");
     let data_sources: DataSources =
-        serde_yaml::from_str(&data_sources).expect("invalid data sources file");
+        parse_data_sources_yaml(&data_sources).expect("invalid data sources file");
 
     let proxy = ProxyService::init(
         args.fiberplane_endpoint,

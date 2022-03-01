@@ -1,9 +1,10 @@
-use crate::data_sources::{DataSource, DataSources};
-use crate::service::ProxyService;
-use fiberplane::protocols::core::DataSourceType;
+use crate::service::{parse_data_sources_yaml, DataSources, ProxyService, WasmModules};
+use fiberplane::protocols::core::{
+    DataSource, DataSourceType, ElasticsearchDataSource, LokiDataSource, PrometheusDataSource,
+    ProxyDataSource,
+};
 use fp_provider_runtime::spec::types::{
-    Config, Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse,
-    QueryInstant,
+    Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse, QueryInstant,
 };
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
@@ -13,7 +14,7 @@ use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,6 +45,127 @@ async fn serve_status(status_code: StatusCode) -> SocketAddr {
     addr
 }
 
+#[test]
+fn parses_data_sources_from_yaml() {
+    let yaml = "
+Production Prometheus:
+  type: prometheus
+  url: http://localhost:9090
+Dev Elasticsearch:
+  type: elasticsearch
+  url: http://localhost:9200";
+    let data_sources: DataSources = parse_data_sources_yaml(yaml).unwrap();
+    assert_eq!(data_sources.len(), 2);
+    match &data_sources["Production Prometheus"] {
+        DataSource::Prometheus(prometheus) => {
+            assert_eq!(prometheus.url, "http://localhost:9090");
+        }
+        _ => panic!("Expected Prometheus data source"),
+    }
+    match &data_sources["Dev Elasticsearch"] {
+        DataSource::Elasticsearch(elasticsearch) => {
+            assert_eq!(elasticsearch.url, "http://localhost:9200");
+        }
+        _ => panic!("Expected Elasticsearch data source"),
+    }
+}
+
+#[test]
+fn parses_old_data_sources_format() {
+    let yaml = "
+Production Prometheus:
+  type: prometheus
+  options:
+    url: http://localhost:9090
+Dev Elasticsearch:
+  type: elasticsearch
+  options:
+    url: http://localhost:9200";
+    let data_sources: DataSources = parse_data_sources_yaml(yaml).unwrap();
+    assert_eq!(data_sources.len(), 2);
+    match &data_sources["Production Prometheus"] {
+        DataSource::Prometheus(prometheus) => {
+            assert_eq!(prometheus.url, "http://localhost:9090");
+        }
+        _ => panic!("Expected Prometheus data source"),
+    }
+    match &data_sources["Dev Elasticsearch"] {
+        DataSource::Elasticsearch(elasticsearch) => {
+            assert_eq!(elasticsearch.url, "http://localhost:9200");
+        }
+        _ => panic!("Expected Elasticsearch data source"),
+    }
+}
+
+#[test(tokio::test)]
+async fn only_loads_data_sources_for_providers_it_has() {
+    let mut data_sources = HashMap::new();
+    data_sources.insert(
+        "data source 1".to_string(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: "prometheus.example".to_string(),
+        }),
+    );
+    data_sources.insert(
+        "data source 2".to_string(),
+        DataSource::Elasticsearch(ElasticsearchDataSource {
+            url: "elasticsearch.example".to_string(),
+            timestamp_field_names: Vec::new(),
+            body_field_names: Vec::new(),
+        }),
+    );
+    data_sources.insert(
+        "data source 3".to_string(),
+        DataSource::Loki(LokiDataSource {
+            url: "loki.example".to_string(),
+        }),
+    );
+    // This one won't be sent because we don't have a provider for it
+    data_sources.insert(
+        "data source for provider we don't have".to_string(),
+        DataSource::Proxy(ProxyDataSource {
+            data_source_name: "other data source".to_string(),
+            data_source_type: DataSourceType::Prometheus,
+            proxy_id: "test".to_string(),
+        }),
+    );
+    data_sources.insert(
+        "data source 4".to_string(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: "prometheus.example".to_string(),
+        }),
+    );
+    let wasm_path: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", "providers"]
+        .iter()
+        .collect();
+    let service = ProxyService::init(
+        "ws://fiberplane.example/api/proxies/ws".parse().unwrap(),
+        "auth token".to_string(),
+        &wasm_path,
+        data_sources,
+        5,
+        None,
+    )
+    .await;
+    assert_eq!(service.inner.data_sources.len(), 4);
+    assert_eq!(
+        service.inner.data_sources["data source 1"].data_source_type(),
+        DataSourceType::Prometheus
+    );
+    assert_eq!(
+        service.inner.data_sources["data source 2"].data_source_type(),
+        DataSourceType::Elasticsearch
+    );
+    assert_eq!(
+        service.inner.data_sources["data source 3"].data_source_type(),
+        DataSourceType::Loki
+    );
+    assert_eq!(
+        service.inner.data_sources["data source 4"].data_source_type(),
+        DataSourceType::Prometheus
+    );
+}
+
 #[test(tokio::test)]
 async fn sends_auth_token_in_header() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -53,7 +175,7 @@ async fn sends_auth_token_in_header() {
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         HashMap::new(),
-        DataSources(HashMap::new()),
+        DataSources::new(),
         5,
         None,
     );
@@ -87,23 +209,22 @@ async fn sends_connected_data_sources_on_connect() {
     let data_sources = HashMap::from([
         (
             "data source 1".to_string(),
-            DataSource::Prometheus(Config {
-                url: Some(format!("http://{}", one).parse().unwrap()),
-                options: Default::default(),
+            DataSource::Prometheus(PrometheusDataSource {
+                url: format!("http://{}", one).parse().unwrap(),
             }),
         ),
         (
             "data source 2".to_string(),
-            DataSource::Prometheus(Config {
-                url: Some(format!("http://{}", two).parse().unwrap()),
-                options: Default::default(),
+            DataSource::Elasticsearch(ElasticsearchDataSource {
+                url: format!("http://{}", two).parse().unwrap(),
+                body_field_names: Vec::new(),
+                timestamp_field_names: Vec::new(),
             }),
         ),
         (
             "data source 3".to_string(),
-            DataSource::Prometheus(Config {
-                url: Some(format!("http://{}", three).parse().unwrap()),
-                options: Default::default(),
+            DataSource::Prometheus(PrometheusDataSource {
+                url: format!("http://{}", three).parse().unwrap(),
             }),
         ),
     ]);
@@ -111,7 +232,7 @@ async fn sends_connected_data_sources_on_connect() {
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         Path::new("../providers"),
-        DataSources(data_sources),
+        data_sources,
         5,
         None,
     )
@@ -140,7 +261,7 @@ async fn sends_connected_data_sources_on_connect() {
                 );
                 assert_eq!(
                     data_sources.get("data source 2").unwrap(),
-                    &DataSourceType::Prometheus
+                    &DataSourceType::Elasticsearch
                 );
             }
             _ => panic!(),
@@ -161,8 +282,8 @@ async fn sends_pings() {
     let service = ProxyService::new(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
-        HashMap::new(),
-        DataSources(HashMap::new()),
+        WasmModules::new(),
+        DataSources::new(),
         5,
         None,
     );
@@ -214,7 +335,7 @@ async fn health_check_endpoints() {
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         HashMap::new(),
-        DataSources(HashMap::new()),
+        HashMap::new(),
         5,
         Some(service_addr),
     );
@@ -266,8 +387,8 @@ async fn returns_error_for_query_to_unknown_provider() {
     let service = ProxyService::new(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
-        HashMap::new(),
-        DataSources(HashMap::new()),
+        WasmModules::new(),
+        DataSources::new(),
         5,
         None,
     );
@@ -360,16 +481,15 @@ async fn calls_provider_with_query_and_sends_result() {
     let mut data_sources = HashMap::new();
     data_sources.insert(
         "data source 1".to_string(),
-        DataSource::Prometheus(Config {
-            url: Some(format!("http://{}", fake_prometheus_addr)),
-            options: Default::default(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: format!("http://{}", fake_prometheus_addr),
         }),
     );
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         Path::new("../providers"),
-        DataSources(data_sources),
+        data_sources,
         5,
         None,
     )
@@ -477,19 +597,18 @@ async fn handles_multiple_concurrent_messages() {
     // Create a websocket listener for the proxy to connect to
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let mut data_sources = HashMap::new();
+    let mut data_sources = DataSources::new();
     data_sources.insert(
         "data source 1".to_string(),
-        DataSource::Prometheus(Config {
-            url: Some(format!("http://{}", fake_prometheus_addr)),
-            options: Default::default(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: format!("http://{}", fake_prometheus_addr),
         }),
     );
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         Path::new("../providers"),
-        DataSources(data_sources),
+        data_sources,
         5,
         None,
     )
@@ -587,19 +706,18 @@ async fn calls_provider_with_query_and_sends_error() {
     // Create a websocket listener for the proxy to connect to
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let mut data_sources = HashMap::new();
+    let mut data_sources = DataSources::new();
     data_sources.insert(
         "data source 1".to_string(),
-        DataSource::Prometheus(Config {
-            url: Some(format!("http://{}", fake_prometheus_addr)),
-            options: Default::default(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: format!("http://{}", fake_prometheus_addr),
         }),
     );
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         Path::new("../providers"),
-        DataSources(data_sources),
+        data_sources,
         5,
         None,
     )
@@ -677,8 +795,8 @@ async fn reconnects_if_websocket_closes() {
     let service = ProxyService::new(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
-        HashMap::new(),
-        DataSources(HashMap::new()),
+        WasmModules::new(),
+        DataSources::new(),
         1,
         None,
     );
@@ -730,8 +848,8 @@ async fn service_shutdown() {
     let service = ProxyService::new(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
-        HashMap::new(),
-        DataSources(HashMap::new()),
+        WasmModules::new(),
+        DataSources::new(),
         1,
         None,
     );
