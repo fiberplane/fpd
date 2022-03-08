@@ -5,45 +5,21 @@ use fiberplane::protocols::core::{
 };
 use fp_provider_runtime::spec::types::{
     Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse, QueryInstant,
+    QueryTimeRange, TimeRange,
 };
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{header::HeaderValue, Body, Server};
+use httpmock::prelude::*;
+use hyper::header::HeaderValue;
 use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
 use std::collections::HashMap;
-use std::convert::Infallible;
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 use test_log::test;
 use tokio::join;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tokio::time::sleep;
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
-
-async fn serve_status(status_code: StatusCode) -> SocketAddr {
-    let server =
-        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(move |_| async move {
-            Ok::<_, Infallible>(service_fn(move |_req: Request<Body>| async move {
-                Ok::<_, Infallible>(
-                    Response::builder()
-                        .status(status_code)
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-            }))
-        }));
-    let addr = server.local_addr();
-
-    tokio::spawn(async move {
-        server.await.unwrap();
-    });
-    addr
-}
 
 #[test]
 fn parses_data_sources_from_yaml() {
@@ -201,22 +177,35 @@ async fn sends_auth_token_in_header() {
 
 #[test(tokio::test)]
 async fn sends_connected_data_sources_on_connect() {
-    let one = serve_status(StatusCode::OK).await;
-    let two = serve_status(StatusCode::OK).await;
-    let three = serve_status(StatusCode::INTERNAL_SERVER_ERROR).await;
+    let connected_prometheus = MockServer::start();
+    let connected_prometheus_mock = connected_prometheus.mock(|when, then| {
+        when.method("GET").path("/api/v1/status/buildinfo");
+        then.status(200).body("{}");
+    });
+    let connected_elasticsearch = MockServer::start();
+    let connected_elasticsearch_mock = connected_elasticsearch.mock(|when, then| {
+        when.method("GET").path("/_xpack");
+        then.status(200).body("{}");
+    });
+    let disconnected_prometheus = MockServer::start();
+    let disconnected_prometheus_mock = disconnected_prometheus.mock(|when, then| {
+        when.method("GET").path("/api/v1/status/buildinfo");
+        then.status(500).body("{}");
+    });
+
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let data_sources = HashMap::from([
         (
             "data source 1".to_string(),
             DataSource::Prometheus(PrometheusDataSource {
-                url: format!("http://{}", one).parse().unwrap(),
+                url: connected_prometheus.url(""),
             }),
         ),
         (
             "data source 2".to_string(),
             DataSource::Elasticsearch(ElasticsearchDataSource {
-                url: format!("http://{}", two).parse().unwrap(),
+                url: connected_elasticsearch.url(""),
                 body_field_names: Vec::new(),
                 timestamp_field_names: Vec::new(),
             }),
@@ -224,7 +213,7 @@ async fn sends_connected_data_sources_on_connect() {
         (
             "data source 3".to_string(),
             DataSource::Prometheus(PrometheusDataSource {
-                url: format!("http://{}", three).parse().unwrap(),
+                url: disconnected_prometheus.url(""),
             }),
         ),
     ]);
@@ -273,6 +262,9 @@ async fn sends_connected_data_sources_on_connect() {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
+    connected_prometheus_mock.assert();
+    connected_elasticsearch_mock.assert();
+    disconnected_prometheus_mock.assert();
 }
 
 #[test(tokio::test)]
@@ -437,42 +429,31 @@ async fn returns_error_for_query_to_unknown_provider() {
 
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_result() {
-    let fake_prometheus_server =
-        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(|_| async {
-            Ok::<_, Infallible>(service_fn(|req: Request<Body>| async move {
-                assert_eq!(req.uri(), "/api/v1/query");
-                Ok::<_, Infallible>(
-                    Response::builder()
-                        .status(200)
-                        .header("Content-Type", "application/json")
-                        .body(Body::from(
-                            r#"
-                            {
-                               "status" : "success",
-                               "data" : {
-                                  "resultType" : "vector",
-                                  "result" : [
-                                     {
-                                        "metric" : {
-                                           "__name__" : "up",
-                                           "job" : "prometheus",
-                                           "instance" : "localhost:9090"
-                                        },
-                                        "value": [ 1435781451.781, "1" ]
-                                     }
-                                  ]
-                               }
-                            }
-                            "#,
-                        ))
-                        .unwrap(),
-                )
-            }))
-        }));
-    let fake_prometheus_addr = fake_prometheus_server.local_addr();
-
-    tokio::spawn(async move {
-        fake_prometheus_server.await.unwrap();
+    let prometheus = MockServer::start();
+    prometheus.mock(|when, then| {
+        when.method("GET").path("/api/v1/status/buildinfo");
+        then.status(200).body("{}");
+    });
+    let query_mock = prometheus.mock(|when, then| {
+        when.method("POST").path("/api/v1/query");
+        then.status(200).body(
+            r#"{
+                   "status" : "success",
+                   "data" : {
+                      "resultType" : "vector",
+                      "result" : [
+                         {
+                            "metric" : {
+                               "__name__" : "up",
+                               "job" : "prometheus",
+                               "instance" : "localhost:9090"
+                            },
+                            "value": [ 1435781451.781, "1" ]
+                         }
+                      ]
+                   }
+                }"#,
+        );
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -482,7 +463,7 @@ async fn calls_provider_with_query_and_sends_result() {
     data_sources.insert(
         "data source 1".to_string(),
         DataSource::Prometheus(PrometheusDataSource {
-            url: format!("http://{}", fake_prometheus_addr),
+            url: prometheus.url(""),
         }),
     );
     let service = ProxyService::init(
@@ -549,49 +530,41 @@ async fn calls_provider_with_query_and_sends_result() {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
+
+    query_mock.assert();
 }
 
 #[test(tokio::test)]
 async fn handles_multiple_concurrent_messages() {
-    // Slow down the first query so that it definitely happens after the second one
-    let is_first_query = Arc::new(AtomicBool::from(true));
-    let fake_prometheus_server =
-        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(move |_| {
-            let is_first_query = is_first_query.clone();
-            async move {
-                Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
-                    let is_first_query = is_first_query.clone();
-                    async move {
-                        assert_eq!(req.uri(), "/api/v1/query");
-                        if is_first_query.fetch_and(false, Ordering::SeqCst) {
-                            sleep(Duration::from_millis(200)).await;
-                        }
-
-                        Ok::<_, Infallible>(
-                            Response::builder()
-                                .status(200)
-                                .header("Content-Type", "application/json")
-                                .body(Body::from(
-                                    r#"
-                            {
-                               "status" : "success",
-                               "data" : {
-                                  "resultType" : "vector",
-                                  "result" : []
-                               }
-                            }
-                            "#,
-                                ))
-                                .unwrap(),
-                        )
-                    }
-                }))
-            }
-        }));
-    let fake_prometheus_addr = fake_prometheus_server.local_addr();
-
-    tokio::spawn(async move {
-        fake_prometheus_server.await.unwrap();
+    let prometheus = MockServer::start();
+    prometheus.mock(|when, then| {
+        when.method("GET").path("/api/v1/status/buildinfo");
+        then.status(200).body("{}");
+    });
+    // Delay the first response so the second response definitely comes back first
+    let query_instant_mock = prometheus.mock(|when, then| {
+        when.method("POST").path("/api/v1/query");
+        then.delay(Duration::from_secs(2)).status(200).body(
+            r#"{
+                   "status" : "success",
+                   "data" : {
+                      "resultType" : "vector",
+                      "result" : []
+                   }
+                }"#,
+        );
+    });
+    let query_series_mock = prometheus.mock(|when, then| {
+        when.method("POST").path("/api/v1/query_range");
+        then.status(200).body(
+            r#"{
+                   "status" : "success",
+                   "data" : {
+                      "resultType" : "vector",
+                      "result" : []
+                   }
+                }"#,
+        );
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -601,7 +574,7 @@ async fn handles_multiple_concurrent_messages() {
     data_sources.insert(
         "data source 1".to_string(),
         DataSource::Prometheus(PrometheusDataSource {
-            url: format!("http://{}", fake_prometheus_addr),
+            url: prometheus.url(""),
         }),
     );
     let service = ProxyService::init(
@@ -645,9 +618,9 @@ async fn handles_multiple_concurrent_messages() {
         let message_2 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_2,
             data_source_name: "data source 1".to_string(),
-            data: rmp_serde::to_vec(&ProviderRequest::Instant(QueryInstant {
+            data: rmp_serde::to_vec(&ProviderRequest::Series(QueryTimeRange {
                 query: "query 2".to_string(),
-                timestamp: 0.0,
+                time_range: TimeRange { from: 0.0, to: 1.0 },
             }))
             .unwrap(),
         })
@@ -683,24 +656,20 @@ async fn handles_multiple_concurrent_messages() {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
+    query_instant_mock.assert();
+    query_series_mock.assert();
 }
 
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_error() {
-    // Note that the fake Prometheus returns an error just to test that
-    // the error code is relayed back through the proxy
-    // because we're not testing the Prometheus provider functionality here
-    let fake_prometheus_server =
-        Server::bind(&"127.0.0.1:0".parse().unwrap()).serve(make_service_fn(|_| async {
-            Ok::<_, Infallible>(service_fn(|req: Request<Body>| async move {
-                assert_eq!(req.uri(), "/api/v1/query");
-                Ok::<_, Infallible>(Response::builder().status(418).body(Body::empty()).unwrap())
-            }))
-        }));
-    let fake_prometheus_addr = fake_prometheus_server.local_addr();
-
-    tokio::spawn(async move {
-        fake_prometheus_server.await.unwrap();
+    let prometheus = MockServer::start();
+    prometheus.mock(|when, then| {
+        when.method("GET").path("/api/v1/status/buildinfo");
+        then.status(200).body("{}");
+    });
+    let query_mock = prometheus.mock(|when, then| {
+        when.method("POST").path("/api/v1/query");
+        then.status(418).body("Some error");
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -710,7 +679,7 @@ async fn calls_provider_with_query_and_sends_error() {
     data_sources.insert(
         "data source 1".to_string(),
         DataSource::Prometheus(PrometheusDataSource {
-            url: format!("http://{}", fake_prometheus_addr),
+            url: prometheus.url(""),
         }),
     );
     let service = ProxyService::init(
@@ -786,6 +755,8 @@ async fn calls_provider_with_query_and_sends_error() {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
+
+    query_mock.assert();
 }
 
 #[test(tokio::test)]
