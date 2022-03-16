@@ -130,7 +130,7 @@ pub struct DataSourceDetails {
     #[serde(rename = "type")]
     pub ty: DataSourceType,
     pub status: DataSourceStatus,
-    pub message: Option<String>,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
@@ -184,7 +184,7 @@ fn set_data_sources_includes_status() {
         &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
             ty: DataSourceType::Prometheus,
             status: DataSourceStatus::Connected,
-            message: None
+            error_message: None
         })
     );
     assert_eq!(
@@ -192,7 +192,7 @@ fn set_data_sources_includes_status() {
         &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
             ty: DataSourceType::Elasticsearch,
             status: DataSourceStatus::Disconnected,
-            message: Some("error message".to_string())
+            error_message: Some("error message".to_string())
         })
     );
 }

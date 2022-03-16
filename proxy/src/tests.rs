@@ -194,7 +194,7 @@ async fn sends_data_sources_on_connect() {
                     &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
                         ty: DataSourceType::Prometheus,
                         status: DataSourceStatus::Connected,
-                        message: None,
+                        error_message: None,
                     })
                 );
                 assert_eq!(
@@ -202,7 +202,7 @@ async fn sends_data_sources_on_connect() {
                     &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
                         ty: DataSourceType::Elasticsearch,
                         status: DataSourceStatus::Connected,
-                        message: None,
+                        error_message: None,
                     })
                 );
                 assert_eq!(
@@ -210,7 +210,7 @@ async fn sends_data_sources_on_connect() {
                     &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
                         ty: DataSourceType::Prometheus,
                         status: DataSourceStatus::Disconnected,
-                        message: Some(
+                        error_message: Some(
                             "Provider returned HTTP error: status=500, response=Some Error"
                                 .to_string()
                         ),
@@ -224,7 +224,7 @@ async fn sends_data_sources_on_connect() {
                     panic!("wrong type");
                 };
                 assert_eq!(proxy_data_source.status, DataSourceStatus::Disconnected);
-                assert!(proxy_data_source.message.as_ref().unwrap().starts_with("Error invoking provider: Error loading wasm module ../providers/proxy.wasm: No such file or directory"));
+                assert!(proxy_data_source.error_message.as_ref().unwrap().starts_with("Error invoking provider: Error loading wasm module ../providers/proxy.wasm: No such file or directory"));
             }
             _ => panic!(),
         };
@@ -292,7 +292,7 @@ async fn checks_data_source_status_on_interval() {
                     DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
                         ty: DataSourceType::Prometheus,
                         status: DataSourceStatus::Connected,
-                        message: None,
+                        error_message: None,
                     })
                 );
             } else {
@@ -313,7 +313,7 @@ async fn checks_data_source_status_on_interval() {
                 DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
                     ty: DataSourceType::Prometheus,
                     status: DataSourceStatus::Disconnected,
-                    message: Some(
+                    error_message: Some(
                         "Provider returned HTTP error: status=500, response=Internal Server Error"
                             .to_string()
                     ),

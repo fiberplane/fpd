@@ -17,8 +17,8 @@ use std::collections::{HashMap, HashSet};
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
-use tokio::{fs, task::LocalSet, runtime::Builder};
 use tokio::time::{interval, timeout};
+use tokio::{fs, runtime::Builder, task::LocalSet};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
@@ -363,16 +363,17 @@ impl ProxyService {
                 .data_sources
                 .iter()
                 .map(|(name, data_source)| async move {
-                    let (status, message) = match self.check_provider_status(name.clone()).await {
-                        Ok(_) => (DataSourceStatus::Connected, None),
-                        Err(err) => (DataSourceStatus::Disconnected, Some(err.to_string())),
-                    };
+                    let (status, error_message) =
+                        match self.check_provider_status(name.clone()).await {
+                            Ok(_) => (DataSourceStatus::Connected, None),
+                            Err(err) => (DataSourceStatus::Disconnected, Some(err.to_string())),
+                        };
                     (
                         name.clone(),
                         DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
                             ty: data_source.data_source_type(),
                             status,
-                            message,
+                            error_message,
                         }),
                     )
                 }),
