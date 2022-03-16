@@ -185,7 +185,7 @@ fn set_data_sources_includes_status() {
         "b": {
             "type": "elasticsearch",
             "status": "disconnected",
-            "message": "error message"
+            "errorMessage": "error message"
         }
     });
     let parsed = serde_json::from_value::<SetDataSourcesMessage>(set_data_sources).unwrap();
