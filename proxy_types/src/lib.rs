@@ -113,11 +113,86 @@ impl RelayMessage {
 }
 
 /// This is a map from the data source name to the data source's type
-pub type SetDataSourcesMessage = HashMap<String, DataSourceType>;
+pub type SetDataSourcesMessage = HashMap<String, DataSourceDetailsOrType>;
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
+#[serde(untagged)]
+pub enum DataSourceDetailsOrType {
+    DataSourceDetails(DataSourceDetails),
+    /// This is here to support the old format that did not include the data source status
+    #[deprecated(note = "This should only be used for backwards compatibility")]
+    Type(DataSourceType),
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSourceDetails {
+    #[serde(rename = "type")]
+    pub ty: DataSourceType,
+    pub status: DataSourceStatus,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum DataSourceStatus {
+    Connected,
+    Disconnected,
+}
 
 #[test]
 fn data_source_type_should_serialize_to_plain_string() {
     let ty = DataSourceType::Prometheus;
     let serialized = serde_json::to_string(&ty).unwrap();
     assert_eq!(serialized, "\"prometheus\"");
+}
+
+#[allow(deprecated)]
+#[test]
+fn set_data_sources_should_support_old_format() {
+    let set_data_sources = serde_json::json!({
+        "a": "prometheus",
+        "b": "elasticsearch",
+    });
+    let parsed = serde_json::from_value::<SetDataSourcesMessage>(set_data_sources).unwrap();
+    assert_eq!(
+        parsed.get("a").unwrap(),
+        &DataSourceDetailsOrType::Type(DataSourceType::Prometheus)
+    );
+    assert_eq!(
+        parsed.get("b").unwrap(),
+        &DataSourceDetailsOrType::Type(DataSourceType::Elasticsearch)
+    );
+}
+
+#[test]
+fn set_data_sources_includes_status() {
+    let set_data_sources = serde_json::json!({
+        "a": {
+            "type": "prometheus",
+            "status": "connected"
+        },
+        "b": {
+            "type": "elasticsearch",
+            "status": "disconnected",
+            "message": "error message"
+        }
+    });
+    let parsed = serde_json::from_value::<SetDataSourcesMessage>(set_data_sources).unwrap();
+    assert_eq!(
+        parsed.get("a").unwrap(),
+        &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+            ty: DataSourceType::Prometheus,
+            status: DataSourceStatus::Connected,
+            message: None
+        })
+    );
+    assert_eq!(
+        parsed.get("b").unwrap(),
+        &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+            ty: DataSourceType::Elasticsearch,
+            status: DataSourceStatus::Disconnected,
+            message: Some("error message".to_string())
+        })
+    );
 }

@@ -15,33 +15,33 @@ mod tests;
 #[derive(Parser)]
 #[clap(author, about, version)]
 pub struct Arguments {
+    /// Path to directory containing provider WASM files
     #[clap(long, env = "WASM_DIR", default_value = "./providers")]
-    //Path to directory containing provider WASM files
     wasm_dir: PathBuf,
 
+    /// Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
     #[clap(
         long,
         short,
         env = "FIBERPLANE_ENDPOINT",
         default_value = "wss://fiberplane.com"
     )]
-    //Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
     fiberplane_endpoint: Url,
 
+    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
     #[clap(long, short, env = "AUTH_TOKEN")]
-    //Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
     auth_token: String,
 
+    /// Path to data sources YAML file
     #[clap(long, short, env = "DATA_SOURCES", default_value = "data_sources.yaml")]
-    //Path to data sources YAML file
     data_sources: PathBuf,
 
+    /// Max retries to connect to the fiberplane server before giving up on failed connections
     #[clap(long, short, env = "MAX_RETRIES", default_value = "10")]
-    //Max retries to connect to the fiberplane server before giving up on failed connections
     max_retries: u32,
 
+    /// Address to bind HTTP server to (used for health check endpoints)
     #[clap(long, short, env = "LISTEN_ADDRESS")]
-    //Address to bind HTTP server to (used for health check endpoints)
     listen_address: Option<SocketAddr>,
 
     #[clap(long, env = "LOG_JSON")]
