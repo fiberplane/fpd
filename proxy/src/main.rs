@@ -1,9 +1,6 @@
 use crate::service::{parse_data_sources_yaml, DataSources, ProxyService};
 use clap::Parser;
-use std::io;
-use std::net::SocketAddr;
-use std::path::PathBuf;
-use std::process;
+use std::{io, net::SocketAddr, path::PathBuf, process, time::Duration};
 use tokio::fs;
 use tracing::{error, info, trace};
 use url::Url;
@@ -16,35 +13,34 @@ mod tests;
 #[clap(author, about, version)]
 pub struct Arguments {
     /// Path to directory containing provider WASM files
-    #[clap(long, env = "WASM_DIR", default_value = "./providers")]
+    #[clap(long, env, default_value = "./providers")]
     wasm_dir: PathBuf,
 
     /// Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
-    #[clap(
-        long,
-        short,
-        env = "FIBERPLANE_ENDPOINT",
-        default_value = "wss://fiberplane.com"
-    )]
+    #[clap(long, short, default_value = "wss://fiberplane.com")]
     fiberplane_endpoint: Url,
 
     /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
-    #[clap(long, short, env = "AUTH_TOKEN")]
+    #[clap(long, short, env)]
     auth_token: String,
 
     /// Path to data sources YAML file
-    #[clap(long, short, env = "DATA_SOURCES", default_value = "data_sources.yaml")]
+    #[clap(long, short, env, default_value = "data_sources.yaml")]
     data_sources: PathBuf,
 
     /// Max retries to connect to the fiberplane server before giving up on failed connections
-    #[clap(long, short, env = "MAX_RETRIES", default_value = "10")]
+    #[clap(long, short, env, default_value = "10")]
     max_retries: u32,
 
     /// Address to bind HTTP server to (used for health check endpoints)
-    #[clap(long, short, env = "LISTEN_ADDRESS")]
+    #[clap(long, short, env)]
     listen_address: Option<SocketAddr>,
 
-    #[clap(long, env = "LOG_JSON")]
+    /// Interval, in minutes, to check the status of each data source
+    #[clap(long, short, env, default_value = "5")]
+    status_check_interval: u64,
+
+    #[clap(long, env)]
     log_json: bool,
 }
 
@@ -76,6 +72,7 @@ async fn main() {
         data_sources,
         args.max_retries,
         args.listen_address,
+        Duration::from_secs(args.status_check_interval * 60),
     )
     .await;
 

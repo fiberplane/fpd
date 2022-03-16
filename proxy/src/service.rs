@@ -15,11 +15,10 @@ use ring::digest::{digest, SHA256};
 use serde_yaml::Value;
 use std::collections::{HashMap, HashSet};
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
-use tokio::fs;
-use tokio::runtime::Builder;
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
-use tokio::{task::LocalSet, time::timeout};
+use tokio::{fs, task::LocalSet, runtime::Builder};
+use tokio::time::{interval, timeout};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
@@ -46,6 +45,7 @@ pub(crate) struct Inner {
     max_retries: u32,
     local_task_handler: SingleThreadTaskHandler,
     listen_address: Option<SocketAddr>,
+    status_check_interval: Duration,
 }
 
 impl ProxyService {
@@ -57,6 +57,7 @@ impl ProxyService {
         data_sources: DataSources,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
+        status_check_interval: Duration,
     ) -> Self {
         let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await;
 
@@ -67,6 +68,7 @@ impl ProxyService {
             data_sources,
             max_retries,
             listen_address,
+            status_check_interval,
         )
     }
 
@@ -77,6 +79,7 @@ impl ProxyService {
         data_sources: DataSources,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
+        status_check_interval: Duration,
     ) -> Self {
         ProxyService {
             inner: Arc::new(Inner {
@@ -87,6 +90,7 @@ impl ProxyService {
                 max_retries,
                 local_task_handler: SingleThreadTaskHandler::new(),
                 listen_address,
+                status_check_interval,
             }),
         }
     }
@@ -119,14 +123,7 @@ impl ProxyService {
             .in_current_span(),
         );
 
-        // Send the list of data sources to the relay
-        let data_sources = self.get_data_sources().await;
-        debug!("sending data sources to relay: {:?}", data_sources);
-        let message = RelayMessage::SetDataSources(data_sources);
-        let message = Message::Binary(message.serialize_msgpack());
-        ws.send(message).await?;
-
-        let (reply_sender, mut reply_receiver) = unbounded_channel::<RelayMessage>();
+        let (outgoing_sender, mut outgoing_receiver) = unbounded_channel::<RelayMessage>();
 
         // Health check endpoints
         let ws_clone = ws.clone();
@@ -142,6 +139,22 @@ impl ProxyService {
             );
         }
 
+        // Spawn a task to send the data sources and their statuses to the relay
+        let service = self.clone();
+        let data_sources_sender = outgoing_sender.clone();
+        tokio::spawn(async move {
+            let mut status_check_interval = interval(service.inner.status_check_interval);
+            loop {
+                // Note that the first tick returns immediately
+                status_check_interval.tick().await;
+
+                let data_sources = service.get_data_sources().await;
+                debug!("sending data sources to relay: {:?}", data_sources);
+                let message = RelayMessage::SetDataSources(data_sources);
+                data_sources_sender.send(message).ok();
+            }
+        });
+
         // Spawn a separate task for handling outgoing messages
         // so that incoming and outgoing do not interfere with one another
         let ws_clone = ws.clone();
@@ -150,7 +163,7 @@ impl ProxyService {
             async move {
                 loop {
                     select! {
-                        outgoing = reply_receiver.recv().fuse() => {
+                        outgoing = outgoing_receiver.recv().fuse() => {
                             if let Some(message) = outgoing {
                                 let trace_id = message.op_id();
                                 let message = Message::Binary(message.serialize_msgpack());
@@ -172,7 +185,7 @@ impl ProxyService {
         );
 
         loop {
-            let reply_sender = reply_sender.clone();
+            let outgoing_sender = outgoing_sender.clone();
             let mut shutdown = shutdown.subscribe();
             select! {
                 incoming = ws.recv().fuse() => {
@@ -180,7 +193,7 @@ impl ProxyService {
                         Some(Ok(Message::Binary(message))) => {
                             match ServerMessage::deserialize_msgpack(message) {
                                 Ok(message) => {
-                                    self.handle_message(message, reply_sender).await?;
+                                    self.handle_message(message, outgoing_sender).await?;
                                 },
                                 Err(err) => {
                                     error!(?err, "Error deserializing MessagePack message");

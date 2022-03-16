@@ -87,6 +87,7 @@ async fn sends_auth_token_in_header() {
         DataSources::new(),
         5,
         None,
+        Duration::from_secs(300),
     );
 
     let handle_connection = async move {
@@ -167,6 +168,7 @@ async fn sends_data_sources_on_connect() {
         data_sources,
         5,
         None,
+        Duration::from_secs(300),
     )
     .await;
 
@@ -239,6 +241,99 @@ async fn sends_data_sources_on_connect() {
 }
 
 #[test(tokio::test)]
+async fn checks_data_source_status_on_interval() {
+    let mock_server = MockServer::start();
+    let mut connected_prometheus_mock = mock_server.mock(|when, then| {
+        when.method("GET").path("/api/v1/status/buildinfo");
+        then.status(200).body("{}");
+    });
+    let disconnected_prometheus_mock = mock_server.mock(|when, then| {
+        when.method("GET").path("/api/v1/status/buildinfo");
+        then.status(500).body("Internal Server Error");
+    });
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let data_sources = HashMap::from([(
+        "data source 1".to_string(),
+        DataSource::Prometheus(PrometheusDataSource {
+            url: mock_server.url(""),
+        }),
+    )]);
+    let service = ProxyService::init(
+        format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
+        "auth token".to_string(),
+        Path::new("../providers"),
+        data_sources,
+        5,
+        None,
+        Duration::from_millis(200),
+    )
+    .await;
+
+    let handle_connection = async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
+            res.headers_mut()
+                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+            Ok(res)
+        })
+        .await
+        .unwrap();
+        for _i in 0..2 {
+            let message = ws.next().await.unwrap().unwrap();
+            let message = match message {
+                Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+                _ => panic!("wrong type"),
+            };
+            if let RelayMessage::SetDataSources(data_sources) = message {
+                assert_eq!(
+                    data_sources["data source 1"],
+                    DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                        ty: DataSourceType::Prometheus,
+                        status: DataSourceStatus::Connected,
+                        message: None,
+                    })
+                );
+            } else {
+                panic!();
+            };
+        }
+        connected_prometheus_mock.assert_hits(2);
+        connected_prometheus_mock.delete();
+
+        let message = ws.next().await.unwrap().unwrap();
+        let message = match message {
+            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            _ => panic!("wrong type"),
+        };
+        if let RelayMessage::SetDataSources(data_sources) = message {
+            assert_eq!(
+                data_sources["data source 1"],
+                DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                    ty: DataSourceType::Prometheus,
+                    status: DataSourceStatus::Disconnected,
+                    message: Some(
+                        "Provider returned HTTP error: status=500, response=Internal Server Error"
+                            .to_string()
+                    ),
+                })
+            );
+        } else {
+            panic!();
+        };
+    };
+
+    let (tx, _) = broadcast::channel(3);
+    select! {
+      result = service.connect(tx).fuse() => result.unwrap(),
+      _ = handle_connection.fuse() => {}
+    }
+
+    disconnected_prometheus_mock.assert();
+}
+
+#[test(tokio::test)]
 async fn sends_pings() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -249,6 +344,7 @@ async fn sends_pings() {
         DataSources::new(),
         5,
         None,
+        Duration::from_secs(300),
     );
 
     tokio::time::pause();
@@ -301,6 +397,7 @@ async fn health_check_endpoints() {
         HashMap::new(),
         5,
         Some(service_addr),
+        Duration::from_secs(300),
     );
 
     let handle_connection = async move {
@@ -354,6 +451,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         DataSources::new(),
         5,
         None,
+        Duration::from_secs(300),
     );
 
     let handle_connection = async move {
@@ -444,6 +542,7 @@ async fn calls_provider_with_query_and_sends_result() {
         data_sources,
         5,
         None,
+        Duration::from_secs(300),
     )
     .await;
 
@@ -555,6 +654,7 @@ async fn handles_multiple_concurrent_messages() {
         data_sources,
         5,
         None,
+        Duration::from_secs(300),
     )
     .await;
 
@@ -660,6 +760,7 @@ async fn calls_provider_with_query_and_sends_error() {
         data_sources,
         5,
         None,
+        Duration::from_secs(300),
     )
     .await;
 
@@ -741,6 +842,7 @@ async fn reconnects_if_websocket_closes() {
         DataSources::new(),
         1,
         None,
+        Duration::from_secs(300),
     );
 
     tokio::time::pause();
@@ -794,6 +896,7 @@ async fn service_shutdown() {
         DataSources::new(),
         1,
         None,
+        Duration::from_secs(300),
     );
 
     let (tx, _) = broadcast::channel(3);
