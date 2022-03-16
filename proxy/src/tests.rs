@@ -191,7 +191,7 @@ async fn sends_data_sources_on_connect() {
                 assert_eq!(data_sources.len(), 4);
                 assert_eq!(
                     data_sources.get("data source 1").unwrap(),
-                    &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                    &DataSourceDetailsOrType::Details(DataSourceDetails {
                         ty: DataSourceType::Prometheus,
                         status: DataSourceStatus::Connected,
                         error_message: None,
@@ -199,7 +199,7 @@ async fn sends_data_sources_on_connect() {
                 );
                 assert_eq!(
                     data_sources.get("data source 2").unwrap(),
-                    &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                    &DataSourceDetailsOrType::Details(DataSourceDetails {
                         ty: DataSourceType::Elasticsearch,
                         status: DataSourceStatus::Connected,
                         error_message: None,
@@ -207,7 +207,7 @@ async fn sends_data_sources_on_connect() {
                 );
                 assert_eq!(
                     data_sources.get("data source 3").unwrap(),
-                    &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                    &DataSourceDetailsOrType::Details(DataSourceDetails {
                         ty: DataSourceType::Prometheus,
                         status: DataSourceStatus::Disconnected,
                         error_message: Some(
@@ -216,7 +216,7 @@ async fn sends_data_sources_on_connect() {
                         ),
                     })
                 );
-                let proxy_data_source = if let DataSourceDetailsOrType::DataSourceDetails(details) =
+                let proxy_data_source = if let DataSourceDetailsOrType::Details(details) =
                     &data_sources["data source 4"]
                 {
                     details
@@ -289,7 +289,7 @@ async fn checks_data_source_status_on_interval() {
             if let RelayMessage::SetDataSources(data_sources) = message {
                 assert_eq!(
                     data_sources["data source 1"],
-                    DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                    DataSourceDetailsOrType::Details(DataSourceDetails {
                         ty: DataSourceType::Prometheus,
                         status: DataSourceStatus::Connected,
                         error_message: None,
@@ -310,7 +310,7 @@ async fn checks_data_source_status_on_interval() {
         if let RelayMessage::SetDataSources(data_sources) = message {
             assert_eq!(
                 data_sources["data source 1"],
-                DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                DataSourceDetailsOrType::Details(DataSourceDetails {
                     ty: DataSourceType::Prometheus,
                     status: DataSourceStatus::Disconnected,
                     error_message: Some(

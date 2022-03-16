@@ -370,7 +370,7 @@ impl ProxyService {
                         };
                     (
                         name.clone(),
-                        DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+                        DataSourceDetailsOrType::Details(DataSourceDetails {
                             ty: data_source.data_source_type(),
                             status,
                             error_message,

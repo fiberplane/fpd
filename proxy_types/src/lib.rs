@@ -119,7 +119,7 @@ pub type SetDataSourcesMessage = HashMap<String, DataSourceDetailsOrType>;
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 #[serde(untagged)]
 pub enum DataSourceDetailsOrType {
-    DataSourceDetails(DataSourceDetails),
+    Details(DataSourceDetails),
     /// This is here to support the old format that did not include the data source status
     #[deprecated(note = "This should only be used for backwards compatibility")]
     Type(DataSourceType),
@@ -191,7 +191,7 @@ fn set_data_sources_includes_status() {
     let parsed = serde_json::from_value::<SetDataSourcesMessage>(set_data_sources).unwrap();
     assert_eq!(
         parsed.get("a").unwrap(),
-        &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+        &DataSourceDetailsOrType::Details(DataSourceDetails {
             ty: DataSourceType::Prometheus,
             status: DataSourceStatus::Connected,
             error_message: None
@@ -199,7 +199,7 @@ fn set_data_sources_includes_status() {
     );
     assert_eq!(
         parsed.get("b").unwrap(),
-        &DataSourceDetailsOrType::DataSourceDetails(DataSourceDetails {
+        &DataSourceDetailsOrType::Details(DataSourceDetails {
             ty: DataSourceType::Elasticsearch,
             status: DataSourceStatus::Disconnected,
             error_message: Some("error message".to_string())
