@@ -1,7 +1,8 @@
 use fiberplane::protocols::core::DataSourceType;
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug};
+use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 pub use uuid::Uuid;
 
 /// Messages intended for the Server to handle
@@ -138,6 +139,15 @@ pub struct DataSourceDetails {
 pub enum DataSourceStatus {
     Connected,
     Disconnected,
+}
+
+impl Display for DataSourceStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataSourceStatus::Connected => write!(f, "connected"),
+            DataSourceStatus::Disconnected => write!(f, "disconnected"),
+        }
+    }
 }
 
 #[test]
