@@ -46,7 +46,7 @@ pwd
 printf "${CYAN}Optimizing providers...${NC}\n"
 for provider in "${PROVIDERS[@]}"; do
     # Optimize for performance
-    wasm-opt -O2 -o "../proxy/providers/${provider}.wasm" "target/wasm32-unknown-unknown/release/${provider}_provider.wasm"
+    wasm-opt -Oz -c -o "../proxy/providers/${provider}.wasm" "target/wasm32-unknown-unknown/release/${provider}_provider.wasm"
 done
 
 echo "Done."
