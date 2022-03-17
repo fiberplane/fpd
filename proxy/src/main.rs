@@ -45,6 +45,7 @@ pub struct Arguments {
     log_json: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct IntervalDuration(Duration);
 
 impl FromStr for IntervalDuration {
@@ -134,4 +135,21 @@ fn initialize_logger(log_json: bool) {
     } else {
         builder.try_init().expect("unable to initialize logging");
     }
+}
+
+#[test]
+fn interval_parsing() {
+    assert_eq!(
+        IntervalDuration(Duration::from_secs(30)),
+        "30s".parse().unwrap()
+    );
+    assert_eq!(
+        IntervalDuration(Duration::from_secs(60)),
+        "1m".parse().unwrap()
+    );
+    assert_eq!(
+        IntervalDuration(Duration::from_secs(3600)),
+        "1h".parse().unwrap()
+    );
+    IntervalDuration::from_str("3d").expect_err("invalid interval");
 }
