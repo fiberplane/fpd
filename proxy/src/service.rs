@@ -363,17 +363,15 @@ impl ProxyService {
                 .data_sources
                 .iter()
                 .map(|(name, data_source)| async move {
-                    let (status, error_message) =
-                        match self.check_provider_status(name.clone()).await {
-                            Ok(_) => (DataSourceStatus::Connected, None),
-                            Err(err) => (DataSourceStatus::Disconnected, Some(err.to_string())),
-                        };
+                    let status = match self.check_provider_status(name.clone()).await {
+                        Ok(_) => DataSourceStatus::Connected,
+                        Err(err) => DataSourceStatus::Error(err.to_string()),
+                    };
                     (
                         name.clone(),
                         DataSourceDetailsOrType::Details(DataSourceDetails {
                             ty: data_source.data_source_type(),
                             status,
-                            error_message,
                         }),
                     )
                 }),

@@ -130,24 +130,15 @@ pub enum DataSourceDetailsOrType {
 pub struct DataSourceDetails {
     #[serde(rename = "type")]
     pub ty: DataSourceType,
+    #[serde(flatten)]
     pub status: DataSourceStatus,
-    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", tag = "status", content = "errorMessage")]
 pub enum DataSourceStatus {
     Connected,
-    Disconnected,
-}
-
-impl Display for DataSourceStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DataSourceStatus::Connected => write!(f, "connected"),
-            DataSourceStatus::Disconnected => write!(f, "disconnected"),
-        }
-    }
+    Error(String),
 }
 
 #[test]
@@ -184,7 +175,7 @@ fn set_data_sources_includes_status() {
         },
         "b": {
             "type": "elasticsearch",
-            "status": "disconnected",
+            "status": "error",
             "errorMessage": "error message"
         }
     });
@@ -194,15 +185,13 @@ fn set_data_sources_includes_status() {
         &DataSourceDetailsOrType::Details(DataSourceDetails {
             ty: DataSourceType::Prometheus,
             status: DataSourceStatus::Connected,
-            error_message: None
         })
     );
     assert_eq!(
         parsed.get("b").unwrap(),
         &DataSourceDetailsOrType::Details(DataSourceDetails {
             ty: DataSourceType::Elasticsearch,
-            status: DataSourceStatus::Disconnected,
-            error_message: Some("error message".to_string())
+            status: DataSourceStatus::Error("error message".to_string()),
         })
     );
 }
