@@ -309,7 +309,7 @@ impl ProxyService {
                     .map_err(Into::into);
             }
         };
-        let runtime = match compile_wasm(&wasm_module) {
+        let runtime = match compile_wasm(wasm_module) {
             Ok(runtime) => runtime,
             Err(err) => {
                 error!(?err, "error compiling wasm module");
