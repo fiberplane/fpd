@@ -17,14 +17,15 @@ use std::collections::{HashMap, HashSet};
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
+use tokio::task::{spawn_blocking, LocalSet};
 use tokio::time::{interval, timeout};
-use tokio::{fs, runtime::Builder, task::LocalSet};
+use tokio::{fs, runtime::Builder};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
 
 pub(crate) type DataSources = HashMap<String, DataSource>;
-pub(crate) type WasmModules = HashMap<DataSourceType, Result<Vec<u8>, String>>;
+pub(crate) type WasmModules = HashMap<DataSourceType, Result<Arc<Vec<u8>>, String>>;
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 lazy_static! {
@@ -325,7 +326,7 @@ impl ProxyService {
                     .map_err(Into::into);
             }
         };
-        let runtime = match compile_wasm(wasm_module) {
+        let runtime = match compile_wasm(wasm_module.clone()).await {
             Ok(runtime) => runtime,
             Err(err) => {
                 error!(?err, "error compiling wasm module");
@@ -480,10 +481,11 @@ async fn load_wasm_modules(
                 let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
                 let wasm_module = match fs::read(wasm_path).await {
                     Ok(wasm_module) => {
+                        let wasm_module = Arc::new(wasm_module);
                         // Make sure the wasm file can compile
-                        match compile_wasm(&wasm_module) {
+                        match compile_wasm(wasm_module.clone()).await {
                             Ok(_) => {
-                                let hash = digest(&SHA256, &wasm_module);
+                                let hash = digest(&SHA256, wasm_module.as_ref());
                                 info!(
                                     "loaded provider: {} (sha256 digest: {})",
                                     data_source_type,
@@ -512,9 +514,12 @@ async fn load_wasm_modules(
     .collect()
 }
 
-fn compile_wasm(wasm_module: &[u8]) -> Result<Runtime> {
-    let runtime = Runtime::new(wasm_module)?;
-    Ok(runtime)
+async fn compile_wasm(wasm_module: Arc<Vec<u8>>) -> Result<Runtime> {
+    spawn_blocking(move || {
+        let runtime = Runtime::new(wasm_module.as_ref())?;
+        Ok(runtime)
+    })
+    .await?
 }
 
 /// This includes everything needed to handle a provider request
