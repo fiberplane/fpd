@@ -651,7 +651,7 @@ fn encode_hex(input: &[u8]) -> String {
         .join("")
 }
 
-pub fn parse_data_sources_yaml(yaml: &str) -> Result<HashMap<String, DataSource>> {
+pub fn parse_data_sources_yaml(yaml: &str) -> Result<DataSources> {
     match serde_yaml::from_str(yaml) {
         Ok(data_sources) => Ok(data_sources),
         // Try parsing the old format that has a separate options key
