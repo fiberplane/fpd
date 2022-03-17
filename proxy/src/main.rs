@@ -1,6 +1,7 @@
 use crate::service::{parse_data_sources_yaml, DataSources, ProxyService};
+use anyhow::{anyhow, Error};
 use clap::Parser;
-use std::{io, net::SocketAddr, path::PathBuf, process, time::Duration};
+use std::{io, net::SocketAddr, path::PathBuf, process, str::FromStr, time::Duration};
 use tokio::fs;
 use tracing::{error, info, trace};
 use url::Url;
@@ -36,12 +37,31 @@ pub struct Arguments {
     #[clap(long, short, env)]
     listen_address: Option<SocketAddr>,
 
-    /// Interval, in minutes, to check the status of each data source
-    #[clap(long, short, env, default_value = "5")]
-    status_check_interval: u64,
+    /// Interval to check the status of each data source ("30s" = 30 seconds, "5m" = 5 minutes, "1h" = 1 hour)
+    #[clap(long, short, env, default_value = "5m")]
+    status_check_interval: IntervalDuration,
 
     #[clap(long, env)]
     log_json: bool,
+}
+
+struct IntervalDuration(Duration);
+
+impl FromStr for IntervalDuration {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split_at(s.len() - 1) {
+            (s, "s") => Ok(IntervalDuration(Duration::from_secs(u64::from_str(s)?))),
+            (s, "m") => Ok(IntervalDuration(Duration::from_secs(
+                u64::from_str(s)? * 60,
+            ))),
+            (s, "h") => Ok(IntervalDuration(Duration::from_secs(
+                u64::from_str(s)? * 60 * 60,
+            ))),
+            _ => Err(anyhow!("invalid interval")),
+        }
+    }
 }
 
 #[tokio::main]
@@ -72,7 +92,7 @@ async fn main() {
         data_sources,
         args.max_retries,
         args.listen_address,
-        Duration::from_secs(args.status_check_interval * 60),
+        args.status_check_interval.0,
     )
     .await;
 
