@@ -142,16 +142,32 @@ impl ProxyService {
         // Spawn a task to send the data sources and their statuses to the relay
         let service = self.clone();
         let data_sources_sender = outgoing_sender.clone();
+        let mut shutdown_clone = shutdown.subscribe();
         tokio::spawn(async move {
             let mut status_check_interval = interval(service.inner.status_check_interval);
             loop {
-                // Note that the first tick returns immediately
-                status_check_interval.tick().await;
+                select! {
+                    // Note that the first tick returns immediately
+                    _ = status_check_interval.tick().fuse() => {
+                        let data_sources = service.get_data_sources().await;
+                        debug!("sending data sources to relay: {:?}", data_sources);
+                        let message = RelayMessage::SetDataSources(data_sources);
+                        data_sources_sender.send(message).ok();
+                    }
+                    _ = shutdown_clone.recv().fuse() => {
+                        // Let the relay know that all of these data sources are going offline
+                        let data_sources = service.inner.data_sources.iter().map(|(name, data_source)| {
+                            (name.clone(), DataSourceDetailsOrType::Details(DataSourceDetails {
+                                ty: data_source.data_source_type(),
+                                status: DataSourceStatus::Error("Proxy shut down".into())
+                            }))
+                        }).collect();
+                        let message = RelayMessage::SetDataSources(data_sources);
+                        data_sources_sender.send(message).ok();
 
-                let data_sources = service.get_data_sources().await;
-                debug!("sending data sources to relay: {:?}", data_sources);
-                let message = RelayMessage::SetDataSources(data_sources);
-                data_sources_sender.send(message).ok();
+                        break;
+                    }
+                }
             }
         });
 
