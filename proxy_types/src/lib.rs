@@ -2,7 +2,7 @@ use fiberplane::protocols::core::DataSourceType;
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 pub use uuid::Uuid;
 
 /// Messages intended for the Server to handle
