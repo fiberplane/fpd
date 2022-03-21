@@ -18,7 +18,7 @@ pub struct Arguments {
     wasm_dir: PathBuf,
 
     /// Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
-    #[clap(long, short, default_value = "wss://fiberplane.com")]
+    #[clap(long, short, env, default_value = "wss://fiberplane.com")]
     fiberplane_endpoint: Url,
 
     /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
