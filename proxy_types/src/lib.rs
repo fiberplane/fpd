@@ -195,3 +195,30 @@ fn set_data_sources_includes_status() {
         })
     );
 }
+
+#[test]
+fn serialize_data_sources_messagepack() {
+    let mut input: SetDataSourcesMessage = HashMap::new();
+    input.insert(
+        String::from("key1"),
+        DataSourceDetailsOrType::Details(DataSourceDetails {
+            ty: DataSourceType::Prometheus,
+            status: DataSourceStatus::Connected,
+        }),
+    );
+
+    input.insert(
+        String::from("key2"),
+        DataSourceDetailsOrType::Type(DataSourceType::Prometheus),
+    );
+
+    let message: RelayMessage = RelayMessage::SetDataSources(input.clone());
+
+    let serialized = message.serialize_msgpack();
+    let deserialized: RelayMessage =
+        RelayMessage::deserialize_msgpack(serialized).expect("unable to deserialize message");
+    match deserialized {
+        RelayMessage::SetDataSources(datasources) => assert_eq!(datasources, input),
+        e => panic!("unexpected message: {:?}", e),
+    }
+}
