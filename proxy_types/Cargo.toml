@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "main" }
+fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "lower_clap" }
 rmp-serde = "1.0.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11.5"
