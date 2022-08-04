@@ -115,20 +115,20 @@ jobs:
 
       - name: Strip release binary (linux and macos)
         if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-apple-darwin'
-        run: strip "target/${{ matrix.target }}/release/fpx"
+        run: strip "target/${{ matrix.target }}/release/proxy"
 
       - name: Prepare artifact
         run: |
           mkdir -p /tmp/artifact/
-          cp "target/${{ matrix.target }}/release/fpx" /tmp/artifact/
+          cp "target/${{ matrix.target }}/release/proxy" /tmp/artifact/
 
       # # We are not able to run the ARM based MacOS binary, since this is running
       # # on a x86_64 MacOS machine.
       # - name: Release version information
       #   if: matrix.target != 'aarch64-apple-darwin'
       #   run: |
-      #     target/${{ matrix.target }}/release/fpx version -o verbose
-      #     target/${{ matrix.target }}/release/fpx version -o json > /tmp/artifact/manifest.json
+      #     target/${{ matrix.target }}/release/proxy version -o verbose
+      #     target/${{ matrix.target }}/release/proxy version -o json > /tmp/artifact/manifest.json
 
       - name: Create SHA256 sums for the artifacts (Linux)
         if: matrix.os == 'ubuntu-22.04'
@@ -150,124 +150,4 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  publish-artifacts-s3:
-    name: Publish artifacts to S3 GitHub build artifact
-    if: github.event_name == 'release'
-    runs-on: ubuntu-22.04
-    needs: build
-    steps:
-      - uses: actions/download-artifact@v2
-        with:
-          path: artifacts
-
-      - name: Create version file
-        run: echo "${{ github.event.release.tag_name }}" | cut -c2- > artifacts/version
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-central-1
-
-      - name: Sync fpx ${{ github.event.release.tag_name }} to S3
-        run: |
-          aws s3 sync \
-            --acl public-read \
-            --delete \
-            artifacts/ \
-            s3://fp.dev/fpx/${{ github.event.release.tag_name }}/
-          aws s3 sync \
-            --acl public-read \
-            --delete \
-            artifacts/ \
-            s3://fp.dev/fpx/latest
-
-      - name: Invalidate latest path on CloudFront
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "${{ secrets.CF_BUILDS_ID }}" \
-            --paths '/fpx/latest*'
-
-  publish-artifacts-debug:
-    name: Debug artifacts
-    runs-on: ubuntu-22.04
-    needs: build
-    steps:
-      - uses: actions/download-artifact@v2
-        with:
-          path: artifacts
-
-      - name: Debug artifacts
-        run: ls -la ./artifacts
-
-  publish-artifacts-docker:
-    name: Build Docker image for ${{ matrix.docker_arch }}
-    runs-on: ubuntu-22.04
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            docker_arch: amd64
-            docker_platform: linux/amd64
-          - target: aarch64-unknown-linux-gnu
-            docker_arch: arm64v8
-            docker_platform: linux/arm64
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - uses: actions/download-artifact@v2
-        with:
-          name: ${{ matrix.target }}
-          path: artifact
-
-      - name: Debug artifacts
-        run: ls -la ./
-
-      - name: Debug artifacts
-        run: ls -la ./artifact
-
-      - name: Prepare artifact
-        run: chmod u+x ./artifact/fpx
-
-      - name: Build Docker image
-        run: >
-          docker build
-          -t fiberplane/fpx:${{ matrix.docker_arch }}-latest
-          --platform "${{ matrix.docker_platform }}"
-          --build-arg ARCH=${{ matrix.docker_arch }}/
-          --build-arg FPX_PATH=artifact/fpx
-          .
-
-      - name: Push Docker image
-        run: docker push fiberplane/fpx:${{ matrix.docker_arch }}-latest
-
-  publish-artifacts-docker-manifest:
-    name: Build Docker manifest
-    runs-on: ubuntu-22.04
-    needs: publish-artifacts-docker
-    steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Create Docker manifest
-        run: >
-          docker manifest create
-          fiberplane/fpx:latest
-          --amend fiberplane/fpx:amd64-latest
-          --amend fiberplane/fpx:arm64v8-latest
-
-      - name: Push Docker manifest
-        run: docker manifest push fiberplane/fpx:latest
+  
