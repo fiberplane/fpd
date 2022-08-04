@@ -1,0 +1,273 @@
+# This workflow will be triggered by a GitHub pull-request.
+# It compiles the code to a release binary, create a Docker image containing
+# the binary, and uploads the Docker image to our registry using the branch as
+# the registry tag.
+---
+name: Build
+
+on:
+  pull_request:
+    branches: ["*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test and lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2.0.6
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: add rust components
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
+
+      - name: Check format
+        run: cargo fmt -- --check
+
+      - name: Lint code
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features --release
+
+      - name: Run tests
+        run: cargo test
+
+  build:
+    name: Create binary for ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO: cargo
+      TARGET_FLAGS: ""
+      TARGET_DIR: ./target
+      RUST_BACKTRACE: 1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: x86_64-apple-darwin
+            os: macos-12
+          - target: aarch64-apple-darwin
+            os: macos-12
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: cargo fetch
+        run: cargo fetch --target ${{ matrix.target }}
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Use Cross
+        run: |
+          cargo install cross --force
+          echo "CARGO=cross" >> $GITHUB_ENV
+          echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
+          echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
+
+      - name: Build release binary
+        run: ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
+
+      - name: Strip release binary (linux and macos)
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-apple-darwin'
+        run: strip "target/${{ matrix.target }}/release/fpx"
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p /tmp/artifact/
+          cp "target/${{ matrix.target }}/release/fpx" /tmp/artifact/
+
+      # # We are not able to run the ARM based MacOS binary, since this is running
+      # # on a x86_64 MacOS machine.
+      # - name: Release version information
+      #   if: matrix.target != 'aarch64-apple-darwin'
+      #   run: |
+      #     target/${{ matrix.target }}/release/fpx version -o verbose
+      #     target/${{ matrix.target }}/release/fpx version -o json > /tmp/artifact/manifest.json
+
+      - name: Create SHA256 sums for the artifacts (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cd /tmp/artifact/
+          sha256sum * > checksum.sha256
+
+      - name: Create SHA256 sums for the artifacts (MacOS)
+        if: matrix.os == 'macos-12'
+        run: |
+          cd /tmp/artifact/
+          shasum -a 256 * > checksum.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.target }}
+          path: /tmp/artifact/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-artifacts-s3:
+    name: Publish artifacts to S3 GitHub build artifact
+    if: github.event_name == 'release'
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: Create version file
+        run: echo "${{ github.event.release.tag_name }}" | cut -c2- > artifacts/version
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Sync fpx ${{ github.event.release.tag_name }} to S3
+        run: |
+          aws s3 sync \
+            --acl public-read \
+            --delete \
+            artifacts/ \
+            s3://fp.dev/fpx/${{ github.event.release.tag_name }}/
+          aws s3 sync \
+            --acl public-read \
+            --delete \
+            artifacts/ \
+            s3://fp.dev/fpx/latest
+
+      - name: Invalidate latest path on CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ secrets.CF_BUILDS_ID }}" \
+            --paths '/fpx/latest*'
+
+  publish-artifacts-debug:
+    name: Debug artifacts
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: Debug artifacts
+        run: ls -la ./artifacts
+
+  publish-artifacts-docker:
+    name: Build Docker image for ${{ matrix.docker_arch }}
+    runs-on: ubuntu-22.04
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            docker_arch: amd64
+            docker_platform: linux/amd64
+          - target: aarch64-unknown-linux-gnu
+            docker_arch: arm64v8
+            docker_platform: linux/arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: ${{ matrix.target }}
+          path: artifact
+
+      - name: Debug artifacts
+        run: ls -la ./
+
+      - name: Debug artifacts
+        run: ls -la ./artifact
+
+      - name: Prepare artifact
+        run: chmod u+x ./artifact/fpx
+
+      - name: Build Docker image
+        run: >
+          docker build
+          -t fiberplane/fpx:${{ matrix.docker_arch }}-latest
+          --platform "${{ matrix.docker_platform }}"
+          --build-arg ARCH=${{ matrix.docker_arch }}/
+          --build-arg FPX_PATH=artifact/fpx
+          .
+
+      - name: Push Docker image
+        run: docker push fiberplane/fpx:${{ matrix.docker_arch }}-latest
+
+  publish-artifacts-docker-manifest:
+    name: Build Docker manifest
+    runs-on: ubuntu-22.04
+    needs: publish-artifacts-docker
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create Docker manifest
+        run: >
+          docker manifest create
+          fiberplane/fpx:latest
+          --amend fiberplane/fpx:amd64-latest
+          --amend fiberplane/fpx:arm64v8-latest
+
+      - name: Push Docker manifest
+        run: docker manifest push fiberplane/fpx:latest
