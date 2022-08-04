@@ -3,7 +3,7 @@
 # the binary, and uploads the Docker image to our registry using the branch as
 # the registry tag.
 ---
-name: Build
+name: Build_testing
 
 on:
   [workflow_dispatch]
