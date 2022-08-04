@@ -6,7 +6,7 @@
 name: Build
 
 on:
-  workflow_despatch:
+  workflow_dispatch:
     branches: ["build-testing"]
 
 env:
