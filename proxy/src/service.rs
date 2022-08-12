@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use fiberplane::protocols::core::{DataSource, DataSourceType};
-use fp_provider::{Error, HttpRequestError, ProviderRequest, ProviderResponse};
+use fp_provider_bindings::{
+    Error, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
+};
 use fp_provider_runtime::spec::Runtime;
 use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
@@ -29,7 +31,7 @@ pub(crate) type WasmModules = HashMap<DataSourceType, Result<Arc<Vec<u8>>, Strin
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 lazy_static! {
-    static ref STATUS_REQUEST: Vec<u8> = rmp_serde::to_vec(&ProviderRequest::Status).unwrap();
+    static ref STATUS_REQUEST: Vec<u8> = rmp_serde::to_vec(&LegacyProviderRequest::Status).unwrap();
 }
 
 #[derive(Clone, Debug)]
@@ -354,6 +356,7 @@ impl ProxyService {
                 }))?;
                 return Ok(());
             }
+            DataSource::Sentry(config) => rmp_serde::to_vec(&config)?,
         };
 
         let request = message.data;
@@ -424,18 +427,18 @@ impl ProxyService {
             }
         }?;
         match rmp_serde::from_slice(&response.data) {
-            Ok(ProviderResponse::StatusOk) => {
+            Ok(LegacyProviderResponse::StatusOk) => {
                 debug!("provider status check returned OK");
                 Ok(())
             }
-            Ok(ProviderResponse::Error {
+            Ok(LegacyProviderResponse::Error {
                 error: Error::UnsupportedRequest,
             }) => {
                 debug!("provider does not support status request");
                 Ok(())
             }
             // Try parsing the server response as a string so we can return a nicer message
-            Ok(ProviderResponse::Error {
+            Ok(LegacyProviderResponse::Error {
                 error:
                     Error::Http {
                         error:
@@ -457,7 +460,7 @@ impl ProxyService {
                     response
                 ))
             }
-            Ok(ProviderResponse::Error { error }) => {
+            Ok(LegacyProviderResponse::Error { error }) => {
                 Err(anyhow!("Provider returned an error: {:?}", error))
             }
             Err(err) => Err(anyhow!("Error deserializing provider response: {:?}", err)),

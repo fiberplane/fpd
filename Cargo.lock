@@ -792,15 +792,20 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#ba9d4673e7fe532c770e2536417ac77f0a371030"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=move-providers#e2f20ae8bb51ce6ea9a38ce2c0e2d3f146bb4ce8"
 dependencies = [
+ "base64",
+ "clap",
  "fp-bindgen",
+ "lazy_static",
  "once_cell",
  "regex",
  "serde",
+ "serde_bytes",
+ "strum",
+ "strum_macros",
  "thiserror",
  "time",
- "time_util",
 ]
 
 [[package]]
@@ -827,8 +832,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f0a4eeef26356d8c8b2848b91001efb280c6ba45"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaa93b5b0597679bc3b8e40fd1e255b9671e52ad8f5955ffd67b3ec2289e3e81"
 dependencies = [
  "Inflector",
  "fp-bindgen-macros",
@@ -836,6 +842,7 @@ dependencies = [
  "pretty_assertions",
  "proc-macro2",
  "quote",
+ "rmpv",
  "serde_bytes",
  "syn",
  "time",
@@ -843,8 +850,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-macros"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#59d067a6efbf349ab3e9df9e03b10c0804f6f059"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df5e0b46107679bcfd8deaac9de16eb9f30c25f49919ef012e58b80e1a1e1d1a"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -854,8 +862,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-support"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#59d067a6efbf349ab3e9df9e03b10c0804f6f059"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3697b499cd3357b4cba75de705d1917e6ebccd9f70098d76a939e64ab91869a"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
@@ -867,10 +876,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "fp-provider"
-version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#24e654e2c26d90f19f267a988c64661ad6789a64"
+name = "fp-provider-bindings"
+version = "2.0.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=move-providers#e2f20ae8bb51ce6ea9a38ce2c0e2d3f146bb4ce8"
 dependencies = [
+ "fiberplane",
  "fp-bindgen-support",
  "once_cell",
  "rmp-serde",
@@ -881,9 +891,10 @@ dependencies = [
 
 [[package]]
 name = "fp-provider-runtime"
-version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#24e654e2c26d90f19f267a988c64661ad6789a64"
+version = "2.0.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=move-providers#e2f20ae8bb51ce6ea9a38ce2c0e2d3f146bb4ce8"
 dependencies = [
+ "fiberplane",
  "fp-bindgen-support",
  "rand",
  "reqwest",
@@ -1825,7 +1836,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "fiberplane",
- "fp-provider",
+ "fp-provider-bindings",
  "fp-provider-runtime",
  "futures",
  "http",
@@ -2480,6 +2491,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
+name = "strum"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
+
+[[package]]
+name = "strum_macros"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2586,16 +2616,6 @@ dependencies = [
  "libc",
  "num_threads",
  "serde",
-]
-
-[[package]]
-name = "time_util"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#ba9d4673e7fe532c770e2536417ac77f0a371030"
-dependencies = [
- "anyhow",
- "serde",
- "time",
 ]
 
 [[package]]

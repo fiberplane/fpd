@@ -7,7 +7,7 @@ PROVIDERS=(
 )
 
 REPO_ROOT=`dirname "$0"`/..
-PROVIDERS_REPO="${REPO_ROOT}/../providers"
+PROVIDERS_REPO="${REPO_ROOT}/../fiberplane-rs"
 
 CYAN='\033[0;36m'
 WHITE='\033[0;37;1m'
