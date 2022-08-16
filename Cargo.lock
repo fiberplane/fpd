@@ -792,15 +792,20 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#ba9d4673e7fe532c770e2536417ac77f0a371030"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#4de71e42124af6ebe4390af1e56dc7dcacc7ec46"
 dependencies = [
+ "base64",
+ "clap",
  "fp-bindgen",
+ "lazy_static",
  "once_cell",
  "regex",
  "serde",
+ "serde_bytes",
+ "strum",
+ "strum_macros",
  "thiserror",
  "time",
- "time_util",
 ]
 
 [[package]]
@@ -827,8 +832,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#f0a4eeef26356d8c8b2848b91001efb280c6ba45"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaa93b5b0597679bc3b8e40fd1e255b9671e52ad8f5955ffd67b3ec2289e3e81"
 dependencies = [
  "Inflector",
  "fp-bindgen-macros",
@@ -836,6 +842,7 @@ dependencies = [
  "pretty_assertions",
  "proc-macro2",
  "quote",
+ "rmpv",
  "serde_bytes",
  "syn",
  "time",
@@ -843,8 +850,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-macros"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#59d067a6efbf349ab3e9df9e03b10c0804f6f059"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df5e0b46107679bcfd8deaac9de16eb9f30c25f49919ef012e58b80e1a1e1d1a"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -854,8 +862,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-support"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fp-bindgen.git?branch=main#59d067a6efbf349ab3e9df9e03b10c0804f6f059"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3697b499cd3357b4cba75de705d1917e6ebccd9f70098d76a939e64ab91869a"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
@@ -867,10 +876,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "fp-provider"
-version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#24e654e2c26d90f19f267a988c64661ad6789a64"
+name = "fp-provider-bindings"
+version = "2.0.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#4de71e42124af6ebe4390af1e56dc7dcacc7ec46"
 dependencies = [
+ "fiberplane",
  "fp-bindgen-support",
  "once_cell",
  "rmp-serde",
@@ -881,9 +891,10 @@ dependencies = [
 
 [[package]]
 name = "fp-provider-runtime"
-version = "1.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/providers.git?branch=main#24e654e2c26d90f19f267a988c64661ad6789a64"
+version = "2.0.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#4de71e42124af6ebe4390af1e56dc7dcacc7ec46"
 dependencies = [
+ "fiberplane",
  "fp-bindgen-support",
  "rand",
  "reqwest",
@@ -1289,9 +1300,9 @@ checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 
 [[package]]
 name = "js-sys"
-version = "0.3.56"
+version = "0.3.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a38fc24e30fd564ce974c02bf1d337caddff65be6cc4735a1f7eab22a7440f04"
+checksum = "258451ab10b34f8af53416d1fdab72c22e805f0c92a1136d59470ec0b11138b2"
 dependencies = [
  "wasm-bindgen",
 ]
@@ -1600,9 +1611,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.9.0"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da32515d9f6e6e489d7bc9d84c71b060db7247dc035bbe44eac88cf87486d8d5"
+checksum = "18a6dbe30758c9f83eb00cbea4ac95966305f5a7772f3f42ebfc7fc7eddbd8e1"
 
 [[package]]
 name = "opaque-debug"
@@ -1825,7 +1836,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "fiberplane",
- "fp-provider",
+ "fp-provider-bindings",
  "fp-provider-runtime",
  "futures",
  "http",
@@ -2480,6 +2491,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
+name = "strum"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
+
+[[package]]
+name = "strum_macros"
+version = "0.24.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2578,24 +2608,14 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.7"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "004cbc98f30fa233c61a38bc77e96a9106e65c88f2d3bef182ae952027e5753d"
+checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
 dependencies = [
  "itoa 1.0.1",
  "libc",
  "num_threads",
  "serde",
-]
-
-[[package]]
-name = "time_util"
-version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#ba9d4673e7fe532c770e2536417ac77f0a371030"
-dependencies = [
- "anyhow",
- "serde",
- "time",
 ]
 
 [[package]]
@@ -2937,9 +2957,9 @@ checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.79"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25f1af7423d8588a3d840681122e72e6a24ddbcb3f0ec385cac0d12d24256c06"
+checksum = "fc7652e3f6c4706c8d9cd54832c4a4ccb9b5336e2c3bd154d5cccfbf1c1f5f7d"
 dependencies = [
  "cfg-if",
  "wasm-bindgen-macro",
@@ -2947,13 +2967,13 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.79"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b21c0df030f5a177f3cba22e9bc4322695ec43e7257d865302900290bcdedca"
+checksum = "662cd44805586bd52971b9586b1df85cdbbd9112e4ef4d8f41559c334dc6ac3f"
 dependencies = [
  "bumpalo",
- "lazy_static",
  "log",
+ "once_cell",
  "proc-macro2",
  "quote",
  "syn",
@@ -2974,9 +2994,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.79"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4203d69e40a52ee523b2529a773d5ffc1dc0071801c87b3d270b471b80ed01"
+checksum = "b260f13d3012071dfb1512849c033b1925038373aea48ced3012c09df952c602"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -2984,9 +3004,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.79"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa8a30d46208db204854cadbb5d4baf5fcf8071ba5bf48190c3e59937962ebc"
+checksum = "5be8e654bdd9b79216c2929ab90721aa82faf65c48cdf08bdc4e7f51357b80da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2997,9 +3017,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.79"
+version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d958d035c4438e28c70e4321a2911302f10135ce78a9c7834c0cab4123d06a2"
+checksum = "6598dd0bd3c7d51095ff6531a5b23e02acdc81804e30d8f07afb77b7215a140a"
 
 [[package]]
 name = "wasmer"

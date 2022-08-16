@@ -4,10 +4,11 @@ PROVIDERS=(
     "prometheus"
     "elasticsearch"
     "loki"
+    "sentry"
 )
 
 REPO_ROOT=`dirname "$0"`/..
-PROVIDERS_REPO="${REPO_ROOT}/../providers"
+FIBERPLANE_DIR="${REPO_ROOT}/../fiberplane-rs"
 
 CYAN='\033[0;36m'
 WHITE='\033[0;37;1m'
@@ -23,18 +24,15 @@ fi
 
 set -e
 
-if [ ! -d $PROVIDERS_REPO ]; then
-    echo "Please make sure you have the providers repository checked out next"
-    echo "to your studio project."
+if [ ! -d $FIBERPLANE_DIR ]; then
+    echo "Please make sure you have the fiberplane repository checked out next"
+    echo "to your proxy project."
     exit 1
 fi
 
-cd $PROVIDERS_REPO
+cd $FIBERPLANE_DIR
 
-git switch main
-git pull
-
-printf "${CYAN}Compiling providers...${NC}"
+printf "${CYAN}Compiling providers...${NC}\n"
 for provider in "${PROVIDERS[@]}"; do
     pushd "providers/$provider"
         cargo build --release

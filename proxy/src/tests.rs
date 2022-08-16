@@ -3,8 +3,8 @@ use fiberplane::protocols::core::{
     DataSource, DataSourceType, ElasticsearchDataSource, PrometheusDataSource, ProxyDataSource,
 };
 use fp_provider_runtime::spec::types::{
-    Error as ProviderError, HttpRequestError, ProviderRequest, ProviderResponse, QueryInstant,
-    QueryTimeRange, TimeRange,
+    Error as ProviderError, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
+    QueryInstant, QueryTimeRange, TimeRange,
 };
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
@@ -558,7 +558,7 @@ async fn calls_provider_with_query_and_sends_result() {
 
         // Send query
         let op_id = Uuid::new_v4();
-        let request = ProviderRequest::Instant(QueryInstant {
+        let request = LegacyProviderRequest::Instant(QueryInstant {
             query: "test query".to_string(),
             timestamp: 0.0,
         });
@@ -582,7 +582,7 @@ async fn calls_provider_with_query_and_sends_result() {
         };
         assert_eq!(result.op_id, op_id);
         match rmp_serde::from_slice(&result.data) {
-            Ok(ProviderResponse::Instant { instants }) => {
+            Ok(LegacyProviderResponse::Instant { instants }) => {
                 assert_eq!(instants[0].metric.name, "up");
             }
             Err(e) => panic!(
@@ -674,7 +674,7 @@ async fn handles_multiple_concurrent_messages() {
         let message_1 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_1,
             data_source_name: "data source 1".to_string(),
-            data: rmp_serde::to_vec(&ProviderRequest::Instant(QueryInstant {
+            data: rmp_serde::to_vec(&LegacyProviderRequest::Instant(QueryInstant {
                 query: "query 1".to_string(),
                 timestamp: 0.0,
             }))
@@ -687,7 +687,7 @@ async fn handles_multiple_concurrent_messages() {
         let message_2 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_2,
             data_source_name: "data source 1".to_string(),
-            data: rmp_serde::to_vec(&ProviderRequest::Series(QueryTimeRange {
+            data: rmp_serde::to_vec(&LegacyProviderRequest::Series(QueryTimeRange {
                 query: "query 2".to_string(),
                 time_range: TimeRange { from: 0.0, to: 1.0 },
             }))
@@ -776,7 +776,7 @@ async fn calls_provider_with_query_and_sends_error() {
 
         // Send query
         let op_id = Uuid::new_v4();
-        let request = ProviderRequest::Instant(QueryInstant {
+        let request = LegacyProviderRequest::Instant(QueryInstant {
             query: "test query".to_string(),
             timestamp: 0.0,
         });
@@ -800,7 +800,7 @@ async fn calls_provider_with_query_and_sends_error() {
         };
         assert_eq!(result.op_id, op_id);
         match rmp_serde::from_slice(&result.data) {
-            Ok(ProviderResponse::Error {
+            Ok(LegacyProviderResponse::Error {
                 error:
                     ProviderError::Http {
                         error:
