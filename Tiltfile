@@ -19,11 +19,10 @@ all_providers = {
 # Run the data source providers
 data_sources_yaml = ''
 providers = []
-if os.getenv('PROVIDERS'):
-  if os.getenv('PROVIDERS') == 'all':
-    providers = all_providers.keys()
-  else:
-    providers = os.getenv('PROVIDERS').split(',')
+if not os.getenv('PROVIDERS') or os.getenv('PROVIDERS') == 'all':
+  providers = all_providers.keys()
+else:
+  providers = os.getenv('PROVIDERS').split(',')
 
 for provider in providers:
   if provider not in all_providers:
