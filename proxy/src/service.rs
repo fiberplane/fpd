@@ -590,7 +590,7 @@ impl SingleThreadTaskHandler {
                 RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
             }
             Err(err) => {
-                debug!(?err, "error invoking provider");
+                error!(?err, "error invoking provider");
                 RelayMessage::Error(ErrorMessage {
                     op_id,
                     message: format!("Provider runtime error: {:?}", err),
