@@ -113,7 +113,7 @@ async fn sends_auth_token_in_header() {
 async fn sends_data_sources_on_connect() {
     let connected_prometheus = MockServer::start();
     let connected_prometheus_mock = connected_prometheus.mock(|when, then| {
-        when.method("GET").path("/api/v1/status/buildinfo");
+        when.method("GET").path("/api/v1/query");
         then.status(200).body("{}");
     });
     let connected_elasticsearch = MockServer::start();
@@ -123,7 +123,7 @@ async fn sends_data_sources_on_connect() {
     });
     let disconnected_prometheus = MockServer::start();
     let disconnected_prometheus_mock = disconnected_prometheus.mock(|when, then| {
-        when.method("GET").path("/api/v1/status/buildinfo");
+        when.method("GET").path("/api/v1/query");
         then.status(500).body("Some Error");
     });
 
@@ -244,11 +244,11 @@ async fn sends_data_sources_on_connect() {
 async fn checks_data_source_status_on_interval() {
     let mock_server = MockServer::start();
     let mut connected_prometheus_mock = mock_server.mock(|when, then| {
-        when.method("GET").path("/api/v1/status/buildinfo");
+        when.method("GET").path("/api/v1/query");
         then.status(200).body("{}");
     });
     let disconnected_prometheus_mock = mock_server.mock(|when, then| {
-        when.method("GET").path("/api/v1/status/buildinfo");
+        when.method("GET").path("/api/v1/query");
         then.status(500).body("Internal Server Error");
     });
 
