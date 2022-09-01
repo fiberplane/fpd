@@ -815,7 +815,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-bindgen-singlepass#6cac1d0c5dbb0f3873d9c15feb4d542eeb934596"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
 dependencies = [
  "base64",
  "bytes",
@@ -904,7 +904,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-bindgen-singlepass#6cac1d0c5dbb0f3873d9c15feb4d542eeb934596"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-bindgen-singlepass#6cac1d0c5dbb0f3873d9c15feb4d542eeb934596"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
 dependencies = [
  "bytes",
  "fiberplane",
