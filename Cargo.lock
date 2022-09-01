@@ -367,6 +367,9 @@ name = "bytes"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cache-padded"
@@ -792,16 +795,17 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#4de71e42124af6ebe4390af1e56dc7dcacc7ec46"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-bindgen-singlepass#6cac1d0c5dbb0f3873d9c15feb4d542eeb934596"
 dependencies = [
  "base64",
+ "bytes",
  "clap",
+ "form_urlencoded",
  "fp-bindgen",
  "lazy_static",
  "once_cell",
  "regex",
  "serde",
- "serde_bytes",
  "strum",
  "strum_macros",
  "thiserror",
@@ -832,11 +836,12 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen"
-version = "2.0.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaa93b5b0597679bc3b8e40fd1e255b9671e52ad8f5955ffd67b3ec2289e3e81"
+checksum = "b6714e557eae1700a7a8924257826996ab07e028ff943bc8d27bad5048042199"
 dependencies = [
  "Inflector",
+ "bytes",
  "fp-bindgen-macros",
  "http",
  "pretty_assertions",
@@ -844,15 +849,16 @@ dependencies = [
  "quote",
  "rmpv",
  "serde_bytes",
+ "serde_json",
  "syn",
  "time",
 ]
 
 [[package]]
 name = "fp-bindgen-macros"
-version = "2.0.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df5e0b46107679bcfd8deaac9de16eb9f30c25f49919ef012e58b80e1a1e1d1a"
+checksum = "6e28012ebf5e635af62591a27a5e83847bc589eeea03252fabf56e3cf873d1d4"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -862,9 +868,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-support"
-version = "2.0.1"
+version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3697b499cd3357b4cba75de705d1917e6ebccd9f70098d76a939e64ab91869a"
+checksum = "488e1cef84b2e773c09c14cf03e268b1ae657fd037bb4bb1b2c2d7a9895ccfb0"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
@@ -878,22 +884,23 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#4de71e42124af6ebe4390af1e56dc7dcacc7ec46"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-bindgen-singlepass#6cac1d0c5dbb0f3873d9c15feb4d542eeb934596"
 dependencies = [
+ "bytes",
  "fiberplane",
  "fp-bindgen-support",
  "once_cell",
  "rmp-serde",
  "rmpv",
  "serde",
- "serde_bytes",
 ]
 
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#4de71e42124af6ebe4390af1e56dc7dcacc7ec46"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-bindgen-singlepass#6cac1d0c5dbb0f3873d9c15feb4d542eeb934596"
 dependencies = [
+ "bytes",
  "fiberplane",
  "fp-bindgen-support",
  "rand",
@@ -901,14 +908,10 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "serde",
- "serde_bytes",
  "thiserror",
  "tokio",
  "tracing",
  "wasmer",
- "wasmer-compiler-cranelift",
- "wasmer-compiler-singlepass",
- "wasmer-engine-universal",
 ]
 
 [[package]]
@@ -3037,6 +3040,7 @@ dependencies = [
  "wasm-bindgen",
  "wasmer-compiler",
  "wasmer-compiler-cranelift",
+ "wasmer-compiler-singlepass",
  "wasmer-derive",
  "wasmer-engine",
  "wasmer-engine-dylib",
