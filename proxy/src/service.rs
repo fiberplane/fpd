@@ -448,7 +448,7 @@ impl ProxyService {
                             },
                     },
             }) => {
-                let response = response.into_vec();
+                let response = response.to_vec();
                 let response = if let Ok(response) = String::from_utf8(response.clone()) {
                     response
                 } else {
