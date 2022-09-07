@@ -1,8 +1,9 @@
-# Define the base image version of Debian
-ARG BASE_IMAGE_VERSION=11-slim
+# Setting ARCH allows us to use different base images for different architectures
+ARG ARCH=
+ARG BASE_IMAGE_VERSION=buster-slim
 
 # Runtime image
-FROM debian:${BASE_IMAGE_VERSION}
+FROM ${ARCH}debian:${BASE_IMAGE_VERSION}
 
 RUN apt-get update \
  && apt-get install -y --force-yes --no-install-recommends ca-certificates \
@@ -15,11 +16,12 @@ ARG PROVIDERS_PATH=providers
 COPY ${PROVIDERS_PATH} /app/providers
 
 # This needs to be the path to the proxy binary
-ARG PROXY_PATH=target/debug/proxy
-COPY ${PROXY_PATH} /app/proxy
+ARG BIN_PATH=target/debug/proxy
+COPY ${BIN_PATH} /app/proxy
 
 ENV WASM_DIR=/app/providers
 ENV RUST_LOG=proxy=info
 ENV LISTEN_ADDRESS=127.0.0.1:3000
+
 WORKDIR /app
 ENTRYPOINT ["/app/proxy"]
