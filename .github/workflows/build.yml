@@ -163,12 +163,12 @@ jobs:
           mkdir -p /tmp/artifact/
           cp "${TARGET_DIR}/release/${SERVICE}" /tmp/artifact/
 
-      # We are not able to run the ARM based binaries on our x86 hardware.
-      - name: Release version information
-        if: matrix.target != 'aarch64-apple-darwin' && matrix.target != 'aarch64-unknown-linux-gnu'
-        run: |
-          /tmp/artifact/${SERVICE} version -o verbose
-          /tmp/artifact/${SERVICE} version -o json > /tmp/artifact/manifest.json
+      # # We are not able to run the ARM based binaries on our x86 hardware.
+      # - name: Release version information
+      #   if: matrix.target != 'aarch64-apple-darwin' && matrix.target != 'aarch64-unknown-linux-gnu'
+      #   run: |
+      #     /tmp/artifact/${SERVICE} version -o verbose
+      #     /tmp/artifact/${SERVICE} version -o json > /tmp/artifact/manifest.json
 
       - name: Create SHA256 sums for the artifacts (Linux)
         if: matrix.os == 'ubuntu-22.04'
@@ -243,9 +243,9 @@ jobs:
           --build-arg SERVICE=artifact/${SERVICE}
           .
 
-      - name: Test Docker image
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: docker run --rm "${IMAGE}:${TAG}" version -o verbose
+      # - name: Test Docker image
+      #   if: matrix.target == 'x86_64-unknown-linux-gnu'
+      #   run: docker run --rm "${IMAGE}:${TAG}" version -o verbose
 
       - name: Push Docker image
         run: docker push "${IMAGE}:${TAG}"
