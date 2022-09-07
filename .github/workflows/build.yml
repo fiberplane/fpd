@@ -209,6 +209,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Enable arm64 support in Docker
+        if: matrix.docker_arch == 'arm64v8'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -241,11 +248,11 @@ jobs:
           --platform "${{ matrix.docker_platform }}"
           --build-arg ARCH=${{ matrix.docker_arch }}/
           --build-arg SERVICE=artifact/${SERVICE}
+          --build-arg PROVIDERS_PATH=providers
           .
 
-      # - name: Test Docker image
-      #   if: matrix.target == 'x86_64-unknown-linux-gnu'
-      #   run: docker run --rm "${IMAGE}:${TAG}" version -o verbose
+      - name: Test Docker image
+        run: docker run --rm "${IMAGE}:${TAG}" --help
 
       - name: Push Docker image
         run: docker push "${IMAGE}:${TAG}"
