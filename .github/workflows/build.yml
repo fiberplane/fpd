@@ -89,6 +89,9 @@ jobs:
       - name: Run tests
         run: cargo test
 
+      - name: sccache stats
+        run: /usr/bin/sccache --show-stats
+
   # Create the release binaries for each target
   build:
     name: Create binary for ${{ matrix.target }}
