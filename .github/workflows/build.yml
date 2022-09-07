@@ -1,22 +1,68 @@
+# This workflow will be triggered by a GitHub pull-request.
+# It compiles the code to a release binary, create a Docker image containing
+# the binary, and uploads the Docker image to our registry using the branch as
+# the registry tag.
 ---
 name: Build
 
 on:
   pull_request:
     branches: ["*"]
+
   push:
     branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
-
+  SERVICE: proxy
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  # Lint the code and run the tests on Linux
+  test:
+    name: Test and lint
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/cache@v2
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+      - name: setup sccache
+        env:
+          SCCACHE_BUCKET: "fiberplane-cache"
+          SCCACHE_REGION: "us-east-1"
+          SCCACHE_S3_KEY_PREFIX: "sccache/${SERVICE}"
+          AWS_ACCESS_KEY_ID: "${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}"
+          AWS_SECRET_ACCESS_KEY: "${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}"
+        run: |
+          SCCACHE_VERSION="v0.3.0"
+          cd `mktemp -d`
+          # Install sccache
+          curl -o sccache.tar.gz -L https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz
+          tar zvxf sccache.tar.gz
+          chmod u+x sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache
+          sudo mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/bin/sccache
+          # Setup cargo config
+          echo -e '[build]\nrustc-wrapper = "/usr/bin/sccache"' > "$HOME/.cargo/config.toml"
+          # Start server (required since it will need the AWS credentials)
+          /usr/bin/sccache --start-server
+
+      - name: setup mold
+        run: |
+          MOLD_VERSION="1.4.2"
+          cd `mktemp -d`
+          # Install mold
+          curl -o mold.tar.gz -L https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz
+          tar zvxf mold.tar.gz
+          chmod u+x mold-${MOLD_VERSION}-x86_64-linux/bin/mold
+          sudo mv mold-${MOLD_VERSION}-x86_64-linux/bin/mold /usr/bin/mold
+          # Setup cargo config
+          echo -e '[target.x86_64-unknown-linux-gnu]\nlinker = "clang"\nrustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]' >> "$HOME/.cargo/config.toml"
+
+      - uses: actions/cache@v3
         with:
           path: |
             ~/.cargo/bin/
@@ -24,20 +70,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: x86_64-unknown-linux-gnu-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install latest stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
-          components: rustfmt, clippy
-
-      - name: setup-git-credentials
-        uses: fusion-engineering/setup-git-credentials@v2.0.6
-        with:
-          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+      - name: add rust components
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
 
       - name: Check format
         run: cargo fmt -- --check
@@ -46,47 +84,137 @@ jobs:
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features --release
+          args: --all-features
 
       - name: Run tests
-        run: cargo test --release
+        run: cargo test
 
-      - name: Build binary
-        run: cargo build --release
+      - name: sccache stats
+        run: /usr/bin/sccache --show-stats
 
-      - name: Upload build artifact
+  # Create the release binaries for each target
+  build:
+    name: Create binary for ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO: cargo
+      TARGET_FLAGS: ""
+      TARGET_DIR: ./target
+      RUST_BACKTRACE: 1
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: x86_64-apple-darwin
+            os: macos-12
+          - target: aarch64-apple-darwin
+            os: macos-12
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: cargo fetch
+        run: cargo fetch --target ${{ matrix.target }}
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Use Cross
+        run: |
+          cargo install cross --force
+          echo "CARGO=cross" >> $GITHUB_ENV
+          echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
+          echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
+
+      - name: Build release binary
+        run: ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
+
+      # TODO: Change this to the cargo's builtin strip
+      - name: Strip release binary (linux and macos, x86)
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-apple-darwin'
+        run: strip "${TARGET_DIR}/release/${SERVICE}"
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p /tmp/artifact/
+          cp "${TARGET_DIR}/release/${SERVICE}" /tmp/artifact/
+
+      # # We are not able to run the ARM based binaries on our x86 hardware.
+      # - name: Release version information
+      #   if: matrix.target != 'aarch64-apple-darwin' && matrix.target != 'aarch64-unknown-linux-gnu'
+      #   run: |
+      #     /tmp/artifact/${SERVICE} version -o verbose
+      #     /tmp/artifact/${SERVICE} version -o json > /tmp/artifact/manifest.json
+
+      - name: Create SHA256 sums for the artifacts (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          cd /tmp/artifact/
+          sha256sum * > checksum.sha256
+
+      - name: Create SHA256 sums for the artifacts (MacOS)
+        if: matrix.os == 'macos-12'
+        run: |
+          cd /tmp/artifact/
+          shasum -a 256 * > checksum.sha256
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v2
         with:
-          name: proxy
-          path: target/release/proxy
+          name: ${{ matrix.target }}
+          path: /tmp/artifact/
           if-no-files-found: error
           retention-days: 1
 
-  build-container:
-    runs-on: ubuntu-latest
+  # Wrap the Linux binaries in a Docker image
+  publish-artifacts-docker:
+    name: Build Docker image for ${{ matrix.docker_arch }}
+    runs-on: ubuntu-22.04
     needs: build
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            docker_arch: amd64
+            docker_platform: linux/amd64
+          - target: aarch64-unknown-linux-gnu
+            docker_arch: arm64v8
+            docker_platform: linux/arm64
     steps:
-      - uses: actions/checkout@v2
-
-      - id: vars
-        name: Export branch
-        run: echo "::set-output name=branch::${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}"
-
-      - name: Prepare Dockerfile
-        run: |
-          mkdir -p /tmp/docker_build
-          mv providers /tmp/docker_build
-
-      - name: Download build artifact
-        id: download
-        uses: actions/download-artifact@v2
+      - uses: actions/checkout@v3
         with:
-          name: proxy
-          path: /tmp/docker_build
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Ensure file permissions
+      - name: Enable arm64 support in Docker
+        if: matrix.docker_arch == 'arm64v8'
         run: |
-          chmod u+x ${{ steps.download.outputs.download-path }}/proxy
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -99,36 +227,104 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build image
-        env:
-          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
-          MAIN_TAG: "main-${{ github.sha }}"
-          BRANCH_TAG: "dev-${{ steps.vars.outputs.branch }}"
+      - name: Export variables
         run: |
-          docker build -f Dockerfile \
-            -t "$IMAGE:latest" \
-            -t "$IMAGE:$MAIN_TAG" \
-            -t "$IMAGE:$BRANCH_TAG" \
-            --build-arg PROXY_PATH=proxy \
-            --build-arg PROVIDERS_PATH=providers \
-            /tmp/docker_build
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
+          echo "TAG=dev-${short_sha}-${{ matrix.docker_arch }}" >> $GITHUB_ENV
 
-      - name: Push branch image to Amazon ECR
-        env:
-          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
-          BRANCH_TAG: "dev-${{ steps.vars.outputs.branch }}"
-        run: |
-          echo "Updating branch image, pushing: $IMAGE:$BRANCH_TAG"
-          docker push "$IMAGE:$BRANCH_TAG"
+      - uses: actions/download-artifact@v2
+        with:
+          name: ${{ matrix.target }}
+          path: artifact
 
-      - name: Push latest and main image to Amazon ECR
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        env:
-          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
-          MAIN_TAG: "main-${{ github.sha }}"
+      - name: Prepare artifact
+        run: chmod u+x ./artifact/${SERVICE}
+
+      - name: Build Docker image
+        run: >
+          docker build
+          -t ${IMAGE}:${TAG}
+          --platform "${{ matrix.docker_platform }}"
+          --build-arg ARCH=${{ matrix.docker_arch }}/
+          --build-arg BIN_PATH=artifact/${SERVICE}
+          --build-arg PROVIDERS_PATH=providers
+          .
+
+      - name: Test Docker image
+        run: docker run --rm "${IMAGE}:${TAG}" --help
+
+      - name: Push Docker image
+        run: docker push "${IMAGE}:${TAG}"
+
+  # Create a new manifest that contains references to the other two Docker
+  # images to create a cross platform Docker image.
+  publish-artifacts-docker-manifest:
+    name: Build Docker manifest
+    runs-on: ubuntu-22.04
+    needs: publish-artifacts-docker
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Export variables
         run: |
-          if ! docker pull "$IMAGE:$MAIN_TAG" ; then
-            echo "Docker image does not exist, pushing: $IMAGE:$MAIN_TAG"
-            docker push "$IMAGE:$MAIN_TAG"
-          fi
-          docker push "$IMAGE:latest"
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
+          echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
+          echo "TAG=dev-${short_sha}" >> $GITHUB_ENV
+
+      - name: Create Docker manifest
+        run: >
+          docker manifest create ${IMAGE}:${TAG}
+          --amend ${IMAGE}:dev-${SHORT_SHA}-amd64
+          --amend ${IMAGE}:dev-${SHORT_SHA}-arm64v8
+
+      - name: Push Docker manifest
+        run: docker manifest push ${IMAGE}:${TAG}
+
+  # Copy the artifacts to our Builds bucket for long term storage.
+  publish-artifacts-s3:
+    name: Publish artifacts to S3 GitHub builds bucket
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Export variables
+        run: |
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
+
+      - name: Sync artifacts to S3 builds bucket
+        run: >
+          aws s3 sync
+          --acl private
+          --delete
+          artifacts/
+          s3://${{ secrets.BUILDS_BUCKET }}/${SERVICE}/commits/${SHORT_SHA}/

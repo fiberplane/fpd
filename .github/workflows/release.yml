@@ -1,0 +1,126 @@
+# Releases a new version of proxy.
+# It will do the following:
+# - Download the dev Docker image, tag it as an release image and push it to our
+#   internal repository.
+# - Download the artifacts from our internal builds bucket and sync them to our
+#   release bucket (while also adding a version file).
+---
+on:
+  release:
+    types:
+      - published
+
+name: Release
+env:
+  SERVICE: proxy
+jobs:
+  release:
+    name: Release proxy ${{ github.event.inputs.version }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Export variables
+        run: |
+          SHORT_SHA=$(git rev-parse --short "${{ github.sha }}")
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+          echo "DEV_IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
+          echo "DEV_TAG=dev-${SHORT_SHA}" >> $GITHUB_ENV
+          echo "RELEASE_IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
+          echo "RELEASE_TAG=release-${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "MAJOR_VERSION=$(echo '${{ github.event.release.tag_name }}' | awk '{ split($0,version,".") ; print version[1] }')"  >> $GITHUB_ENV
+
+      - name: Write summary
+        run: |
+          echo "# Variables" >> $GITHUB_STEP_SUMMARY
+          echo "- \`VERSION\`: ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- \`SHA\`: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- \`SHORT_SHA\`: $SHORT_SHA" >> $GITHUB_STEP_SUMMARY
+          echo "- \`DEV_IMAGE\`: $DEV_IMAGE" >> $GITHUB_STEP_SUMMARY
+          echo "- \`DEV_TAG\`: $DEV_TAG" >> $GITHUB_STEP_SUMMARY
+          echo "- \`RELEASE_IMAGE\`: $RELEASE_IMAGE" >> $GITHUB_STEP_SUMMARY
+          echo "- \`RELEASE_TAG\`: $RELEASE_TAG" >> $GITHUB_STEP_SUMMARY
+          echo "- \`MAJOR_VERSION\`: $MAJOR_VERSION" >> $GITHUB_STEP_SUMMARY
+
+      # Make sure that release Docker image does not exist
+      - name: Verify new version
+        run: |
+          if docker pull "${RELEASE_IMAGE}:${RELEASE_TAG}" ; then
+            echo "::error::Version already exists in Docker registry"
+            exit 1
+          fi
+
+      # TODO: Verify that the release artifacts do no exist on s3
+
+      # Make sure that the dev Docker image exists
+      - name: Pull Docker image
+        run: |
+          if ! docker pull "${DEV_IMAGE}:${DEV_TAG}" ; then
+            echo "::error::Image was not found, please wait until it is finished uploading"
+            exit 1
+          fi
+
+      # Make sure that the artifacts exist in the builds bucket
+      - name: Sync artifacts from S3 builds bucket
+        run: |
+          aws s3 sync \
+            s3://${{ secrets.BUILDS_BUCKET }}/${SERVICE}/commits/${SHORT_SHA}/ \
+            artifacts/
+
+      - name: Create version file
+        run: echo "${{ github.event.inputs.version }}" | cut -c2- > artifacts/version
+
+      - name: Upload to GitHub artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: artifacts
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sync artifacts to S3 release bucket
+        run: |
+          aws s3 sync \
+            --acl public-read \
+            --delete \
+            artifacts/ \
+            s3://${{ secrets.RELEASES_BUCKET }}/${SERVICE}/${{ github.event.inputs.version }}/
+          aws s3 sync \
+            --acl public-read \
+            --delete \
+            artifacts/ \
+            s3://${{ secrets.RELEASES_BUCKET }}/${SERVICE}/latest
+
+      - name: Tag and push release Docker image (AWS ECR)
+        run: |
+          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${RELEASE_IMAGE}:${RELEASE_TAG}"
+          docker push "${RELEASE_IMAGE}:${RELEASE_TAG}"
+
+      # Proxy also needs to be released to the Docker Hub registry
+      - name: Login to Docker Hub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag and push release Docker image (Docker Hub)
+        env:
+          DOCKER_HUB_IMAGE: fiberplane/$SERVICE
+          TAG: "${{ github.event.release.tag_name }}"
+          MAJOR_TAG: "$MAJOR_VERSION"
+        run: |
+          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${TAG}" "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
+          docker push "${DOCKER_HUB_IMAGE}:${TAG}" "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
