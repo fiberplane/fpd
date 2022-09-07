@@ -1,6 +1,6 @@
 # Setting ARCH allows us to use different base images for different architectures
 ARG ARCH=
-ARG BASE_IMAGE_VERSION=buster-slim
+ARG BASE_IMAGE_VERSION=bullseye-slim
 
 # Runtime image
 FROM ${ARCH}debian:${BASE_IMAGE_VERSION}
