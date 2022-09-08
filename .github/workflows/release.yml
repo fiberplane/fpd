@@ -122,5 +122,7 @@ jobs:
           TAG: "${{ github.event.release.tag_name }}"
           MAJOR_TAG: "$MAJOR_VERSION"
         run: |
-          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${TAG}" "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
-          docker push "${DOCKER_HUB_IMAGE}:${TAG}" "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
+          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${TAG}"
+          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
+          docker push "${DOCKER_HUB_IMAGE}:${TAG}"
+          docker push "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
