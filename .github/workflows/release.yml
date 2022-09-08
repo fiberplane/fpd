@@ -56,9 +56,9 @@ jobs:
           echo "- \`DEV_TAG\`: $DEV_TAG" >> $GITHUB_STEP_SUMMARY
           echo "- \`RELEASE_IMAGE\`: $RELEASE_IMAGE" >> $GITHUB_STEP_SUMMARY
           echo "- \`RELEASE_TAG\`: $RELEASE_TAG" >> $GITHUB_STEP_SUMMARY
-          echo "- \`DOCKER_HUB_IMAGE\`: $DOCKER_HUB_IMAGE >> $GITHUB_STEP_SUMMARY
-          echo "- \`DOCKER_HUB_TAG\`: $DOCKER_HUB_TAG >> $GITHUB_STEP_SUMMARY
-          echo "- \`DOCKER_HUB_MAJOR_TAG\`: $DOCKER_HUB_MAJOR_TAG >> $GITHUB_STEP_SUMMARY
+          echo "- \`DOCKER_HUB_IMAGE\`: $DOCKER_HUB_IMAGE" >> $GITHUB_STEP_SUMMARY
+          echo "- \`DOCKER_HUB_TAG\`: $DOCKER_HUB_TAG" >> $GITHUB_STEP_SUMMARY
+          echo "- \`DOCKER_HUB_MAJOR_TAG\`: $DOCKER_HUB_MAJOR_TAG" >> $GITHUB_STEP_SUMMARY
 
       # Make sure that release Docker image does not exist
       - name: Verify new version
