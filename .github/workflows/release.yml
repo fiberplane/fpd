@@ -15,7 +15,7 @@ env:
   SERVICE: proxy
 jobs:
   release:
-    name: Release proxy ${{ github.event.inputs.version }}
+    name: Release proxy ${{ github.event.release.tag_name }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
@@ -40,7 +40,7 @@ jobs:
           echo "DEV_IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
           echo "DEV_TAG=dev-${SHORT_SHA}" >> $GITHUB_ENV
           echo "RELEASE_IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
-          echo "RELEASE_TAG=release-${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "RELEASE_TAG=release-${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "MAJOR_VERSION=$(echo '${{ github.event.release.tag_name }}' | awk '{ split($0,version,".") ; print version[1] }')"  >> $GITHUB_ENV
 
       - name: Write summary
@@ -81,7 +81,7 @@ jobs:
             artifacts/
 
       - name: Create version file
-        run: echo "${{ github.event.inputs.version }}" | cut -c2- > artifacts/version
+        run: echo "${{ github.event.release.tag_name }}" | cut -c2- > artifacts/version
 
       - name: Upload to GitHub artifacts
         uses: actions/upload-artifact@v2
@@ -97,7 +97,7 @@ jobs:
             --acl public-read \
             --delete \
             artifacts/ \
-            s3://${{ secrets.RELEASES_BUCKET }}/${SERVICE}/${{ github.event.inputs.version }}/
+            s3://${{ secrets.RELEASES_BUCKET }}/${SERVICE}/${{ github.event.release.tag_name }}/
           aws s3 sync \
             --acl public-read \
             --delete \
