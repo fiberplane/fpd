@@ -36,12 +36,15 @@ jobs:
       - name: Export variables
         run: |
           SHORT_SHA=$(git rev-parse --short "${{ github.sha }}")
+          MAJOR_VERSION=$(echo '${{ github.event.release.tag_name }}' | awk '{ split($0,version,".") ; print version[1] }')
           echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
           echo "DEV_IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
           echo "DEV_TAG=dev-${SHORT_SHA}" >> $GITHUB_ENV
           echo "RELEASE_IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
           echo "RELEASE_TAG=release-${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          echo "MAJOR_VERSION=$(echo '${{ github.event.release.tag_name }}' | awk '{ split($0,version,".") ; print version[1] }')"  >> $GITHUB_ENV
+          echo "DOCKER_HUB_IMAGE=fiberplane/${SERVICE}" >> $GITHUB_ENV
+          echo "DOCKER_HUB_TAG="${{ github.event.release.tag_name }}"" >> $GITHUB_ENV
+          echo "DOCKER_HUB_MAJOR_TAG="$MAJOR_VERSION"" >> $GITHUB_ENV
 
       - name: Write summary
         run: |
@@ -53,7 +56,9 @@ jobs:
           echo "- \`DEV_TAG\`: $DEV_TAG" >> $GITHUB_STEP_SUMMARY
           echo "- \`RELEASE_IMAGE\`: $RELEASE_IMAGE" >> $GITHUB_STEP_SUMMARY
           echo "- \`RELEASE_TAG\`: $RELEASE_TAG" >> $GITHUB_STEP_SUMMARY
-          echo "- \`MAJOR_VERSION\`: $MAJOR_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- \`DOCKER_HUB_IMAGE\`: $DOCKER_HUB_IMAGE >> $GITHUB_STEP_SUMMARY
+          echo "- \`DOCKER_HUB_TAG\`: $DOCKER_HUB_TAG >> $GITHUB_STEP_SUMMARY
+          echo "- \`DOCKER_HUB_MAJOR_TAG\`: $DOCKER_HUB_MAJOR_TAG >> $GITHUB_STEP_SUMMARY
 
       # Make sure that release Docker image does not exist
       - name: Verify new version
@@ -117,12 +122,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Tag and push release Docker image (Docker Hub)
-        env:
-          DOCKER_HUB_IMAGE: fiberplane/$SERVICE
-          TAG: "${{ github.event.release.tag_name }}"
-          MAJOR_TAG: "$MAJOR_VERSION"
         run: |
-          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${TAG}"
-          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
-          docker push "${DOCKER_HUB_IMAGE}:${TAG}"
-          docker push "${DOCKER_HUB_IMAGE}:${MAJOR_TAG}"
+          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_TAG}"
+          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_MAJOR_TAG}"
+          docker push "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_TAG}"
+          docker push "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_MAJOR_TAG}"
