@@ -1,7 +1,7 @@
-use fiberplane::protocols::core::DataSourceType;
+use fiberplane::protocols::data_sources::DataSource;
+use fiberplane::protocols::names::Name;
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt::Debug;
 pub use uuid::Uuid;
 
@@ -32,7 +32,7 @@ impl ServerMessage {
 #[serde(rename_all = "camelCase")]
 pub struct InvokeProxyMessage {
     pub op_id: Uuid,
-    pub data_source_name: String,
+    pub data_source_name: Name,
     #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
 }
@@ -114,84 +114,4 @@ impl RelayMessage {
 }
 
 /// This is a map from the data source name to the data source's type
-pub type SetDataSourcesMessage = HashMap<String, DataSourceDetailsOrType>;
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
-#[serde(untagged)]
-pub enum DataSourceDetailsOrType {
-    Details(DataSourceDetails),
-    /// This is here to support the old format that did not include the data source status
-    #[deprecated(note = "This should only be used for backwards compatibility")]
-    Type(DataSourceType),
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct DataSourceDetails {
-    #[serde(rename = "type")]
-    pub ty: DataSourceType,
-    #[serde(flatten)]
-    pub status: DataSourceStatus,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
-#[serde(rename_all = "camelCase", tag = "status", content = "errorMessage")]
-pub enum DataSourceStatus {
-    Connected,
-    Error(String),
-}
-
-#[test]
-fn data_source_type_should_serialize_to_plain_string() {
-    let ty = DataSourceType::Prometheus;
-    let serialized = serde_json::to_string(&ty).unwrap();
-    assert_eq!(serialized, "\"prometheus\"");
-}
-
-#[allow(deprecated)]
-#[test]
-fn set_data_sources_should_support_old_format() {
-    let set_data_sources = serde_json::json!({
-        "a": "prometheus",
-        "b": "elasticsearch",
-    });
-    let parsed = serde_json::from_value::<SetDataSourcesMessage>(set_data_sources).unwrap();
-    assert_eq!(
-        parsed.get("a").unwrap(),
-        &DataSourceDetailsOrType::Type(DataSourceType::Prometheus)
-    );
-    assert_eq!(
-        parsed.get("b").unwrap(),
-        &DataSourceDetailsOrType::Type(DataSourceType::Elasticsearch)
-    );
-}
-
-#[test]
-fn set_data_sources_includes_status() {
-    let set_data_sources = serde_json::json!({
-        "a": {
-            "type": "prometheus",
-            "status": "connected"
-        },
-        "b": {
-            "type": "elasticsearch",
-            "status": "error",
-            "errorMessage": "error message"
-        }
-    });
-    let parsed = serde_json::from_value::<SetDataSourcesMessage>(set_data_sources).unwrap();
-    assert_eq!(
-        parsed.get("a").unwrap(),
-        &DataSourceDetailsOrType::Details(DataSourceDetails {
-            ty: DataSourceType::Prometheus,
-            status: DataSourceStatus::Connected,
-        })
-    );
-    assert_eq!(
-        parsed.get("b").unwrap(),
-        &DataSourceDetailsOrType::Details(DataSourceDetails {
-            ty: DataSourceType::Elasticsearch,
-            status: DataSourceStatus::Error("error message".to_string()),
-        })
-    );
-}
+pub type SetDataSourcesMessage = Vec<DataSource>;

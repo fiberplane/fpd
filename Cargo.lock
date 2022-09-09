@@ -275,6 +275,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "base64uuid"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "fp-bindgen",
+ "serde",
+ "thiserror",
+ "uuid 1.1.2",
+]
+
+[[package]]
 name = "basic-cookies"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -815,9 +826,9 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
 dependencies = [
  "base64",
+ "base64uuid",
  "bytes",
  "clap",
  "form_urlencoded",
@@ -826,6 +837,7 @@ dependencies = [
  "once_cell",
  "regex",
  "serde",
+ "serde_json",
  "strum",
  "strum_macros",
  "thiserror",
@@ -904,7 +916,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#0bf9a157af65b847d448f22c84f3306f9b3ed94b"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -918,7 +930,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#0bf9a157af65b847d448f22c84f3306f9b3ed94b"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -1866,6 +1878,7 @@ name = "proxy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64uuid",
  "clap",
  "ctrlc",
  "fiberplane",
@@ -1886,6 +1899,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "test-log",
+ "time",
  "tokio",
  "tokio-tungstenite",
  "tokio-tungstenite-reconnect",
@@ -1904,7 +1918,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "thiserror",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -2641,9 +2655,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.11"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
+checksum = "3c3f9a28b618c3a6b9251b6908e9c99e04b9e5c02e6581ccbb67d59c34ef7f9b"
 dependencies = [
  "itoa 1.0.1",
  "libc",
@@ -2942,6 +2956,15 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom",
  "serde",
+]
+
+[[package]]
+name = "uuid"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
+dependencies = [
+ "getrandom",
 ]
 
 [[package]]
@@ -3390,3 +3413,11 @@ checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
 dependencies = [
  "linked-hash-map",
 ]
+
+[[patch.unused]]
+name = "fp-api-client"
+version = "1.0.0"
+
+[[patch.unused]]
+name = "fp-templates"
+version = "0.1.0"

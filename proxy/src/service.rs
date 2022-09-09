@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Context, Result};
-use fiberplane::protocols::core::{DataSource, DataSourceType};
+use base64uuid::Base64Uuid;
+use fiberplane::protocols::data_sources::{DataSource, DataSourceError, DataSourceStatus};
+use fiberplane::protocols::names::Name;
 use fp_provider_bindings::{
     Error, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
 };
@@ -9,14 +11,13 @@ use http::{Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Server};
 use lazy_static::lazy_static;
-use proxy_types::{
-    DataSourceDetails, DataSourceDetailsOrType, DataSourceStatus, ErrorMessage, InvokeProxyMessage,
-    InvokeProxyResponseMessage, RelayMessage, ServerMessage, SetDataSourcesMessage, Uuid,
-};
+use proxy_types::*;
 use ring::digest::{digest, SHA256};
-use serde_yaml::Value;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
+use time::OffsetDateTime;
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
 use tokio::task::{spawn_blocking, LocalSet};
@@ -26,8 +27,15 @@ use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
 
-pub(crate) type DataSources = HashMap<String, DataSource>;
-pub(crate) type WasmModules = HashMap<DataSourceType, Result<Arc<Vec<u8>>, String>>;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewDataSource {
+    provider_type: String,
+    config: Map<String, Value>,
+    description: Option<String>,
+}
+
+pub(crate) type DataSourceConfigs = HashMap<Name, NewDataSource>;
+pub(crate) type WasmModules = HashMap<String, Result<Arc<Vec<u8>>, String>>;
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 lazy_static! {
@@ -43,7 +51,7 @@ pub struct ProxyService {
 pub(crate) struct Inner {
     endpoint: Url,
     auth_token: String,
-    pub(crate) data_sources: DataSources,
+    pub(crate) data_sources: HashMap<Name, DataSource>,
     wasm_modules: WasmModules,
     max_retries: u32,
     local_task_handler: SingleThreadTaskHandler,
@@ -57,11 +65,30 @@ impl ProxyService {
         fiberplane_endpoint: Url,
         auth_token: String,
         wasm_dir: &Path,
-        data_sources: DataSources,
+        data_sources: DataSourceConfigs,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
         status_check_interval: Duration,
     ) -> Self {
+        let now = OffsetDateTime::now_utc();
+        let data_sources = data_sources
+            .into_iter()
+            .map(|(name, data_source)| {
+                (
+                    name.clone(),
+                    DataSource {
+                        id: Base64Uuid::new(),
+                        name: name.into(),
+                        config: Some(data_source.config),
+                        provider_type: data_source.provider_type,
+                        status: None,
+                        description: data_source.description,
+                        created_at: now,
+                        updated_at: now,
+                    },
+                )
+            })
+            .collect();
         let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await;
 
         ProxyService::new(
@@ -79,7 +106,7 @@ impl ProxyService {
         fiberplane_endpoint: Url,
         auth_token: String,
         wasm_modules: WasmModules,
-        data_sources: DataSources,
+        data_sources: HashMap<Name, DataSource>,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
         status_check_interval: Duration,
@@ -159,12 +186,7 @@ impl ProxyService {
                     }
                     _ = shutdown_clone.recv().fuse() => {
                         // Let the relay know that all of these data sources are going offline
-                        let data_sources = service.inner.data_sources.iter().map(|(name, data_source)| {
-                            (name.clone(), DataSourceDetailsOrType::Details(DataSourceDetails {
-                                ty: data_source.data_source_type(),
-                                status: DataSourceStatus::Error("Proxy shut down".into())
-                            }))
-                        }).collect();
+                        let data_sources = service.inner.data_sources.values().map(|data_source| data_source_with_status(data_source, DataSourceError::ProxyDisconnected.into())).collect();
                         let message = RelayMessage::SetDataSources(data_sources);
                         data_sources_sender.send(message).ok();
 
@@ -298,11 +320,11 @@ impl ProxyService {
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
         let op_id = message.op_id;
-        let data_source_name = message.data_source_name.as_str();
+        let data_source_name = message.data_source_name;
         debug!("handling relay message");
 
         // Try to create the runtime for the given data source
-        let data_source = match self.inner.data_sources.get(data_source_name) {
+        let data_source = match self.inner.data_sources.get(&data_source_name) {
             Some(data_source) => data_source.clone(),
             None => {
                 error!("received relay message for unknown data source");
@@ -317,7 +339,7 @@ impl ProxyService {
             }
         };
 
-        let wasm_module = match &self.inner.wasm_modules[&data_source.data_source_type()] {
+        let wasm_module = match &self.inner.wasm_modules[&data_source.provider_type] {
             Ok(wasm_module) => wasm_module,
             Err(message) => {
                 return reply
@@ -341,30 +363,18 @@ impl ProxyService {
             }
         };
 
-        let config = match data_source {
-            DataSource::Prometheus(config) => rmp_serde::to_vec(&config)?,
-            DataSource::Elasticsearch(config) => rmp_serde::to_vec(&config)?,
-            DataSource::Loki(config) => rmp_serde::to_vec(&config)?,
-            DataSource::Proxy(_) => {
-                error!("received relay message for proxy data source");
-                reply.send(RelayMessage::Error(ErrorMessage {
-                    op_id,
-                    message: format!(
-                        "cannot send a message from one proxy to another: {}",
-                        data_source_name
-                    ),
-                }))?;
-                return Ok(());
-            }
-            DataSource::Sentry(config) => rmp_serde::to_vec(&config)?,
-        };
-
-        let request = message.data;
+        let config = data_source.config.ok_or_else(|| {
+            anyhow!(
+                "data source config is missing for data source: {}",
+                data_source_name
+            )
+        })?;
+        let config = serde_json::to_vec(&config)?;
 
         let task = Task {
             runtime,
             op_id,
-            request,
+            request: message.data,
             config,
             reply,
             span: Span::current(),
@@ -385,15 +395,9 @@ impl ProxyService {
                 .map(|(name, data_source)| async move {
                     let status = match self.check_provider_status(name.clone()).await {
                         Ok(_) => DataSourceStatus::Connected,
-                        Err(err) => DataSourceStatus::Error(err.to_string()),
+                        Err(err) => DataSourceStatus::Error(todo!()),
                     };
-                    (
-                        name.clone(),
-                        DataSourceDetailsOrType::Details(DataSourceDetails {
-                            ty: data_source.data_source_type(),
-                            status,
-                        }),
-                    )
+                    data_source_with_status(data_source, status)
                 }),
         )
         .await
@@ -402,7 +406,7 @@ impl ProxyService {
     }
 
     #[instrument(skip(self))]
-    async fn check_provider_status(&self, data_source_name: String) -> Result<()> {
+    async fn check_provider_status(&self, data_source_name: Name) -> Result<()> {
         let message = InvokeProxyMessage {
             op_id: Uuid::new_v4(),
             data_source_name,
@@ -471,10 +475,12 @@ impl ProxyService {
 
 async fn load_wasm_modules(
     wasm_dir: &Path,
-    data_sources: &HashMap<String, DataSource>,
+    data_sources: &HashMap<Name, DataSource>,
 ) -> WasmModules {
-    let data_source_types: HashSet<DataSourceType> =
-        data_sources.values().map(|d| d.into()).collect();
+    let data_source_types: HashSet<String> = data_sources
+        .values()
+        .map(|d| d.provider_type.clone())
+        .collect();
 
     join_all(
         data_source_types
@@ -659,33 +665,15 @@ fn encode_hex(input: &[u8]) -> String {
         .join("")
 }
 
-pub fn parse_data_sources_yaml(yaml: &str) -> Result<DataSources> {
-    match serde_yaml::from_str(yaml) {
-        Ok(data_sources) => Ok(data_sources),
-        // Try parsing the old format that has a separate options key
-        Err(err) => match serde_yaml::from_str::<Value>(yaml) {
-            Ok(Value::Mapping(map)) => {
-                let value = map
-                    .into_iter()
-                    .map(|(key, mut value)| {
-                        if let Value::Mapping(ref mut value) = value {
-                            // Flatten the options into the top level map
-                            if let Some(Value::Mapping(options)) =
-                                value.remove(&Value::String("options".to_string()))
-                            {
-                                value.extend(options);
-                            }
-                        }
-                        (key, value)
-                    })
-                    .collect();
-                let data_sources = serde_yaml::from_value(Value::Mapping(value))?;
-                Ok(data_sources)
-            }
-            Ok(_) => Err(anyhow!(
-                "Unable to parse data sources YAML: Expected a mapping"
-            )),
-            Err(_) => Err(anyhow!("Unable to parse data sources YAML: {}", err)),
-        },
+fn data_source_with_status(data_source: &DataSource, status: DataSourceStatus) -> DataSource {
+    DataSource {
+        status: Some(status),
+        config: None,
+        id: data_source.id,
+        provider_type: data_source.provider_type.clone(),
+        name: data_source.name.clone(),
+        description: None,
+        created_at: data_source.created_at,
+        updated_at: data_source.updated_at,
     }
 }

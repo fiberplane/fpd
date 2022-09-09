@@ -1,7 +1,5 @@
-use crate::service::{parse_data_sources_yaml, DataSources, ProxyService, WasmModules};
-use fiberplane::protocols::core::{
-    DataSource, DataSourceType, ElasticsearchDataSource, PrometheusDataSource, ProxyDataSource,
-};
+use crate::service::{DataSourceConfigs, ProxyService, WasmModules};
+use fiberplane::protocols::data_sources::{DataSource, DataSourceError, DataSourceStatus};
 use fp_provider_runtime::spec::types::{
     Error as ProviderError, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
     QueryInstant, QueryTimeRange, TimeRange,
@@ -10,69 +8,25 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
 use httpmock::prelude::*;
 use hyper::header::HeaderValue;
-use proxy_types::{
-    DataSourceDetails, DataSourceDetailsOrType, DataSourceStatus, InvokeProxyMessage, RelayMessage,
-    ServerMessage, Uuid,
-};
-use std::collections::HashMap;
-use std::path::Path;
-use std::time::Duration;
+use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
+use std::{collections::HashMap, path::Path, time::Duration};
 use test_log::test;
-use tokio::join;
-use tokio::net::TcpListener;
-use tokio::sync::broadcast;
+use tokio::{join, net::TcpListener, sync::broadcast};
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
 #[test]
 fn parses_data_sources_from_yaml() {
     let yaml = "
-Production Prometheus:
-  type: prometheus
-  url: http://localhost:9090
-Dev Elasticsearch:
-  type: elasticsearch
-  url: http://localhost:9200";
-    let data_sources: DataSources = parse_data_sources_yaml(yaml).unwrap();
-    assert_eq!(data_sources.len(), 2);
-    match &data_sources["Production Prometheus"] {
-        DataSource::Prometheus(prometheus) => {
-            assert_eq!(prometheus.url, "http://localhost:9090");
-        }
-        _ => panic!("Expected Prometheus data source"),
-    }
-    match &data_sources["Dev Elasticsearch"] {
-        DataSource::Elasticsearch(elasticsearch) => {
-            assert_eq!(elasticsearch.url, "http://localhost:9200");
-        }
-        _ => panic!("Expected Elasticsearch data source"),
-    }
-}
-
-#[test]
-fn parses_old_data_sources_format() {
-    let yaml = "
-Production Prometheus:
-  type: prometheus
-  options:
+prometheus-production:
+  provider_type: prometheus
+  description: Prometheus on production cluster
+  config:
     url: http://localhost:9090
-Dev Elasticsearch:
-  type: elasticsearch
-  options:
+elasticsearch-dev:
+  provider_type: elasticsearch
     url: http://localhost:9200";
-    let data_sources: DataSources = parse_data_sources_yaml(yaml).unwrap();
+    let data_sources: DataSourceConfigs = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(data_sources.len(), 2);
-    match &data_sources["Production Prometheus"] {
-        DataSource::Prometheus(prometheus) => {
-            assert_eq!(prometheus.url, "http://localhost:9090");
-        }
-        _ => panic!("Expected Prometheus data source"),
-    }
-    match &data_sources["Dev Elasticsearch"] {
-        DataSource::Elasticsearch(elasticsearch) => {
-            assert_eq!(elasticsearch.url, "http://localhost:9200");
-        }
-        _ => panic!("Expected Elasticsearch data source"),
-    }
 }
 
 #[test(tokio::test)]
@@ -83,8 +37,8 @@ async fn sends_auth_token_in_header() {
     let service = ProxyService::new(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
-        HashMap::new(),
-        DataSources::new(),
+        Default::default(),
+        Default::default(),
         5,
         None,
         Duration::from_secs(300),
