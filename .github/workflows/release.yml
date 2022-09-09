@@ -13,6 +13,7 @@ on:
 name: Release
 env:
   SERVICE: proxy
+  ARCHS: "amd64 arm64v8"
 jobs:
   release:
     name: Release proxy ${{ github.event.release.tag_name }}
@@ -70,13 +71,15 @@ jobs:
 
       # TODO: Verify that the release artifacts do no exist on s3
 
-      # Make sure that the dev Docker image exists
-      - name: Pull Docker image
+      # Make sure that all the dev Docker image exist
+      - name: Pull Docker images
         run: |
-          if ! docker pull "${DEV_IMAGE}:${DEV_TAG}" ; then
-            echo "::error::Image was not found, please wait until it is finished uploading"
-            exit 1
-          fi
+          for ARCH in $ARCHS; do
+            if ! docker pull "${DEV_IMAGE}:${DEV_TAG}-${ARCH}" ; then
+              echo "::error::Image for arch $ARCH was not found, please wait until it is finished uploading"
+              exit 1
+            fi
+          done
 
       # Make sure that the artifacts exist in the builds bucket
       - name: Sync artifacts from S3 builds bucket
@@ -111,8 +114,13 @@ jobs:
 
       - name: Tag and push release Docker image (AWS ECR)
         run: |
-          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${RELEASE_IMAGE}:${RELEASE_TAG}"
-          docker push "${RELEASE_IMAGE}:${RELEASE_TAG}"
+          for ARCH in $ARCHS; do
+            docker tag "${DEV_IMAGE}:${DEV_TAG}-${ARCH}" "${RELEASE_IMAGE}:${RELEASE_TAG}-${ARCH}"
+            docker push "${RELEASE_IMAGE}:${RELEASE_TAG}-${ARCH}"
+            docker manifest create "${RELEASE_IMAGE}:${RELEASE_TAG}" -a "${RELEASE_IMAGE}:${RELEASE_TAG}-${ARCH}"
+          done
+
+          docker manifest push "${RELEASE_IMAGE}:${RELEASE_TAG}"
 
       # Proxy also needs to be released to the Docker Hub registry
       - name: Login to Docker Hub
@@ -123,7 +131,13 @@ jobs:
 
       - name: Tag and push release Docker image (Docker Hub)
         run: |
-          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_TAG}"
-          docker tag "${DEV_IMAGE}:${DEV_TAG}" "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_MAJOR_TAG}"
-          docker push "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_TAG}"
-          docker push "${DOCKER_HUB_IMAGE}:${DOCKER_HUB_MAJOR_TAG}"
+          DOCKER_TAGS="${DOCKER_HUB_TAG} ${DOCKER_HUB_MAJOR_TAG}"
+          for TAG in $DOCKER_TAGS; do
+            for ARCH in $ARCHS; do
+              docker tag "${DEV_IMAGE}:${DEV_TAG}-${ARCH}" "${DOCKER_HUB_IMAGE}:${TAG}-${ARCH}"
+              docker push "${DOCKER_HUB_IMAGE}:${TAG}-${ARCH}"
+              docker manifest create "${DOCKER_HUB_IMAGE}:${TAG}" -a "${DOCKER_HUB_IMAGE}:${TAG}-${ARCH}"
+            done
+
+            docker manifest push "${DOCKER_HUB_IMAGE}:${TAG}"
+          done
