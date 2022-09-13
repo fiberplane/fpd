@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use base64uuid::Base64Uuid;
-use fiberplane::protocols::data_sources::{DataSource, DataSourceError, DataSourceStatus};
+use fiberplane::protocols::data_sources::{DataSourceError, DataSourceStatus};
 use fiberplane::protocols::names::Name;
 use fp_provider_bindings::{
     Error, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
@@ -15,9 +14,8 @@ use proxy_types::*;
 use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
-use time::OffsetDateTime;
 use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
 use tokio::task::{spawn_blocking, LocalSet};
@@ -33,8 +31,15 @@ pub struct NewDataSource {
     config: Map<String, Value>,
     description: Option<String>,
 }
-
 pub(crate) type DataSourceConfigs = HashMap<Name, NewDataSource>;
+#[derive(Debug)]
+pub struct ProxyDataSource {
+    name: Name,
+    provider_type: String,
+    config: Map<String, Value>,
+    description: Option<String>,
+}
+
 pub(crate) type WasmModules = HashMap<String, Result<Arc<Vec<u8>>, String>>;
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -51,7 +56,7 @@ pub struct ProxyService {
 pub(crate) struct Inner {
     endpoint: Url,
     auth_token: String,
-    pub(crate) data_sources: HashMap<Name, DataSource>,
+    pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
     wasm_modules: WasmModules,
     max_retries: u32,
     local_task_handler: SingleThreadTaskHandler,
@@ -70,26 +75,22 @@ impl ProxyService {
         listen_address: Option<SocketAddr>,
         status_check_interval: Duration,
     ) -> Self {
-        let now = OffsetDateTime::now_utc();
-        let data_sources = data_sources
+        let data_sources: HashMap<Name, ProxyDataSource> = data_sources
             .into_iter()
             .map(|(name, data_source)| {
                 (
                     name.clone(),
-                    DataSource {
-                        id: Base64Uuid::new(),
+                    ProxyDataSource {
                         name: name.into(),
-                        config: Some(data_source.config),
+                        config: data_source.config,
                         provider_type: data_source.provider_type,
-                        status: None,
                         description: data_source.description,
-                        created_at: now,
-                        updated_at: now,
                     },
                 )
             })
             .collect();
-        let wasm_modules = load_wasm_modules(wasm_dir, &data_sources).await;
+        let provider_types = data_sources.iter().map(|(_, ds)| ds.provider_type.clone());
+        let wasm_modules = load_wasm_modules(wasm_dir, provider_types).await;
 
         ProxyService::new(
             fiberplane_endpoint,
@@ -106,7 +107,7 @@ impl ProxyService {
         fiberplane_endpoint: Url,
         auth_token: String,
         wasm_modules: WasmModules,
-        data_sources: HashMap<Name, DataSource>,
+        data_sources: HashMap<Name, ProxyDataSource>,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
         status_check_interval: Duration,
@@ -186,7 +187,17 @@ impl ProxyService {
                     }
                     _ = shutdown_clone.recv().fuse() => {
                         // Let the relay know that all of these data sources are going offline
-                        let data_sources = service.inner.data_sources.values().map(|data_source| data_source_with_status(data_source, DataSourceError::ProxyDisconnected.into())).collect();
+                        let data_sources = service
+                            .inner
+                            .data_sources
+                            .values()
+                            .map(|data_source| UpsertProxyDataSource {
+                                name: data_source.name.clone(),
+                                description: data_source.description.clone(),
+                                provider_type: data_source.provider_type.clone(),
+                                status: DataSourceStatus::Error(DataSourceError::ProxyDisconnected),
+                            })
+                            .collect();
                         let message = RelayMessage::SetDataSources(data_sources);
                         data_sources_sender.send(message).ok();
 
@@ -363,13 +374,7 @@ impl ProxyService {
             }
         };
 
-        let config = data_source.config.ok_or_else(|| {
-            anyhow!(
-                "data source config is missing for data source: {}",
-                data_source_name
-            )
-        })?;
-        let config = serde_json::to_vec(&config)?;
+        let config = serde_json::to_vec(&data_source.config)?;
 
         let task = Task {
             runtime,
@@ -397,7 +402,12 @@ impl ProxyService {
                         Ok(_) => DataSourceStatus::Connected,
                         Err(err) => DataSourceStatus::Error(todo!()),
                     };
-                    data_source_with_status(data_source, status)
+                    UpsertProxyDataSource {
+                        name: name.clone(),
+                        description: data_source.description.clone(),
+                        provider_type: data_source.provider_type.clone(),
+                        status,
+                    }
                 }),
         )
         .await
@@ -411,6 +421,7 @@ impl ProxyService {
             op_id: Uuid::new_v4(),
             data_source_name,
             data: STATUS_REQUEST.clone(),
+            protocol_version: 1,
         };
         let (reply_sender, mut reply_receiver) = unbounded_channel();
         self.handle_invoke_proxy_message(message, reply_sender)
@@ -475,49 +486,41 @@ impl ProxyService {
 
 async fn load_wasm_modules(
     wasm_dir: &Path,
-    data_sources: &HashMap<Name, DataSource>,
+    provider_types: impl IntoIterator<Item = String>,
 ) -> WasmModules {
-    let data_source_types: HashSet<String> = data_sources
-        .values()
-        .map(|d| d.provider_type.clone())
-        .collect();
-
-    join_all(
-        data_source_types
-            .into_iter()
-            .map(|data_source_type| async move {
-                // Each provider's wasm module is found in the wasm_dir as provider_name.wasm
-                let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
-                let wasm_module = match fs::read(wasm_path).await {
-                    Ok(wasm_module) => {
-                        let wasm_module = Arc::new(wasm_module);
-                        // Make sure the wasm file can compile
-                        match compile_wasm(wasm_module.clone()).await {
-                            Ok(_) => {
-                                let hash = digest(&SHA256, wasm_module.as_ref());
-                                info!(
-                                    "loaded provider: {} (sha256 digest: {})",
-                                    data_source_type,
-                                    encode_hex(hash.as_ref())
-                                );
-                                Ok(wasm_module)
-                            }
-                            Err(err) => Err(format!(
-                                "Error compiling wasm module {}: {}",
-                                wasm_path.display(),
-                                err
-                            )),
-                        }
+    let provider_types = provider_types.into_iter();
+    join_all(provider_types.map(|data_source_type| async move {
+        // Each provider's wasm module is found in the wasm_dir as provider_name.wasm
+        let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
+        let wasm_module = match fs::read(wasm_path).await {
+            Ok(wasm_module) => {
+                let wasm_module = Arc::new(wasm_module);
+                // Make sure the wasm file can compile
+                match compile_wasm(wasm_module.clone()).await {
+                    Ok(_) => {
+                        let hash = digest(&SHA256, wasm_module.as_ref());
+                        info!(
+                            "loaded provider: {} (sha256 digest: {})",
+                            data_source_type,
+                            encode_hex(hash.as_ref())
+                        );
+                        Ok(wasm_module)
                     }
                     Err(err) => Err(format!(
-                        "Error loading wasm module {}: {}",
+                        "Error compiling wasm module {}: {}",
                         wasm_path.display(),
                         err
                     )),
-                };
-                (data_source_type, wasm_module)
-            }),
-    )
+                }
+            }
+            Err(err) => Err(format!(
+                "Error compiling wasm module {}: {}",
+                wasm_path.display(),
+                err
+            )),
+        };
+        (data_source_type, wasm_module)
+    }))
     .await
     .into_iter()
     .collect()
@@ -663,17 +666,4 @@ fn encode_hex(input: &[u8]) -> String {
         .map(|b| format!("{:02x}", b))
         .collect::<Vec<_>>()
         .join("")
-}
-
-fn data_source_with_status(data_source: &DataSource, status: DataSourceStatus) -> DataSource {
-    DataSource {
-        status: Some(status),
-        config: None,
-        id: data_source.id,
-        provider_type: data_source.provider_type.clone(),
-        name: data_source.name.clone(),
-        description: None,
-        created_at: data_source.created_at,
-        updated_at: data_source.updated_at,
-    }
 }

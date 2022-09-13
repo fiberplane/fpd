@@ -1,4 +1,4 @@
-use fiberplane::protocols::data_sources::DataSource;
+use fiberplane::protocols::data_sources::DataSourceStatus;
 use fiberplane::protocols::names::Name;
 use rmp_serde::decode;
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,7 @@ pub struct InvokeProxyMessage {
     pub data_source_name: Name,
     #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
+    pub protocol_version: u8,
 }
 
 impl Debug for InvokeProxyMessage {
@@ -114,4 +115,13 @@ impl RelayMessage {
 }
 
 /// This is a map from the data source name to the data source's type
-pub type SetDataSourcesMessage = Vec<DataSource>;
+pub type SetDataSourcesMessage = Vec<UpsertProxyDataSource>;
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub struct UpsertProxyDataSource {
+    pub name: Name,
+    pub description: Option<String>,
+    pub provider_type: String,
+    pub status: DataSourceStatus,
+}
