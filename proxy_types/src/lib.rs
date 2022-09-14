@@ -102,7 +102,7 @@ impl RelayMessage {
     }
 
     pub fn serialize_msgpack(&self) -> Vec<u8> {
-        rmp_serde::to_vec(&self).expect("MessgePack serialization error")
+        rmp_serde::to_vec_named(&self).expect("MessgePack serialization error")
     }
 
     pub fn op_id(&self) -> Option<Uuid> {
@@ -114,14 +114,54 @@ impl RelayMessage {
     }
 }
 
-/// This is a map from the data source name to the data source's type
-pub type SetDataSourcesMessage = Vec<UpsertProxyDataSource>;
-
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDataSourcesMessage {
+    pub data_sources: Vec<UpsertProxyDataSource>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub struct UpsertProxyDataSource {
     pub name: Name,
     pub description: Option<String>,
     pub provider_type: String,
+    #[serde(flatten)]
     pub status: DataSourceStatus,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fiberplane::protocols::data_sources::DataSourceError;
+
+    #[test]
+    fn serialization_deserialization() {
+        let data_sources = vec![
+            UpsertProxyDataSource {
+                name: Name::from_static("prometheus-prod"),
+                provider_type: "prometheus".to_string(),
+                description: Some("Production Prometheus".to_string()),
+                status: DataSourceStatus::Connected,
+            },
+            UpsertProxyDataSource {
+                name: Name::from_static("elasticsearch-prod"),
+                provider_type: "elasticsearch".to_string(),
+                description: None,
+                status: DataSourceStatus::Error(DataSourceError::TemporaryHttpError(
+                    "Timed out checking status".to_string(),
+                )),
+            },
+        ];
+        let message = RelayMessage::SetDataSources(SetDataSourcesMessage {
+            data_sources: data_sources.clone(),
+        });
+        let serialized = message.serialize_msgpack();
+        let deserialized = RelayMessage::deserialize_msgpack(serialized).unwrap();
+        if let RelayMessage::SetDataSources(set_data_sources) = deserialized {
+            assert_eq!(set_data_sources.data_sources, data_sources)
+        } else {
+            panic!("Unexpected message type");
+        }
+    }
 }

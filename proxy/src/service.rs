@@ -198,7 +198,7 @@ impl ProxyService {
                                 status: DataSourceStatus::Error(DataSourceError::ProxyDisconnected),
                             })
                             .collect();
-                        let message = RelayMessage::SetDataSources(data_sources);
+                        let message = RelayMessage::SetDataSources(SetDataSourcesMessage{ data_sources});
                         data_sources_sender.send(message).ok();
 
                         break;
@@ -393,26 +393,24 @@ impl ProxyService {
     /// Invoke each data source provider with the status request
     /// and only return the providers that returned an OK status.
     async fn get_data_sources(&self) -> SetDataSourcesMessage {
-        join_all(
-            self.inner
-                .data_sources
-                .iter()
-                .map(|(name, data_source)| async move {
-                    let status = match self.check_provider_status(name.clone()).await {
-                        Ok(_) => DataSourceStatus::Connected,
-                        Err(err) => DataSourceStatus::Error(todo!()),
-                    };
-                    UpsertProxyDataSource {
-                        name: name.clone(),
-                        description: data_source.description.clone(),
-                        provider_type: data_source.provider_type.clone(),
-                        status,
-                    }
-                }),
-        )
+        let data_sources = join_all(self.inner.data_sources.iter().map(
+            |(name, data_source)| async move {
+                let status = match self.check_provider_status(name.clone()).await {
+                    Ok(_) => DataSourceStatus::Connected,
+                    Err(err) => DataSourceStatus::Error(todo!()),
+                };
+                UpsertProxyDataSource {
+                    name: name.clone(),
+                    description: data_source.description.clone(),
+                    provider_type: data_source.provider_type.clone(),
+                    status,
+                }
+            },
+        ))
         .await
         .into_iter()
-        .collect()
+        .collect();
+        SetDataSourcesMessage { data_sources }
     }
 
     #[instrument(skip(self))]
