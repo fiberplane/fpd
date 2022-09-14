@@ -4,10 +4,7 @@
 #     eval $(ssh-agent) && ssh-add
 #   (you should run this in the same terminal session as you run `tilt up` in)
 
-include('../relay/Tiltfile')
-
 run_proxy_on_host = 'proxy' in os.getenv('RUN_ON_HOST', '').split(',') or os.getenv('RUN_ON_HOST') == 'all'
-run_relay_on_host = 'relay' in os.getenv('RUN_ON_HOST', '').split(',') or os.getenv('RUN_ON_HOST') == 'all'
 
 # Mapping from the provider name to the port it listens on
 all_providers = {
@@ -60,15 +57,12 @@ if 'elasticsearch' in providers:
     objects=['fluentd:serviceaccount', 'fluentd:clusterrole', 'fluentd:clusterrolebinding'],
     labels=['customer'])
 
-resource_deps = ['relay']
 if len(providers) > 0:
   resource_deps.extend(providers)
 if run_proxy_on_host:
   fiberplane_endpoint = 'ws://localhost:3001'
-elif run_relay_on_host:
-  fiberplane_endpoint = 'ws://host.docker.internal:3001'
 else:
-  fiberplane_endpoint = 'ws://relay'
+  fiberplane_endpoint = 'ws://api'
 env={
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
