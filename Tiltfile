@@ -60,7 +60,7 @@ if 'elasticsearch' in providers:
 if len(providers) > 0:
   resource_deps.extend(providers)
 if run_proxy_on_host:
-  fiberplane_endpoint = 'ws://localhost:3001'
+  fiberplane_endpoint = 'ws://localhost:3000'
 else:
   fiberplane_endpoint = 'ws://api'
 env={
