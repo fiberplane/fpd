@@ -1,4 +1,4 @@
-use crate::service::{DataSourceConfigs, ProxyService};
+use crate::service::{ProxyDataSource, ProxyService};
 use anyhow::{anyhow, Error};
 use clap::Parser;
 use std::{io, net::SocketAddr, path::PathBuf, process, str::FromStr, time::Duration};
@@ -83,7 +83,7 @@ async fn main() {
     let data_sources = fs::read_to_string(args.data_sources)
         .await
         .expect("error reading data sources YAML file");
-    let data_sources: DataSourceConfigs =
+    let data_sources: Vec<ProxyDataSource> =
         serde_yaml::from_str(&data_sources).expect("Invalid data sources YAML file");
 
     let proxy = ProxyService::init(

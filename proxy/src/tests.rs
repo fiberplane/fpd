@@ -9,11 +9,26 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
 use httpmock::prelude::*;
 use hyper::header::HeaderValue;
+use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, SetDataSourcesMessage, Uuid};
 use serde_json::{json, Map, Value};
+use std::iter::FromIterator;
 use std::{collections::HashMap, path::Path, time::Duration};
 use test_log::test;
 use tokio::{join, net::TcpListener, sync::broadcast};
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
+
+async fn mock_prometheus() -> (MockServer, Vec<ProxyDataSource>) {
+    let prometheus = MockServer::start_async().await;
+
+    let data_sources = vec![ProxyDataSource {
+        name: Name::from_static("prometheus-dev"),
+        description: None,
+        provider_type: "prometheus".to_string(),
+        config: Map::from_iter(vec![("url".to_string(), Value::String(prometheus.url("")))]),
+    }];
+
+    (prometheus, data_sources)
+}
 
 #[test]
 fn parses_data_sources_from_yaml() {
@@ -113,38 +128,34 @@ async fn sends_data_sources_on_connect() {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let data_sources = HashMap::from([
-        (
-            "data source 1".to_string(),
-            DataSource::Prometheus(PrometheusDataSource {
-                url: connected_prometheus.url(""),
-            }),
-        ),
-        (
-            "data source 2".to_string(),
-            DataSource::Elasticsearch(ElasticsearchDataSource {
-                url: connected_elasticsearch.url(""),
-                body_field_names: Vec::new(),
-                timestamp_field_names: Vec::new(),
-            }),
-        ),
-        (
-            "data source 3".to_string(),
-            DataSource::Prometheus(PrometheusDataSource {
-                url: disconnected_prometheus.url(""),
-            }),
-        ),
-        // We don't have the proxy provider wasm module so this tests
-        // what happens if you specify a provider that we don't have
-        (
-            "data source 4".to_string(),
-            DataSource::Proxy(ProxyDataSource {
-                data_source_name: "something else".to_string(),
-                data_source_type: DataSourceType::Elasticsearch,
-                proxy_id: "proxy id".to_string(),
-            }),
-        ),
-    ]);
+    let data_sources = vec![
+        ProxyDataSource {
+            name: Name::from_static("connected-prometheus"),
+            provider_type: "prometheus".to_string(),
+            description: None,
+            config: Map::from_iter([("url".into(), json!(connected_prometheus.url("")))]),
+        },
+        ProxyDataSource {
+            name: Name::from_static("connected-elasticsearch"),
+            provider_type: "elasticsearch".to_string(),
+            description: None,
+            config: Map::from_iter([("url".into(), json!(connected_elasticsearch.url("")))]),
+        },
+        ProxyDataSource {
+            name: Name::from_static("disconnected-prometheus"),
+            provider_type: "prometheus".to_string(),
+            description: None,
+            config: Map::from_iter([("url".into(), json!(disconnected_prometheus.url("")))]),
+        },
+        // // We don't have the proxy provider wasm module so this tests
+        // // what happens if you specify a provider that we don't have
+        ProxyDataSource {
+            name: Name::from_static("unknown-data-source"),
+            provider_type: "other-provider".to_string(),
+            description: None,
+            config: Map::from_iter([("url".into(), json!("http://localhost:1234"))]),
+        },
+    ];
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
@@ -165,53 +176,62 @@ async fn sends_data_sources_on_connect() {
         })
         .await
         .unwrap();
+
         let message = ws.next().await.unwrap().unwrap();
         let message = match message {
             Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        match message {
-            RelayMessage::SetDataSources(data_sources) => {
-                assert_eq!(data_sources.len(), 4);
-                assert_eq!(
-                    data_sources.get("data source 1").unwrap(),
-                    &DataSourceDetailsOrType::Details(DataSourceDetails {
-                        ty: DataSourceType::Prometheus,
-                        status: DataSourceStatus::Connected,
-                    })
-                );
-                assert_eq!(
-                    data_sources.get("data source 2").unwrap(),
-                    &DataSourceDetailsOrType::Details(DataSourceDetails {
-                        ty: DataSourceType::Elasticsearch,
-                        status: DataSourceStatus::Connected,
-                    })
-                );
-                assert_eq!(
-                    data_sources.get("data source 3").unwrap(),
-                    &DataSourceDetailsOrType::Details(DataSourceDetails {
-                        ty: DataSourceType::Prometheus,
-                        status: DataSourceStatus::Error(
-                            "Provider returned HTTP error: status=500, response=Some Error"
-                                .to_string()
-                        ),
-                    })
-                );
-                let proxy_data_source = if let DataSourceDetailsOrType::Details(details) =
-                    &data_sources["data source 4"]
-                {
-                    details
-                } else {
-                    panic!("wrong type");
-                };
-                if let DataSourceStatus::Error(message) = &proxy_data_source.status {
-                    assert!(message.starts_with("Error invoking provider: Error loading wasm module ../providers/proxy.wasm: No such file or directory"));
-                } else {
-                    panic!("Should have errored");
-                }
-            }
-            _ => panic!(),
-        };
+        let data_sources =
+            if let RelayMessage::SetDataSources(SetDataSourcesMessage { data_sources }) = message {
+                data_sources
+            } else {
+                panic!("wrong type");
+            };
+
+        assert_eq!(data_sources.len(), 4);
+        let data_sources: HashMap<_, _> = data_sources
+            .into_iter()
+            .map(|data_source| (data_source.name.clone(), data_source))
+            .collect();
+
+        let connected_prometheus = data_sources
+            .get(&Name::from_static("connected-prometheus"))
+            .unwrap();
+        assert_eq!(connected_prometheus.provider_type, "prometheus");
+        assert_eq!(connected_prometheus.description, None);
+        assert_eq!(connected_prometheus.status, DataSourceStatus::Connected);
+
+        let connected_elasticsearch = data_sources
+            .get(&Name::from_static("connected-elasticsearch"))
+            .unwrap();
+        assert_eq!(connected_elasticsearch.provider_type, "elasticsearch");
+        assert_eq!(connected_elasticsearch.description, None);
+        assert_eq!(connected_elasticsearch.status, DataSourceStatus::Connected);
+
+        let disconnected_prometheus = data_sources
+            .get(&Name::from_static("disconnected-prometheus"))
+            .unwrap();
+        assert_eq!(disconnected_prometheus.provider_type, "prometheus");
+        assert_eq!(disconnected_prometheus.description, None);
+        assert_eq!(
+            disconnected_prometheus.status,
+            DataSourceStatus::Error(DataSourceError::TemporaryHttpError(
+                "Provider returned HTTP error: status=500, response=Some Error".to_string()
+            ))
+        );
+
+        let unknown_data_source = data_sources
+            .get(&Name::from_static("unknown-data-source"))
+            .unwrap();
+        assert_eq!(unknown_data_source.provider_type, "other-provider");
+        assert_eq!(unknown_data_source.description, None);
+        assert_eq!(
+            unknown_data_source.status,
+            DataSourceStatus::Error(DataSourceError::WasmInvocationError(
+                "Provider WASM module not found".to_string()
+            ))
+        );
     };
 
     let (tx, _) = broadcast::channel(3);
@@ -226,7 +246,7 @@ async fn sends_data_sources_on_connect() {
 
 #[test(tokio::test)]
 async fn checks_data_source_status_on_interval() {
-    let mock_server = MockServer::start();
+    let (mock_server, data_sources) = mock_prometheus().await;
     let mut connected_prometheus_mock = mock_server.mock(|when, then| {
         when.method("GET").path("/api/v1/query");
         then.status(200).body("{}");
@@ -238,12 +258,6 @@ async fn checks_data_source_status_on_interval() {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let data_sources = HashMap::from([(
-        "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: mock_server.url(""),
-        }),
-    )]);
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
@@ -270,13 +284,12 @@ async fn checks_data_source_status_on_interval() {
                 Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
                 _ => panic!("wrong type"),
             };
-            if let RelayMessage::SetDataSources(data_sources) = message {
+            if let RelayMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
+                message
+            {
                 assert_eq!(
-                    data_sources["data source 1"],
-                    DataSourceDetailsOrType::Details(DataSourceDetails {
-                        ty: DataSourceType::Prometheus,
-                        status: DataSourceStatus::Connected,
-                    })
+                    data_sources.pop().unwrap().status,
+                    DataSourceStatus::Connected
                 );
             } else {
                 panic!();
@@ -290,16 +303,13 @@ async fn checks_data_source_status_on_interval() {
             Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        if let RelayMessage::SetDataSources(data_sources) = message {
+        if let RelayMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) = message {
             assert_eq!(
-                data_sources["data source 1"],
-                DataSourceDetailsOrType::Details(DataSourceDetails {
-                    ty: DataSourceType::Prometheus,
-                    status: DataSourceStatus::Error(
-                        "Provider returned HTTP error: status=500, response=Internal Server Error"
-                            .to_string()
-                    ),
-                })
+                data_sources.pop().unwrap().status,
+                DataSourceStatus::Error(DataSourceError::TemporaryHttpError(
+                    "Provider returned HTTP error: status=500, response=Internal Server Error"
+                        .to_string()
+                ))
             );
         } else {
             panic!();
@@ -323,7 +333,7 @@ async fn sends_pings() {
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         WasmModules::new(),
-        DataSources::new(),
+        Default::default(),
         5,
         None,
         Duration::from_secs(300),
@@ -430,7 +440,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         WasmModules::new(),
-        DataSources::new(),
+        Default::default(),
         5,
         None,
         Duration::from_secs(300),
@@ -451,8 +461,9 @@ async fn returns_error_for_query_to_unknown_provider() {
         let op_id = Uuid::new_v4();
         let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
-            data_source_name: "data source 1".to_string(),
+            data_source_name: Name::from_static("data source 1"),
             data: b"fake payload".to_vec(),
+            protocol_version: 1,
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -480,7 +491,7 @@ async fn returns_error_for_query_to_unknown_provider() {
 
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_result() {
-    let prometheus = MockServer::start();
+    let (prometheus, data_sources) = mock_prometheus().await;
     prometheus.mock(|when, then| {
         when.method("GET").path("/api/v1/status/buildinfo");
         then.status(200).body("{}");
@@ -510,13 +521,6 @@ async fn calls_provider_with_query_and_sends_result() {
     // Create a websocket listener for the proxy to connect to
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let mut data_sources = HashMap::new();
-    data_sources.insert(
-        "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: prometheus.url(""),
-        }),
-    );
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
@@ -548,8 +552,9 @@ async fn calls_provider_with_query_and_sends_result() {
         });
         let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
-            data_source_name: "data source 1".to_string(),
+            data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&request).unwrap(),
+            protocol_version: 1,
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -588,7 +593,7 @@ async fn calls_provider_with_query_and_sends_result() {
 
 #[test(tokio::test)]
 async fn handles_multiple_concurrent_messages() {
-    let prometheus = MockServer::start();
+    let (prometheus, data_sources) = mock_prometheus().await;
     prometheus.mock(|when, then| {
         when.method("GET").path("/api/v1/status/buildinfo");
         then.status(200).body("{}");
@@ -622,13 +627,6 @@ async fn handles_multiple_concurrent_messages() {
     // Create a websocket listener for the proxy to connect to
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let mut data_sources = DataSources::new();
-    data_sources.insert(
-        "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: prometheus.url(""),
-        }),
-    );
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
@@ -657,12 +655,13 @@ async fn handles_multiple_concurrent_messages() {
         let op_1 = Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
         let message_1 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_1,
-            data_source_name: "data source 1".to_string(),
+            data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&LegacyProviderRequest::Instant(QueryInstant {
                 query: "query 1".to_string(),
                 timestamp: 0.0,
             }))
             .unwrap(),
+            protocol_version: 1,
         })
         .serialize_msgpack();
         ws.send(Message::Binary(message_1)).await.unwrap();
@@ -670,12 +669,13 @@ async fn handles_multiple_concurrent_messages() {
         let op_2 = Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
         let message_2 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_2,
-            data_source_name: "data source 1".to_string(),
+            data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&LegacyProviderRequest::Series(QueryTimeRange {
                 query: "query 2".to_string(),
                 time_range: TimeRange { from: 0.0, to: 1.0 },
             }))
             .unwrap(),
+            protocol_version: 1,
         })
         .serialize_msgpack();
         ws.send(Message::Binary(message_2)).await.unwrap();
@@ -715,7 +715,7 @@ async fn handles_multiple_concurrent_messages() {
 
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_error() {
-    let prometheus = MockServer::start();
+    let (prometheus, data_sources) = mock_prometheus().await;
     prometheus.mock(|when, then| {
         when.method("GET").path("/api/v1/status/buildinfo");
         then.status(200).body("{}");
@@ -728,13 +728,6 @@ async fn calls_provider_with_query_and_sends_error() {
     // Create a websocket listener for the proxy to connect to
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let mut data_sources = DataSources::new();
-    data_sources.insert(
-        "data source 1".to_string(),
-        DataSource::Prometheus(PrometheusDataSource {
-            url: prometheus.url(""),
-        }),
-    );
     let service = ProxyService::init(
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
@@ -766,8 +759,9 @@ async fn calls_provider_with_query_and_sends_error() {
         });
         let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
-            data_source_name: "data source 1".to_string(),
+            data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&request).unwrap(),
+            protocol_version: 1,
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -821,7 +815,7 @@ async fn reconnects_if_websocket_closes() {
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         WasmModules::new(),
-        DataSources::new(),
+        Default::default(),
         1,
         None,
         Duration::from_secs(300),
@@ -875,7 +869,7 @@ async fn service_shutdown() {
         format!("ws://{}/api/proxies/ws", addr).parse().unwrap(),
         "auth token".to_string(),
         WasmModules::new(),
-        DataSources::new(),
+        Default::default(),
         1,
         None,
         Duration::from_secs(300),
