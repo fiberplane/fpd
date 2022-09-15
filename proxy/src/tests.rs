@@ -1,5 +1,6 @@
-use crate::service::{DataSourceConfigs, ProxyService, WasmModules};
-use fiberplane::protocols::data_sources::{DataSource, DataSourceError, DataSourceStatus};
+use crate::service::{ProxyDataSource, ProxyService, WasmModules};
+use fiberplane::protocols::data_sources::{DataSourceError, DataSourceStatus};
+use fiberplane::protocols::names::Name;
 use fp_provider_runtime::spec::types::{
     Error as ProviderError, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
     QueryInstant, QueryTimeRange, TimeRange,
@@ -8,7 +9,7 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
 use httpmock::prelude::*;
 use hyper::header::HeaderValue;
-use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, Uuid};
+use serde_json::{json, Map, Value};
 use std::{collections::HashMap, path::Path, time::Duration};
 use test_log::test;
 use tokio::{join, net::TcpListener, sync::broadcast};
@@ -17,16 +18,45 @@ use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 #[test]
 fn parses_data_sources_from_yaml() {
     let yaml = "
-prometheus-production:
-  provider_type: prometheus
+- name: prometheus-production
+  providerType: prometheus
   description: Prometheus on production cluster
   config:
     url: http://localhost:9090
-elasticsearch-dev:
-  provider_type: elasticsearch
+- name: elasticsearch-dev
+  providerType: elasticsearch
+  config:
     url: http://localhost:9200";
-    let data_sources: DataSourceConfigs = serde_yaml::from_str(yaml).unwrap();
+    let data_sources: Vec<ProxyDataSource> = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(data_sources.len(), 2);
+    assert_eq!(
+        data_sources[0].name,
+        Name::from_static("prometheus-production")
+    );
+    assert_eq!(data_sources[0].provider_type, "prometheus");
+    assert_eq!(
+        data_sources[0].description,
+        Some("Prometheus on production cluster".to_string())
+    );
+    assert_eq!(
+        data_sources[0].config,
+        *json!({
+            "url": "http://localhost:9090"
+        })
+        .as_object()
+        .unwrap()
+    );
+    assert_eq!(data_sources[1].name, Name::from_static("elasticsearch-dev"));
+    assert_eq!(data_sources[1].provider_type, "elasticsearch");
+    assert_eq!(data_sources[1].description, None);
+    assert_eq!(
+        data_sources[1].config,
+        *json!({
+            "url": "http://localhost:9200"
+        })
+        .as_object()
+        .unwrap()
+    );
 }
 
 #[test(tokio::test)]

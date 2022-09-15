@@ -25,19 +25,13 @@ use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct NewDataSource {
-    provider_type: String,
-    config: Map<String, Value>,
-    description: Option<String>,
-}
-pub(crate) type DataSourceConfigs = HashMap<Name, NewDataSource>;
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ProxyDataSource {
-    name: Name,
-    provider_type: String,
-    config: Map<String, Value>,
-    description: Option<String>,
+    pub name: Name,
+    pub provider_type: String,
+    pub config: Map<String, Value>,
+    pub description: Option<String>,
 }
 
 pub(crate) type WasmModules = HashMap<String, Result<Arc<Vec<u8>>, String>>;
@@ -70,24 +64,14 @@ impl ProxyService {
         fiberplane_endpoint: Url,
         auth_token: String,
         wasm_dir: &Path,
-        data_sources: DataSourceConfigs,
+        data_sources: Vec<ProxyDataSource>,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
         status_check_interval: Duration,
     ) -> Self {
         let data_sources: HashMap<Name, ProxyDataSource> = data_sources
             .into_iter()
-            .map(|(name, data_source)| {
-                (
-                    name.clone(),
-                    ProxyDataSource {
-                        name: name.into(),
-                        config: data_source.config,
-                        provider_type: data_source.provider_type,
-                        description: data_source.description,
-                    },
-                )
-            })
+            .map(|data_source| (data_source.name.clone(), (data_source)))
             .collect();
         let provider_types = data_sources.iter().map(|(_, ds)| ds.provider_type.clone());
         let wasm_modules = load_wasm_modules(wasm_dir, provider_types).await;
@@ -397,7 +381,7 @@ impl ProxyService {
             |(name, data_source)| async move {
                 let status = match self.check_provider_status(name.clone()).await {
                     Ok(_) => DataSourceStatus::Connected,
-                    Err(err) => DataSourceStatus::Error(todo!()),
+                    Err(err) => todo!(),
                 };
                 UpsertProxyDataSource {
                     name: name.clone(),
