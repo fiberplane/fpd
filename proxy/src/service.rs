@@ -11,16 +11,14 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Server};
 use lazy_static::lazy_static;
 use proxy_types::*;
-use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
-use tokio::sync::mpsc::{self, unbounded_channel, UnboundedSender};
+use tokio::fs;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
-use tokio::task::{spawn_blocking, LocalSet};
 use tokio::time::{interval, timeout};
-use tokio::{fs, runtime::Builder};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
@@ -34,26 +32,24 @@ pub struct ProxyDataSource {
     pub description: Option<String>,
 }
 
-pub(crate) type WasmModules = HashMap<String, Result<Arc<Vec<u8>>, String>>;
+pub(crate) type WasmModules = HashMap<String, Result<Runtime, String>>;
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 lazy_static! {
     static ref STATUS_REQUEST: Vec<u8> = rmp_serde::to_vec(&LegacyProviderRequest::Status).unwrap();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ProxyService {
     pub(crate) inner: Arc<Inner>,
 }
 
-#[derive(Debug)]
 pub(crate) struct Inner {
     endpoint: Url,
     auth_token: String,
     pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
     wasm_modules: WasmModules,
     max_retries: u32,
-    local_task_handler: SingleThreadTaskHandler,
     listen_address: Option<SocketAddr>,
     status_check_interval: Duration,
 }
@@ -73,7 +69,10 @@ impl ProxyService {
             .into_iter()
             .map(|data_source| (data_source.name.clone(), (data_source)))
             .collect();
-        let provider_types = data_sources.iter().map(|(_, ds)| ds.provider_type.clone());
+        let provider_types = data_sources
+            .values()
+            .map(|ds| ds.provider_type.clone())
+            .collect();
         let wasm_modules = load_wasm_modules(wasm_dir, provider_types).await;
 
         ProxyService::new(
@@ -103,7 +102,6 @@ impl ProxyService {
                 data_sources,
                 wasm_modules,
                 max_retries,
-                local_task_handler: SingleThreadTaskHandler::new(),
                 listen_address,
                 status_check_interval,
             }),
@@ -314,12 +312,11 @@ impl ProxyService {
         message: InvokeProxyMessage,
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
-        let op_id = message.op_id;
-        let data_source_name = message.data_source_name;
         debug!("handling relay message");
+        let op_id = message.op_id;
 
         // Try to create the runtime for the given data source
-        let data_source = match self.inner.data_sources.get(&data_source_name) {
+        let data_source = match self.inner.data_sources.get(&message.data_source_name) {
             Some(data_source) => data_source.clone(),
             None => {
                 error!("received relay message for unknown data source");
@@ -327,15 +324,15 @@ impl ProxyService {
                     op_id,
                     message: format!(
                         "received relay message for unknown data source: {}",
-                        data_source_name
+                        message.data_source_name
                     ),
                 }))?;
                 return Ok(());
             }
         };
 
-        let wasm_module = match &self.inner.wasm_modules[&data_source.provider_type] {
-            Ok(wasm_module) => wasm_module,
+        let runtime: Runtime = match &self.inner.wasm_modules[&data_source.provider_type] {
+            Ok(runtime) => runtime.clone(),
             Err(message) => {
                 return reply
                     .send(RelayMessage::Error(ErrorMessage {
@@ -345,30 +342,24 @@ impl ProxyService {
                     .map_err(Into::into);
             }
         };
-        let runtime = match compile_wasm(wasm_module.clone()).await {
-            Ok(runtime) => runtime,
-            Err(err) => {
-                error!(?err, "error compiling wasm module");
-                return reply
-                    .send(RelayMessage::Error(ErrorMessage {
-                        op_id,
-                        message: err.to_string(),
-                    }))
-                    .map_err(Into::into);
-            }
+
+        let result = match message.protocol_version {
+            1 => invoke_provider_v1(runtime, message.data, data_source.config.clone()).await,
+            2 => invoke_provider_v2(runtime, message.data, data_source.config.clone()).await,
+            _ => Err(format!(
+                "unsupported protocol version: {}",
+                message.protocol_version
+            )),
+        };
+        let response = match result {
+            Ok(response) => RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage {
+                op_id,
+                data: response,
+            }),
+            Err(message) => RelayMessage::Error(ErrorMessage { op_id, message }),
         };
 
-        let task = Task {
-            runtime,
-            op_id,
-            request: message.data,
-            protocol_version: message.protocol_version,
-            config: Value::Object(data_source.config.clone()),
-            reply,
-            span: Span::current(),
-        };
-
-        self.inner.local_task_handler.queue_task(task)?;
+        reply.send(response)?;
 
         Ok(())
     }
@@ -465,144 +456,24 @@ impl ProxyService {
     }
 }
 
-async fn load_wasm_modules(
-    wasm_dir: &Path,
-    provider_types: impl IntoIterator<Item = String>,
-) -> WasmModules {
-    let provider_types = provider_types.into_iter();
-    join_all(provider_types.map(|data_source_type| async move {
-        // Each provider's wasm module is found in the wasm_dir as provider_name.wasm
+async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> WasmModules {
+    let runtimes = join_all(provider_types.iter().map(|data_source_type| async move {
+        // Each provider's wasm module is found in the wasm_dir as data_source_type.wasm
         let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
-        let wasm_module = match fs::read(wasm_path).await {
-            Ok(wasm_module) => {
-                let wasm_module = Arc::new(wasm_module);
-                // Make sure the wasm file can compile
-                match compile_wasm(wasm_module.clone()).await {
-                    Ok(_) => {
-                        let hash = digest(&SHA256, wasm_module.as_ref());
-                        info!(
-                            "loaded provider: {} (sha256 digest: {})",
-                            data_source_type,
-                            encode_hex(hash.as_ref())
-                        );
-                        Ok(wasm_module)
-                    }
-                    Err(err) => Err(format!(
-                        "Error compiling wasm module {}: {}",
-                        wasm_path.display(),
-                        err
-                    )),
-                }
-            }
-            Err(err) => Err(format!(
-                "Error compiling wasm module {}: {}",
-                wasm_path.display(),
-                err
-            )),
-        };
-        (data_source_type, wasm_module)
+        let wasm_module = fs::read(wasm_path)
+            .await
+            .map_err(|err| format!("Error reading wasm file: {}", err))?;
+        Runtime::new(wasm_module).map_err(|err| format!("Error compiling wasm module: {}", err))
     }))
-    .await
-    .into_iter()
-    .collect()
-}
+    .await;
 
-async fn compile_wasm(wasm_module: Arc<Vec<u8>>) -> Result<Runtime> {
-    spawn_blocking(move || {
-        let runtime = Runtime::new(wasm_module.as_ref())?;
-        Ok(runtime)
-    })
-    .await?
-}
-
-/// This includes everything needed to handle a provider request
-/// and reply with the response
-struct Task {
-    runtime: Runtime,
-    op_id: Uuid,
-    request: Vec<u8>,
-    config: Value,
-    protocol_version: u8,
-    reply: UnboundedSender<RelayMessage>,
-    span: Span,
-}
-
-/// A SingleThreadTaskHandler will make sure that all tasks that are run on it
-/// will be run in a single threaded tokio runtime. This allows us to execute
-/// work that has !Send.
-///
-/// (This is necessary for the Proxy because the Wasmer runtime's exported
-/// functions are !Send and thus cannot be used with the normal tokio::spawn.)
-#[derive(Debug, Clone)]
-struct SingleThreadTaskHandler {
-    tx: mpsc::UnboundedSender<Task>,
-}
-
-impl SingleThreadTaskHandler {
-    /// Spawn a new thread to handle the given tasks
-    pub fn new() -> Self {
-        let (tx, mut rx) = mpsc::unbounded_channel::<Task>();
-
-        // Spawn a new OS thread that will run a single-threaded Tokio runtime to handle messages
-        std::thread::spawn(move || {
-            let rt = Builder::new_current_thread().enable_all().build().unwrap();
-            let local = LocalSet::new();
-            local.block_on(&rt, async move {
-                // Process all messages from the channel by spawning a local task
-                // (on this same thread) that will call the provider
-                while let Some(task) = rx.recv().await {
-                    let span = task.span.clone();
-                    // Spawn a task so that the runtime will alternate between
-                    // accepting new tasks and running each existing one to completion
-                    tokio::task::spawn_local(
-                        Self::invoke_provider_and_send_response(task).instrument(span),
-                    );
-                }
-                debug!("SingleThreadTaskHandler was dropped, no more messages to process");
-                // If the while loop returns, then all the LocalSpawner
-                // objects have have been dropped.
-            });
-            debug!("SingleThreadTaskHandler spawned thread shutting down");
-        });
-
-        Self { tx }
-    }
-
-    pub fn queue_task(&self, task: Task) -> Result<()> {
-        self.tx
-            .send(task)
-            .map_err(|err| anyhow!("unable to queue task {}", err))
-    }
-
-    async fn invoke_provider_and_send_response(task: Task) {
-        let op_id = task.op_id;
-
-        let result = match task.protocol_version {
-            1 => invoke_provider_v1(task.runtime, task.request, task.config).await,
-            2 => invoke_provider_v2(task.runtime, task.request, task.config).await,
-            _ => Err(format!(
-                "Unsupported protocol version: {}",
-                task.protocol_version
-            )),
-        };
-
-        let response = match result {
-            Ok(data) => {
-                RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
-            }
-            Err(message) => RelayMessage::Error(ErrorMessage { op_id, message }),
-        };
-
-        if let Err(err) = task.reply.send(response) {
-            error!(?err, "unable to send response message to outgoing channel");
-        };
-    }
+    provider_types.into_iter().zip(runtimes).collect()
 }
 
 async fn invoke_provider_v1(
     runtime: Runtime,
     request: Vec<u8>,
-    config: Value,
+    config: Map<String, Value>,
 ) -> Result<Vec<u8>, String> {
     let config = serde_json::to_vec(&config)
         .map_err(|err| format!("Error serializing config as JSON: {:?}", err))?;
@@ -615,12 +486,12 @@ async fn invoke_provider_v1(
 async fn invoke_provider_v2(
     runtime: Runtime,
     request: Vec<u8>,
-    config: Value,
+    config: Map<String, Value>,
 ) -> Result<Vec<u8>, String> {
     // In v2, the request is a single object so we need to deserialize it to inject the config
     let mut request: ProviderRequest = rmp_serde::from_slice(&request)
         .map_err(|err| format!("Error deserializing provider request: {:?}", err))?;
-    request.config = config;
+    request.config = Value::Object(config);
     let response = runtime
         .invoke2(request)
         .await
@@ -674,12 +545,4 @@ fn msgpack_to_json(input: &[u8]) -> Result<String> {
     let mut serializer = serde_json::Serializer::new(Vec::new());
     serde_transcode::transcode(&mut deserializer, &mut serializer)?;
     Ok(String::from_utf8(serializer.into_inner())?)
-}
-
-fn encode_hex(input: &[u8]) -> String {
-    input
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<Vec<_>>()
-        .join("")
 }

@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#5ad0858305b73f62021beb1757651e1d56425a00"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#63d04d31735d197ac0e5fc91d055f9855d395a01"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -934,7 +934,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#5ad0858305b73f62021beb1757651e1d56425a00"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#63d04d31735d197ac0e5fc91d055f9855d395a01"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -1896,7 +1896,6 @@ dependencies = [
  "lazy_static",
  "proxy_types",
  "reqwest",
- "ring",
  "rmp-serde",
  "routerify",
  "serde",
