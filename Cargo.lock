@@ -836,6 +836,8 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "regex",
+ "rmp-serde",
+ "rmpv",
  "serde",
  "serde_json",
  "strum",
@@ -868,9 +870,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6714e557eae1700a7a8924257826996ab07e028ff943bc8d27bad5048042199"
+checksum = "709b1bf380cc5cebc777782dc65abffbdc6e35f50eb20632850d0934caee956e"
 dependencies = [
  "Inflector",
  "bytes",
@@ -888,9 +890,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-macros"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e28012ebf5e635af62591a27a5e83847bc589eeea03252fabf56e3cf873d1d4"
+checksum = "f62d7398c2af5acd2e299e459043ab0b58214e7df7c4b5d2ca3261cc4a747477"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -900,9 +902,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-support"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488e1cef84b2e773c09c14cf03e268b1ae657fd037bb4bb1b2c2d7a9895ccfb0"
+checksum = "93dfda7c987faf83edf24e57337d688492b1f8f00afebe1da6ae530dcaf0cddf"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
@@ -916,7 +918,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#0bf9a157af65b847d448f22c84f3306f9b3ed94b"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#5ad0858305b73f62021beb1757651e1d56425a00"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -925,12 +927,14 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "serde",
+ "serde_json",
+ "time",
 ]
 
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#0bf9a157af65b847d448f22c84f3306f9b3ed94b"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#5ad0858305b73f62021beb1757651e1d56425a00"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -940,6 +944,7 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",

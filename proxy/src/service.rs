@@ -4,7 +4,7 @@ use fiberplane::protocols::names::Name;
 use fp_provider_bindings::{
     Error, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
 };
-use fp_provider_runtime::spec::Runtime;
+use fp_provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
@@ -358,13 +358,12 @@ impl ProxyService {
             }
         };
 
-        let config = serde_json::to_vec(&data_source.config)?;
-
         let task = Task {
             runtime,
             op_id,
             request: message.data,
-            config,
+            protocol_version: message.protocol_version,
+            config: Value::Object(data_source.config.clone()),
             reply,
             span: Span::current(),
         };
@@ -522,7 +521,8 @@ struct Task {
     runtime: Runtime,
     op_id: Uuid,
     request: Vec<u8>,
-    config: Vec<u8>,
+    config: Value,
+    protocol_version: u8,
     reply: UnboundedSender<RelayMessage>,
     span: Span,
 }
@@ -551,9 +551,12 @@ impl SingleThreadTaskHandler {
                 // Process all messages from the channel by spawning a local task
                 // (on this same thread) that will call the provider
                 while let Some(task) = rx.recv().await {
+                    let span = task.span.clone();
                     // Spawn a task so that the runtime will alternate between
                     // accepting new tasks and running each existing one to completion
-                    tokio::task::spawn_local(Self::invoke_proxy_and_send_response(task));
+                    tokio::task::spawn_local(
+                        Self::invoke_provider_and_send_response(task).instrument(span),
+                    );
                 }
                 debug!("SingleThreadTaskHandler was dropped, no more messages to process");
                 // If the while loop returns, then all the LocalSpawner
@@ -571,28 +574,59 @@ impl SingleThreadTaskHandler {
             .map_err(|err| anyhow!("unable to queue task {}", err))
     }
 
-    async fn invoke_proxy_and_send_response(task: Task) {
-        let _enter = task.span.enter();
+    async fn invoke_provider_and_send_response(task: Task) {
         let op_id = task.op_id;
-        let runtime = task.runtime;
 
-        let response_message = match runtime.invoke_raw(task.request, task.config).await {
+        let result = match task.protocol_version {
+            1 => invoke_provider_v1(task.runtime, task.request, task.config).await,
+            2 => invoke_provider_v2(task.runtime, task.request, task.config).await,
+            _ => Err(format!(
+                "Unsupported protocol version: {}",
+                task.protocol_version
+            )),
+        };
+
+        let response = match result {
             Ok(data) => {
                 RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage { op_id, data })
             }
-            Err(err) => {
-                error!(?err, "error invoking provider");
-                RelayMessage::Error(ErrorMessage {
-                    op_id,
-                    message: format!("Provider runtime error: {:?}", err),
-                })
-            }
+            Err(message) => RelayMessage::Error(ErrorMessage { op_id, message }),
         };
 
-        if let Err(err) = task.reply.send(response_message) {
+        if let Err(err) = task.reply.send(response) {
             error!(?err, "unable to send response message to outgoing channel");
         };
     }
+}
+
+async fn invoke_provider_v1(
+    runtime: Runtime,
+    request: Vec<u8>,
+    config: Value,
+) -> Result<Vec<u8>, String> {
+    let config = serde_json::to_vec(&config)
+        .map_err(|err| format!("Error serializing config as JSON: {:?}", err))?;
+    runtime
+        .invoke_raw(request, config)
+        .await
+        .map_err(|err| format!("Error invoking provider: {:?}", err))
+}
+
+async fn invoke_provider_v2(
+    runtime: Runtime,
+    request: Vec<u8>,
+    config: Value,
+) -> Result<Vec<u8>, String> {
+    // In v2, the request is a single object so we need to deserialize it to inject the config
+    let mut request: ProviderRequest = rmp_serde::from_slice(&request)
+        .map_err(|err| format!("Error deserializing provider request: {:?}", err))?;
+    request.config = config;
+    let response = runtime
+        .invoke2(request)
+        .await
+        .map_err(|err| format!("Error invoking provider: {:?}", err))?;
+    rmp_serde::to_vec(&response)
+        .map_err(|err| format!("Error serializing provider response: {:?}", err))
 }
 
 /// Listen on the given address and return a 200 for GET /
