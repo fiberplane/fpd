@@ -1,8 +1,9 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use fiberplane::protocols::data_sources::{DataSourceError, DataSourceStatus};
 use fiberplane::protocols::names::Name;
+use fiberplane::protocols::providers::{STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
 use fp_provider_bindings::{
-    Error, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
+    Blob, Error, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
 };
 use fp_provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
@@ -15,10 +16,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
-use tokio::fs;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
-use tokio::time::{interval, timeout};
+use tokio::{fs, time::interval};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
 use url::Url;
@@ -33,10 +33,21 @@ pub struct ProxyDataSource {
 }
 
 pub(crate) type WasmModules = HashMap<String, Result<Runtime, String>>;
-const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 
 lazy_static! {
-    static ref STATUS_REQUEST: Vec<u8> = rmp_serde::to_vec(&LegacyProviderRequest::Status).unwrap();
+    static ref STATUS_REQUEST_V1: Vec<u8> =
+        rmp_serde::to_vec(&LegacyProviderRequest::Status).unwrap();
+    static ref STATUS_REQUEST_V2: Vec<u8> = rmp_serde::to_vec(&ProviderRequest {
+        query_type: STATUS_QUERY_TYPE.to_string(),
+        query_data: Blob {
+            data: Vec::new().into(),
+            mime_type: STATUS_MIME_TYPE.to_string(),
+        },
+        config: Value::Null,
+        previous_response: None,
+    })
+    .unwrap();
 }
 
 #[derive(Clone)]
@@ -295,23 +306,23 @@ impl ProxyService {
         message: ServerMessage,
         reply: UnboundedSender<RelayMessage>,
     ) -> Result<()> {
-        match message {
-            ServerMessage::InvokeProxy(message) => {
-                self.handle_invoke_proxy_message(message, reply).await
-            }
-        }
+        let response = match message {
+            ServerMessage::InvokeProxy(message) => self.handle_invoke_proxy_message(message).await,
+        };
+
+        reply
+            .send(response)
+            .context("Error sending response to relay")?;
+
+        Ok(())
     }
 
-    #[instrument(err, skip_all, fields(
+    #[instrument(skip_all, fields(
         trace_id = ?message.op_id,
         data_source_name = ?message.data_source_name,
-        message.data = %msgpack_to_json(&message.data)?
+        message.data = %msgpack_to_json(&message.data).unwrap_or_default()
     ))]
-    async fn handle_invoke_proxy_message(
-        &self,
-        message: InvokeProxyMessage,
-        reply: UnboundedSender<RelayMessage>,
-    ) -> Result<()> {
+    async fn handle_invoke_proxy_message(&self, message: InvokeProxyMessage) -> RelayMessage {
         debug!("handling relay message");
         let op_id = message.op_id;
 
@@ -320,26 +331,23 @@ impl ProxyService {
             Some(data_source) => data_source.clone(),
             None => {
                 error!("received relay message for unknown data source");
-                reply.send(RelayMessage::Error(ErrorMessage {
+                return RelayMessage::Error(ErrorMessage {
                     op_id,
                     message: format!(
                         "received relay message for unknown data source: {}",
                         message.data_source_name
                     ),
-                }))?;
-                return Ok(());
+                });
             }
         };
 
         let runtime: Runtime = match &self.inner.wasm_modules[&data_source.provider_type] {
             Ok(runtime) => runtime.clone(),
             Err(message) => {
-                return reply
-                    .send(RelayMessage::Error(ErrorMessage {
-                        op_id,
-                        message: message.to_string(),
-                    }))
-                    .map_err(Into::into);
+                return RelayMessage::Error(ErrorMessage {
+                    op_id,
+                    message: message.to_string(),
+                });
             }
         };
 
@@ -351,28 +359,31 @@ impl ProxyService {
                 message.protocol_version
             )),
         };
-        let response = match result {
+        match result {
             Ok(response) => RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage {
                 op_id,
                 data: response,
             }),
             Err(message) => RelayMessage::Error(ErrorMessage { op_id, message }),
-        };
-
-        reply.send(response)?;
-
-        Ok(())
+        }
     }
 
-    /// Invoke each data source provider with the status request
-    /// and only return the providers that returned an OK status.
     async fn get_data_sources(&self) -> SetDataSourcesMessage {
         let data_sources = join_all(self.inner.data_sources.iter().map(
             |(name, data_source)| async move {
-                let status = match self.check_provider_status(name.clone()).await {
-                    Ok(_) => DataSourceStatus::Connected,
-                    Err(err) => todo!(),
+                let response = if V1_PROVIDERS.contains(&data_source.provider_type.as_str()) {
+                    self.check_provider_status_v1(name.clone()).await
+                } else {
+                    self.check_provider_status_v2(name.clone()).await
                 };
+
+                let status = match response {
+                    Ok(_) => DataSourceStatus::Connected,
+                    Err(err) => DataSourceStatus::Error(DataSourceError::WasmInvocationError(
+                        err.to_string(),
+                    )),
+                };
+
                 UpsertProxyDataSource {
                     name: name.clone(),
                     description: data_source.description.clone(),
@@ -387,23 +398,19 @@ impl ProxyService {
         SetDataSourcesMessage { data_sources }
     }
 
-    #[instrument(skip(self))]
-    async fn check_provider_status(&self, data_source_name: Name) -> Result<()> {
+    #[instrument(err, skip(self))]
+    async fn check_provider_status_v1(&self, data_source_name: Name) -> Result<()> {
+        debug!(
+            "Using protocol v1 to check provider status: {}",
+            &data_source_name
+        );
         let message = InvokeProxyMessage {
             op_id: Uuid::new_v4(),
             data_source_name,
-            data: STATUS_REQUEST.clone(),
+            data: STATUS_REQUEST_V1.clone(),
             protocol_version: 1,
         };
-        let (reply_sender, mut reply_receiver) = unbounded_channel();
-        self.handle_invoke_proxy_message(message, reply_sender)
-            .await?;
-        let response = timeout(STATUS_REQUEST_TIMEOUT, reply_receiver.recv())
-            .await
-            .with_context(|| "timed out checking provider status")?
-            .ok_or(anyhow!(
-                "Did not receive a status response from the provider"
-            ))?;
+        let response = self.handle_invoke_proxy_message(message).await;
         let response = match response {
             RelayMessage::InvokeProxyResponse(response) => Ok::<_, anyhow::Error>(response),
             RelayMessage::Error(err) => {
@@ -452,6 +459,30 @@ impl ProxyService {
             }
             Err(err) => Err(anyhow!("Error deserializing provider response: {:?}", err)),
             _ => Err(anyhow!("Unexpected provider response: {:?}", response)),
+        }
+    }
+
+    #[instrument(err, skip(self))]
+    async fn check_provider_status_v2(&self, data_source_name: Name) -> Result<()> {
+        debug!(
+            "Using protocol v2 to check provider status: {}",
+            &data_source_name
+        );
+        let message = InvokeProxyMessage {
+            op_id: Uuid::new_v4(),
+            data_source_name: data_source_name.clone(),
+            data: STATUS_REQUEST_V2.clone(),
+            protocol_version: 2,
+        };
+
+        match self.handle_invoke_proxy_message(message).await {
+            RelayMessage::InvokeProxyResponse(_) => Ok(()),
+            RelayMessage::Error(error) => bail!(
+                "Error invoking provider for data source: {} {}",
+                data_source_name,
+                error.message
+            ),
+            message => bail!("Unexpected response type: {:?}", message),
         }
     }
 }
