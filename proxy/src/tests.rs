@@ -1,6 +1,7 @@
 use crate::service::{ProxyDataSource, ProxyService, WasmModules};
-use fiberplane::protocols::data_sources::{DataSourceError, DataSourceStatus};
+use fiberplane::protocols::data_sources::DataSourceStatus;
 use fiberplane::protocols::names::Name;
+use fiberplane::protocols::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
 use fp_provider_bindings::Blob;
 use fp_provider_runtime::spec::types::ProviderRequest;
 use futures::{select, FutureExt, SinkExt, StreamExt};
@@ -214,9 +215,12 @@ async fn sends_data_sources_on_connect() {
         assert_eq!(disconnected_prometheus.description, None);
         assert_eq!(
             disconnected_prometheus.status,
-            DataSourceStatus::Error(DataSourceError::TemporaryHttpError(
-                "Provider returned HTTP error: status=500, response=Some Error".to_string()
-            ))
+            DataSourceStatus::Error(Error::Http {
+                error: HttpRequestError::ServerError {
+                    status_code: 500,
+                    response: b"Some Error".to_vec().into()
+                }
+            })
         );
 
         let unknown_data_source = data_sources
@@ -224,12 +228,10 @@ async fn sends_data_sources_on_connect() {
             .unwrap();
         assert_eq!(unknown_data_source.provider_type, "other-provider");
         assert_eq!(unknown_data_source.description, None);
-        assert_eq!(
+        assert!(matches!(
             unknown_data_source.status,
-            DataSourceStatus::Error(DataSourceError::WasmInvocationError(
-                "Provider WASM module not found".to_string()
-            ))
-        );
+            DataSourceStatus::Error(Error::Invocation { .. })
+        ));
     };
 
     let (tx, _) = broadcast::channel(3);
@@ -304,10 +306,12 @@ async fn checks_data_source_status_on_interval() {
         if let RelayMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) = message {
             assert_eq!(
                 data_sources.pop().unwrap().status,
-                DataSourceStatus::Error(DataSourceError::TemporaryHttpError(
-                    "Provider returned HTTP error: status=500, response=Internal Server Error"
-                        .to_string()
-                ))
+                DataSourceStatus::Error(Error::Http {
+                    error: HttpRequestError::ServerError {
+                        status_code: 500,
+                        response: b"Internal Server Error".to_vec().into()
+                    }
+                })
             );
         } else {
             panic!();
@@ -552,7 +556,7 @@ async fn calls_provider_with_query_and_sends_result() {
             op_id,
             data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&request).unwrap(),
-            protocol_version: 1,
+            protocol_version: 2,
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -568,7 +572,8 @@ async fn calls_provider_with_query_and_sends_result() {
             other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
-        assert_eq!(result.data, prometheus_response.as_bytes());
+        let result: Result<Blob, Error> = rmp_serde::from_slice(&result.data).unwrap();
+        assert!(result.is_ok());
     };
 
     let (tx, _) = broadcast::channel(3);
@@ -584,29 +589,22 @@ async fn calls_provider_with_query_and_sends_result() {
 async fn handles_multiple_concurrent_messages() {
     let (prometheus, data_sources) = mock_prometheus().await;
     // Delay the first response so the second response definitely comes back first
-    let query_instant_mock = prometheus.mock(|when, then| {
+    let prometheus_response = r#"{
+       "status" : "success",
+       "data" : {
+          "resultType" : "vector",
+          "result" : []
+       }
+    }"#;
+    prometheus.mock(|when, then| {
         when.method("POST").path("/api/v1/query");
-        then.delay(Duration::from_secs(4)).status(200).body(
-            r#"{
-                   "status" : "success",
-                   "data" : {
-                      "resultType" : "vector",
-                      "result" : []
-                   }
-                }"#,
-        );
+        then.delay(Duration::from_secs(2))
+            .status(200)
+            .body(prometheus_response);
     });
-    let query_series_mock = prometheus.mock(|when, then| {
+    prometheus.mock(|when, then| {
         when.method("POST").path("/api/v1/query_range");
-        then.status(200).body(
-            r#"{
-                   "status" : "success",
-                   "data" : {
-                      "resultType" : "vector",
-                      "result" : []
-                   }
-                }"#,
-        );
+        then.status(200).body(prometheus_response);
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -644,7 +642,7 @@ async fn handles_multiple_concurrent_messages() {
             data: rmp_serde::to_vec(&ProviderRequest {
                 query_type: "x-instants".to_string(),
                 query_data: Blob {
-                    data: b"query 1".to_vec().into(),
+                    data: b"q=query1".to_vec().into(),
                     mime_type: "application/x-www-form-urlencoded".to_string(),
                 },
                 config: Value::Null,
@@ -661,9 +659,9 @@ async fn handles_multiple_concurrent_messages() {
             op_id: op_2,
             data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&ProviderRequest {
-                query_type: "x-instants".to_string(),
+                query_type: TIMESERIES_QUERY_TYPE.to_string(),
                 query_data: Blob {
-                    data: b"query 2".to_vec().into(),
+                    data: b"q=query2".to_vec().into(),
                     mime_type: "application/x-www-form-urlencoded".to_string(),
                 },
                 config: Value::Null,
@@ -704,8 +702,6 @@ async fn handles_multiple_concurrent_messages() {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
-    query_instant_mock.assert();
-    query_series_mock.assert();
 }
 
 #[test(tokio::test)]
@@ -761,7 +757,7 @@ async fn calls_provider_with_query_and_sends_error() {
             op_id,
             data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&request).unwrap(),
-            protocol_version: 1,
+            protocol_version: 2,
         });
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
@@ -777,8 +773,8 @@ async fn calls_provider_with_query_and_sends_error() {
             other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
-        dbg!(String::from_utf8(result.data).unwrap());
-        todo!()
+        let result: Result<Blob, Error> = rmp_serde::from_slice(&result.data).unwrap();
+        assert!(matches!(result, Err(Error::Http { .. })));
     };
 
     let (tx, _) = broadcast::channel(3);

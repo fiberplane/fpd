@@ -1,10 +1,8 @@
-use anyhow::{anyhow, bail, Context, Result};
-use fiberplane::protocols::data_sources::{DataSourceError, DataSourceStatus};
+use anyhow::{anyhow, Context, Result};
+use fiberplane::protocols::data_sources::DataSourceStatus;
 use fiberplane::protocols::names::Name;
-use fiberplane::protocols::providers::{STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
-use fp_provider_bindings::{
-    Blob, Error, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
-};
+use fiberplane::protocols::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
+use fp_provider_bindings::{Blob, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse};
 use fp_provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
@@ -37,8 +35,8 @@ const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 
 lazy_static! {
     static ref STATUS_REQUEST_V1: Vec<u8> =
-        rmp_serde::to_vec(&LegacyProviderRequest::Status).unwrap();
-    static ref STATUS_REQUEST_V2: Vec<u8> = rmp_serde::to_vec(&ProviderRequest {
+        rmp_serde::to_vec_named(&LegacyProviderRequest::Status).unwrap();
+    static ref STATUS_REQUEST_V2: Vec<u8> = rmp_serde::to_vec_named(&ProviderRequest {
         query_type: STATUS_QUERY_TYPE.to_string(),
         query_data: Blob {
             data: Vec::new().into(),
@@ -188,7 +186,7 @@ impl ProxyService {
                                 name: data_source.name.clone(),
                                 description: data_source.description.clone(),
                                 provider_type: data_source.provider_type.clone(),
-                                status: DataSourceStatus::Error(DataSourceError::ProxyDisconnected),
+                                status: DataSourceStatus::Error(Error::ProxyDisconnected),
                             })
                             .collect();
                         let message = RelayMessage::SetDataSources(SetDataSourcesMessage{ data_sources});
@@ -238,7 +236,12 @@ impl ProxyService {
                         Some(Ok(Message::Binary(message))) => {
                             match ServerMessage::deserialize_msgpack(message) {
                                 Ok(message) => {
-                                    self.handle_message(message, outgoing_sender).await?;
+                                    let service = self.clone();
+                                    tokio::spawn(async move {
+                                        if let Err(err) = service.handle_message(message, outgoing_sender).await {
+                                            error!("Error handling message: {:?}", err);
+                                        };
+                                    }.in_current_span());
                                 },
                                 Err(err) => {
                                     error!(?err, "Error deserializing MessagePack message");
@@ -379,9 +382,7 @@ impl ProxyService {
 
                 let status = match response {
                     Ok(_) => DataSourceStatus::Connected,
-                    Err(err) => DataSourceStatus::Error(DataSourceError::WasmInvocationError(
-                        err.to_string(),
-                    )),
+                    Err(err) => DataSourceStatus::Error(err),
                 };
 
                 UpsertProxyDataSource {
@@ -399,7 +400,7 @@ impl ProxyService {
     }
 
     #[instrument(err, skip(self))]
-    async fn check_provider_status_v1(&self, data_source_name: Name) -> Result<()> {
+    async fn check_provider_status_v1(&self, data_source_name: Name) -> Result<(), Error> {
         debug!(
             "Using protocol v1 to check provider status: {}",
             &data_source_name
@@ -412,14 +413,18 @@ impl ProxyService {
         };
         let response = self.handle_invoke_proxy_message(message).await;
         let response = match response {
-            RelayMessage::InvokeProxyResponse(response) => Ok::<_, anyhow::Error>(response),
+            RelayMessage::InvokeProxyResponse(response) => response,
             RelayMessage::Error(err) => {
-                return Err(anyhow!("Error invoking provider: {}", err.message));
+                return Err(Error::Invocation {
+                    message: err.message,
+                });
             }
             _ => {
-                return Err(anyhow!("Unexpected response from provider: {:?}", response));
+                return Err(Error::Other {
+                    message: format!("Unexpected response from provider: {:?}", response),
+                });
             }
-        }?;
+        };
         match rmp_serde::from_slice(&response.data) {
             Ok(LegacyProviderResponse::StatusOk) => {
                 debug!("provider status check returned OK");
@@ -441,29 +446,24 @@ impl ProxyService {
                                 response,
                             },
                     },
-            }) => {
-                let response = response.to_vec();
-                let response = if let Ok(response) = String::from_utf8(response.clone()) {
-                    response
-                } else {
-                    format!("{:?}", response)
-                };
-                Err(anyhow!(
-                    "Provider returned HTTP error: status={}, response={}",
+            }) => Err(Error::Http {
+                error: HttpRequestError::ServerError {
                     status_code,
-                    response
-                ))
-            }
-            Ok(LegacyProviderResponse::Error { error }) => {
-                Err(anyhow!("Provider returned an error: {:?}", error))
-            }
-            Err(err) => Err(anyhow!("Error deserializing provider response: {:?}", err)),
-            _ => Err(anyhow!("Unexpected provider response: {:?}", response)),
+                    response,
+                },
+            }),
+            Ok(LegacyProviderResponse::Error { error }) => Err(error),
+            Err(err) => Err(Error::Deserialization {
+                message: format!("Error deserializing provider response: {:?}", err),
+            }),
+            _ => Err(Error::Other {
+                message: format!("Unexpected provider response: {:?}", response),
+            }),
         }
     }
 
-    #[instrument(err, skip(self))]
-    async fn check_provider_status_v2(&self, data_source_name: Name) -> Result<()> {
+    #[instrument(skip(self))]
+    async fn check_provider_status_v2(&self, data_source_name: Name) -> Result<(), Error> {
         debug!(
             "Using protocol v2 to check provider status: {}",
             &data_source_name
@@ -476,13 +476,25 @@ impl ProxyService {
         };
 
         match self.handle_invoke_proxy_message(message).await {
-            RelayMessage::InvokeProxyResponse(_) => Ok(()),
-            RelayMessage::Error(error) => bail!(
-                "Error invoking provider for data source: {} {}",
-                data_source_name,
-                error.message
-            ),
-            message => bail!("Unexpected response type: {:?}", message),
+            RelayMessage::InvokeProxyResponse(response) => {
+                let result: Result<Blob, Error> =
+                    rmp_serde::from_slice(&response.data).map_err(|err| {
+                        Error::Deserialization {
+                            message: format!("Error deserializing provider response: {}", err),
+                        }
+                    })?;
+                result?;
+                Ok(())
+            }
+            RelayMessage::Error(error) => Err(Error::Invocation {
+                message: format!(
+                    "Error invoking provider for data source: {} {}",
+                    data_source_name, error.message
+                ),
+            }),
+            message => Err(Error::Invocation {
+                message: format!("Unexpected provider response: {:?}", message),
+            }),
         }
     }
 }
@@ -506,7 +518,7 @@ async fn invoke_provider_v1(
     request: Vec<u8>,
     config: Map<String, Value>,
 ) -> Result<Vec<u8>, String> {
-    let config = serde_json::to_vec(&config)
+    let config = rmp_serde::to_vec_named(&config)
         .map_err(|err| format!("Error serializing config as JSON: {:?}", err))?;
     runtime
         .invoke_raw(request, config)
@@ -523,12 +535,12 @@ async fn invoke_provider_v2(
     let mut request: ProviderRequest = rmp_serde::from_slice(&request)
         .map_err(|err| format!("Error deserializing provider request: {:?}", err))?;
     request.config = Value::Object(config);
-    let response = runtime
-        .invoke2(request)
+    let request = rmp_serde::to_vec_named(&request)
+        .map_err(|err| format!("Error serializing request: {:?}", err))?;
+    runtime
+        .invoke2_raw(request)
         .await
-        .map_err(|err| format!("Error invoking provider: {:?}", err))?;
-    rmp_serde::to_vec(&response)
-        .map_err(|err| format!("Error serializing provider response: {:?}", err))
+        .map_err(|err| format!("Error invoking provider: {:?}", err))
 }
 
 /// Listen on the given address and return a 200 for GET /

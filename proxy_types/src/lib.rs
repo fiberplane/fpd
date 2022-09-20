@@ -133,7 +133,7 @@ pub struct UpsertProxyDataSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fiberplane::protocols::data_sources::DataSourceError;
+    use fiberplane::protocols::providers::Error;
 
     #[test]
     fn serialization_deserialization() {
@@ -148,9 +148,7 @@ mod tests {
                 name: Name::from_static("elasticsearch-prod"),
                 provider_type: "elasticsearch".to_string(),
                 description: None,
-                status: DataSourceStatus::Error(DataSourceError::TemporaryHttpError(
-                    "Timed out checking status".to_string(),
-                )),
+                status: DataSourceStatus::Error(Error::NotFound),
             },
         ];
         let message = RelayMessage::SetDataSources(SetDataSourcesMessage {

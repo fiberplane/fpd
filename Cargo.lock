@@ -277,6 +277,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "0.1.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#18320348f3d59d083e916b5df9f40985b7828ff4"
 dependencies = [
  "base64",
  "fp-bindgen",
@@ -826,6 +827,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#18320348f3d59d083e916b5df9f40985b7828ff4"
 dependencies = [
  "base64",
  "base64uuid",
@@ -918,7 +920,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#63d04d31735d197ac0e5fc91d055f9855d395a01"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#18320348f3d59d083e916b5df9f40985b7828ff4"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -934,7 +936,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#63d04d31735d197ac0e5fc91d055f9855d395a01"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=data-source-overhaul#18320348f3d59d083e916b5df9f40985b7828ff4"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -3408,11 +3410,3 @@ checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
 dependencies = [
  "linked-hash-map",
 ]
-
-[[patch.unused]]
-name = "fp-api-client"
-version = "1.0.0"
-
-[[patch.unused]]
-name = "fp-templates"
-version = "0.1.0"

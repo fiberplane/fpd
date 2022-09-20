@@ -10,8 +10,9 @@ members = [
 # [patch."ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git"]
 # tokio-tungstenite-reconnect = { path = "../tokio-tungstenite-reconnect" }
 
-[patch.'ssh://git@github.com/fiberplane/fiberplane-rs.git']
-base64uuid = { path = "../fiberplane-rs/base64uuid" }
-fiberplane = { path = "../fiberplane-rs/fiberplane" }
-fp-api-client = { path = "../fiberplane-rs/fp-api-client" }
-fp-templates = { path = "../fiberplane-rs/fp-templates" }
+# [patch.'ssh://git@github.com/fiberplane/fiberplane-rs.git']
+# base64uuid = { path = "../fiberplane-rs/base64uuid" }
+# fiberplane = { path = "../fiberplane-rs/fiberplane" }
+# fp-provider-runtime = { path = "../fiberplane-rs/fp-provider-protocol/fp-provider-runtime" }
+# fp-api-client = { path = "../fiberplane-rs/fp-api-client" }
+# fp-templates = { path = "../fiberplane-rs/fp-templates" }
