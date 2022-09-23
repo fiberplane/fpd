@@ -16,6 +16,20 @@ TODO: Insert section on how to build the proxy server.
 
 TODO: Insert section on how to run the proxy server on Kubernetes.
 
+## Usage with Tilt
+
+When running the Proxy with Tilt, you can use the `PROVIDERS` environment
+variable to control which Providers will be configured by Tilt.
+
+For example: `$ PROVIDERS=prometheus,sentry tilt up`
+
+For some Providers, Tilt may also configure and start additional services to
+fetch data from.
+
+**Warning:** If you do not specify which Providers to run, *all* Providers will
+run. This may be convenient, but especially the Elasticsearch provider will use
+a *lot* of memory on your system.
+
 ## Overview
 
 The following diagram shows the interaction between the Studio, Proxy, and their
