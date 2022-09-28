@@ -146,8 +146,8 @@ async fn sends_data_sources_on_connect() {
             description: None,
             config: Map::from_iter([("url".into(), json!(disconnected_prometheus.url("")))]),
         },
-        // // We don't have the proxy provider wasm module so this tests
-        // // what happens if you specify a provider that we don't have
+        // We don't have the proxy provider wasm module so this tests
+        // what happens if you specify a provider that we don't have
         ProxyDataSource {
             name: Name::from_static("unknown-data-source"),
             provider_type: "other-provider".to_string(),
