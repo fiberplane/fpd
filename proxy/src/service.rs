@@ -8,7 +8,7 @@ use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Server};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use proxy_types::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -33,10 +33,10 @@ pub struct ProxyDataSource {
 pub(crate) type WasmModules = HashMap<String, Result<Runtime, String>>;
 const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 
-lazy_static! {
-    static ref STATUS_REQUEST_V1: Vec<u8> =
-        rmp_serde::to_vec_named(&LegacyProviderRequest::Status).unwrap();
-    static ref STATUS_REQUEST_V2: Vec<u8> = rmp_serde::to_vec_named(&ProviderRequest {
+static STATUS_REQUEST_V1: Lazy<Vec<u8>> =
+    Lazy::new(|| rmp_serde::to_vec_named(&LegacyProviderRequest::Status).unwrap());
+static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
+    rmp_serde::to_vec_named(&ProviderRequest {
         query_type: STATUS_QUERY_TYPE.to_string(),
         query_data: Blob {
             data: Vec::new().into(),
@@ -45,8 +45,8 @@ lazy_static! {
         config: Value::Null,
         previous_response: None,
     })
-    .unwrap();
-}
+    .unwrap()
+});
 
 #[derive(Clone)]
 pub struct ProxyService {
