@@ -80,9 +80,38 @@ async fn main() {
         panic!("wasm_dir must be a directory");
     }
 
-    let data_sources = fs::read_to_string(args.data_sources)
-        .await
-        .expect("error reading data sources YAML file");
+    // Load data sources config file
+    let data_sources = {
+        match fs::read_to_string(&args.data_sources).await {
+            Ok(data_sources) => data_sources,
+            Err(err) => {
+                match err.kind() {
+                    io::ErrorKind::NotFound => {
+                        error!(
+                            "Data sources file not found at {} ({})",
+                            args.data_sources.display(),
+                            err
+                        );
+                    }
+                    io::ErrorKind::PermissionDenied => {
+                        error!(
+                            "Insufficient permissions to read data sources file {} ({})",
+                            args.data_sources.display(),
+                            err
+                        );
+                    }
+                    _ => {
+                        error!(
+                            "Unable to read data sources file at {}: {}",
+                            args.data_sources.display(),
+                            err
+                        );
+                    }
+                };
+                process::exit(1);
+            }
+        }
+    };
     let data_sources: Vec<ProxyDataSource> =
         serde_yaml::from_str(&data_sources).expect("Invalid data sources YAML file");
 
