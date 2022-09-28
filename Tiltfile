@@ -57,8 +57,6 @@ if 'elasticsearch' in providers:
     objects=['fluentd:serviceaccount', 'fluentd:clusterrole', 'fluentd:clusterrolebinding'],
     labels=['customer'])
 
-if len(providers) > 0:
-  resource_deps.extend(providers)
 if run_proxy_on_host:
   fiberplane_endpoint = 'ws://localhost:3000'
 else:
@@ -80,13 +78,13 @@ if run_proxy_on_host:
     serve_env=env,
     serve_cmd='cargo run --bin proxy',
     deps=['proxy', 'providers', 'deployment/local/data_sources.yaml'],
-    resource_deps=resource_deps,
+    resource_deps=providers,
     # Note: this endpoint is called "/health" rather than "healthz"
     readiness_probe=probe(http_get=http_get_action(3002, path='/health')))
 else:
   # Run docker with ssh option to access private git repositories
   docker_build('proxy:latest', '.', dockerfile='./Dockerfile.dev', ssh='default')
-  k8s_resource(workload='proxy', resource_deps=resource_deps, objects=['proxy:configmap'], port_forwards=3002, labels=['customer'])
+  k8s_resource(workload='proxy', resource_deps=providers, objects=['proxy:configmap'], port_forwards=3002, labels=['customer'])
 
   k8s_yaml(local('./scripts/template.sh deployment/deployment.template.yaml', env=env))
 
