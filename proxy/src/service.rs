@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Context, Result};
-use fiberplane::protocols::data_sources::DataSourceStatus;
-use fiberplane::protocols::names::Name;
 use fiberplane::protocols::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
+use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::ProxyToken};
 use fp_provider_bindings::{Blob, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse};
 use fp_provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
@@ -66,8 +65,8 @@ pub(crate) struct Inner {
 impl ProxyService {
     /// Load the provider wasm files from the given directory and create a new Proxy instance
     pub async fn init(
-        fiberplane_endpoint: Url,
-        auth_token: String,
+        api_base: Url,
+        auth_token: ProxyToken,
         wasm_dir: &Path,
         data_sources: Vec<ProxyDataSource>,
         max_retries: u32,
@@ -85,7 +84,7 @@ impl ProxyService {
         let wasm_modules = load_wasm_modules(wasm_dir, provider_types).await;
 
         ProxyService::new(
-            fiberplane_endpoint,
+            api_base,
             auth_token,
             wasm_modules,
             data_sources,
@@ -96,18 +95,30 @@ impl ProxyService {
     }
 
     pub(crate) fn new(
-        fiberplane_endpoint: Url,
-        auth_token: String,
+        api_base: Url,
+        auth_token: ProxyToken,
         wasm_modules: WasmModules,
         data_sources: HashMap<Name, ProxyDataSource>,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
         status_check_interval: Duration,
     ) -> Self {
+        let mut endpoint = api_base
+            .join(&format!(
+                "/api/workspaces/{}/proxies/{}/ws",
+                auth_token.workspace_id, auth_token.proxy_name
+            ))
+            .expect("Invalid Fiberplane endpoint");
+        if endpoint.scheme().starts_with("http") {
+            endpoint
+                .set_scheme(&endpoint.scheme().replace("http", "ws"))
+                .unwrap();
+        }
+
         ProxyService {
             inner: Arc::new(Inner {
-                endpoint: fiberplane_endpoint,
-                auth_token,
+                endpoint,
+                auth_token: auth_token.token,
                 data_sources,
                 wasm_modules,
                 max_retries,

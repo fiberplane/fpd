@@ -1,6 +1,7 @@
 use crate::service::{ProxyDataSource, ProxyService};
 use anyhow::{anyhow, Error};
 use clap::Parser;
+use fiberplane::protocols::proxies::ProxyToken;
 use std::{io, net::SocketAddr, path::PathBuf, process, str::FromStr, time::Duration};
 use tokio::fs;
 use tracing::{error, info, trace};
@@ -18,12 +19,12 @@ pub struct Arguments {
     wasm_dir: PathBuf,
 
     /// Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
-    #[clap(long, short, env, default_value = "wss://fiberplane.com")]
-    fiberplane_endpoint: Url,
+    #[clap(long, short, env, default_value = "wss://fiberplane.com", aliases = &["FIBERPLANE_ENDPOINT", "fiberplane-endpoint"])]
+    api_base: Url,
 
     /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
     #[clap(long, short, env)]
-    auth_token: String,
+    auth_token: ProxyToken,
 
     /// Path to data sources YAML file
     #[clap(long, short, env, default_value = "data_sources.yaml")]
@@ -67,14 +68,9 @@ impl FromStr for IntervalDuration {
 
 #[tokio::main]
 async fn main() {
-    let mut args = Arguments::parse();
+    let args = Arguments::parse();
 
     initialize_logger(args.log_json);
-
-    // Update the endpoint to include the default path if nothing is set
-    if args.fiberplane_endpoint.path() == "/" {
-        args.fiberplane_endpoint.set_path("/api/proxies/ws");
-    }
 
     if !args.wasm_dir.is_dir() {
         panic!("wasm_dir must be a directory");
@@ -116,7 +112,7 @@ async fn main() {
         serde_yaml::from_str(&data_sources).expect("Invalid data sources YAML file");
 
     let proxy = ProxyService::init(
-        args.fiberplane_endpoint,
+        args.api_base,
         args.auth_token,
         args.wasm_dir.as_path(),
         data_sources,

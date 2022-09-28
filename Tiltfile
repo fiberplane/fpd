@@ -59,13 +59,13 @@ if 'elasticsearch' in providers:
     labels=['customer'])
 
 if run_proxy_on_host:
-  fiberplane_endpoint = 'ws://localhost:3000'
+  api_base = 'ws://localhost:3000'
 else:
-  fiberplane_endpoint = 'ws://api'
+  api_base = 'ws://api'
 env={
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
-  'FIBERPLANE_ENDPOINT': fiberplane_endpoint,
+  'API_BASE': api_base,
   'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 
