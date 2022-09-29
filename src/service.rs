@@ -1,3 +1,4 @@
+use crate::metrics::{metrics_export, CONCURRENT_QUERIES, QUERIES_DURATION_SECONDS, QUERIES_TOTAL};
 use anyhow::{anyhow, Context, Result};
 use base64uuid::Base64Uuid;
 use fiberplane::protocols::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
@@ -362,6 +363,19 @@ impl ProxyService {
             }
         };
 
+        // Track metrics
+        let protocol_version = message.protocol_version.to_string();
+        let labels = [
+            protocol_version.as_str(),
+            &data_source.provider_type,
+            &data_source.name,
+        ];
+        QUERIES_TOTAL.with_label_values(&labels).inc();
+        CONCURRENT_QUERIES.with_label_values(&labels).inc();
+        let timer = QUERIES_DURATION_SECONDS
+            .with_label_values(&labels)
+            .start_timer();
+
         let result = match message.protocol_version {
             1 => invoke_provider_v1(runtime, message.data, data_source.config.clone()).await,
             2 => invoke_provider_v2(runtime, message.data, data_source.config.clone()).await,
@@ -369,6 +383,10 @@ impl ProxyService {
                 message: format!("unsupported protocol version: {}", message.protocol_version),
             }),
         };
+
+        CONCURRENT_QUERIES.with_label_values(&labels).dec();
+        timer.observe_duration();
+
         match result {
             Ok(response) => ProxyMessage::InvokeProxyResponse(InvokeProxyResponseMessage {
                 op_id,
@@ -583,6 +601,13 @@ async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocke
                                 )
                             }
                         }
+                        (&Method::GET, "/metrics") => match metrics_export() {
+                            Ok(metrics) => (StatusCode::OK, Body::from(metrics)),
+                            Err(err) => (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Body::from(format!("Error exporting metrics: {}", err)),
+                            ),
+                        },
                         (_, _) => (StatusCode::NOT_FOUND, Body::empty()),
                     };
                     trace!(http_status_code = %status.as_u16(), http_method = %request.method(), path = request.uri().path());

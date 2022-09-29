@@ -7,6 +7,7 @@ use tokio::fs;
 use tracing::{error, info, trace};
 use url::Url;
 
+mod metrics;
 mod service;
 #[cfg(test)]
 mod tests;
