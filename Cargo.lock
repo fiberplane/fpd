@@ -277,7 +277,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=single_player#6dd20069012787f33ba1fd9d7422f84fbcc2c080"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=include-proxy-types#9497a841731a20887245edfde396a8400c959d33"
 dependencies = [
  "base64",
  "fp-bindgen",
@@ -827,7 +827,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=single_player#6dd20069012787f33ba1fd9d7422f84fbcc2c080"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=include-proxy-types#9497a841731a20887245edfde396a8400c959d33"
 dependencies = [
  "base64",
  "base64uuid",
@@ -841,6 +841,7 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "serde",
+ "serde_bytes",
  "serde_json",
  "strum",
  "strum_macros",
@@ -920,7 +921,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=single_player#6dd20069012787f33ba1fd9d7422f84fbcc2c080"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=include-proxy-types#9497a841731a20887245edfde396a8400c959d33"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -936,7 +937,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=single_player#6dd20069012787f33ba1fd9d7422f84fbcc2c080"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=include-proxy-types#9497a841731a20887245edfde396a8400c959d33"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -1896,7 +1897,6 @@ dependencies = [
  "httpmock",
  "hyper",
  "once_cell",
- "proxy_types",
  "reqwest",
  "rmp-serde",
  "routerify",
@@ -1912,19 +1912,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
-]
-
-[[package]]
-name = "proxy_types"
-version = "0.1.0"
-dependencies = [
- "fiberplane",
- "rmp-serde",
- "serde",
- "serde_bytes",
- "serde_json",
- "thiserror",
- "uuid",
 ]
 
 [[package]]
@@ -2968,7 +2955,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
 dependencies = [
  "getrandom",
- "serde",
 ]
 
 [[package]]
