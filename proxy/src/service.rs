@@ -289,7 +289,7 @@ impl ProxyService {
         // retrying so just return the error object.
         let request = http::Request::builder()
             .uri(self.inner.endpoint.as_str())
-            .header("fp-auth-token", self.inner.auth_token.clone())
+            .header("fp-auth-token", self.inner.token.clone())
             .body(())?;
 
         let (conn_id_sender, conn_id_receiver) = watch::channel(None);
@@ -298,7 +298,7 @@ impl ProxyService {
             .connect_response_handler(move |response| {
                 let conn_id = response
                     .headers()
-                    .get("x-fp-conn-id")
+                    .get("fp-conn-id")
                     .and_then(|id| id.to_str().map(|hv| hv.to_owned()).ok());
                 if *conn_id_sender.subscribe().borrow() != conn_id {
                     conn_id_sender.send_replace(conn_id);

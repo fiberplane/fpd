@@ -17,7 +17,7 @@ use test_log::test;
 use tokio::{join, net::TcpListener, sync::broadcast};
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
-static AUTH_TOKEN: Lazy<ProxyToken> = Lazy::new(|| ProxyToken {
+static TOKEN: Lazy<ProxyToken> = Lazy::new(|| ProxyToken {
     workspace_id: Base64Uuid::new(),
     proxy_name: Name::from_static("test-proxy"),
     token: "MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk".to_string(),
@@ -81,13 +81,13 @@ fn parses_data_sources_from_yaml() {
 }
 
 #[test(tokio::test)]
-async fn sends_auth_token_in_header() {
+async fn sends_TOKEN_in_header() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
     let service = ProxyService::new(
         format!("http://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         Default::default(),
         Default::default(),
         5,
@@ -98,19 +98,16 @@ async fn sends_auth_token_in_header() {
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
         accept_hdr_async(stream, |req: &Request<()>, mut res: Response<()>| {
-            assert_eq!(
-                req.headers().get("fp-auth-token").unwrap(),
-                &AUTH_TOKEN.token
-            );
+            assert_eq!(req.headers().get("fp-auth-token").unwrap(), &TOKEN.token);
             assert_eq!(
                 req.uri().path(),
                 format!(
                     "/api/workspaces/{}/proxies/{}/ws",
-                    AUTH_TOKEN.workspace_id, AUTH_TOKEN.proxy_name
+                    TOKEN.workspace_id, TOKEN.proxy_name
                 )
             );
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -174,7 +171,7 @@ async fn sends_data_sources_on_connect() {
     ];
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         Path::new("../providers"),
         data_sources,
         5,
@@ -187,7 +184,7 @@ async fn sends_data_sources_on_connect() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -277,7 +274,7 @@ async fn checks_data_source_status_on_interval() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         Path::new("../providers"),
         data_sources,
         5,
@@ -290,7 +287,7 @@ async fn checks_data_source_status_on_interval() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -350,7 +347,7 @@ async fn sends_pings() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
         5,
@@ -364,7 +361,7 @@ async fn sends_pings() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -403,7 +400,7 @@ async fn health_check_endpoints() {
 
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         HashMap::new(),
         HashMap::new(),
         5,
@@ -415,7 +412,7 @@ async fn health_check_endpoints() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -456,7 +453,7 @@ async fn returns_error_for_query_to_unknown_provider() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
         5,
@@ -468,7 +465,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -536,7 +533,7 @@ async fn calls_provider_with_query_and_sends_result() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         Path::new("../providers"),
         data_sources,
         5,
@@ -550,7 +547,7 @@ async fn calls_provider_with_query_and_sends_result() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -628,7 +625,7 @@ async fn handles_multiple_concurrent_messages() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         Path::new("../providers"),
         data_sources,
         5,
@@ -642,7 +639,7 @@ async fn handles_multiple_concurrent_messages() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -737,7 +734,7 @@ async fn calls_provider_with_query_and_sends_error() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         Path::new("../providers"),
         data_sources,
         5,
@@ -751,7 +748,7 @@ async fn calls_provider_with_query_and_sends_error() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
         })
         .await
@@ -808,7 +805,7 @@ async fn reconnects_if_websocket_closes() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
         1,
@@ -862,7 +859,7 @@ async fn service_shutdown() {
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
-        AUTH_TOKEN.clone(),
+        TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
         1,
@@ -876,7 +873,7 @@ async fn service_shutdown() {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
-                .insert("x-fp-conn-id", HeaderValue::from_static("conn-id"));
+                .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
 
             Ok(res)
         })
