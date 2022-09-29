@@ -54,7 +54,7 @@ pub struct ProxyService {
 
 pub(crate) struct Inner {
     endpoint: Url,
-    auth_token: String,
+    token: String,
     pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
     wasm_modules: WasmModules,
     max_retries: u32,
@@ -66,7 +66,7 @@ impl ProxyService {
     /// Load the provider wasm files from the given directory and create a new Proxy instance
     pub async fn init(
         api_base: Url,
-        auth_token: ProxyToken,
+        token: ProxyToken,
         wasm_dir: &Path,
         data_sources: Vec<ProxyDataSource>,
         max_retries: u32,
@@ -85,7 +85,7 @@ impl ProxyService {
 
         ProxyService::new(
             api_base,
-            auth_token,
+            token,
             wasm_modules,
             data_sources,
             max_retries,
@@ -96,7 +96,7 @@ impl ProxyService {
 
     pub(crate) fn new(
         api_base: Url,
-        auth_token: ProxyToken,
+        token: ProxyToken,
         wasm_modules: WasmModules,
         data_sources: HashMap<Name, ProxyDataSource>,
         max_retries: u32,
@@ -106,7 +106,7 @@ impl ProxyService {
         let mut endpoint = api_base
             .join(&format!(
                 "/api/workspaces/{}/proxies/{}/ws",
-                auth_token.workspace_id, auth_token.proxy_name
+                token.workspace_id, token.proxy_name
             ))
             .expect("Invalid Fiberplane endpoint");
         if endpoint.scheme().starts_with("http") {
@@ -118,7 +118,7 @@ impl ProxyService {
         ProxyService {
             inner: Arc::new(Inner {
                 endpoint,
-                auth_token: auth_token.token,
+                token: token.token,
                 data_sources,
                 wasm_modules,
                 max_retries,

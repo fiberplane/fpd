@@ -66,7 +66,7 @@ env={
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
   'API_BASE': api_base,
-  'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
+  'TOKEN':'8Z3flBLMQ7O7-b2uS85QLw:proxy:MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 
 if run_proxy_on_host:

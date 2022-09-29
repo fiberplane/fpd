@@ -24,7 +24,7 @@ pub struct Arguments {
 
     /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
     #[clap(long, short, env)]
-    auth_token: ProxyToken,
+    token: ProxyToken,
 
     /// Path to data sources YAML file
     #[clap(long, short, env, default_value = "data_sources.yaml")]
@@ -113,7 +113,7 @@ async fn main() {
 
     let proxy = ProxyService::init(
         args.api_base,
-        args.auth_token,
+        args.token,
         args.wasm_dir.as_path(),
         data_sources,
         args.max_retries,

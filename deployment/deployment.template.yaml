@@ -21,8 +21,8 @@ spec:
           env:
             - name: RUST_LOG
               value: ${RUST_LOG-proxy=trace}
-            - name: AUTH_TOKEN
-              value: ${AUTH_TOKEN}
+            - name: TOKEN
+              value: ${TOKEN}
             - name: LISTEN_ADDRESS
               value: 0.0.0.0:3002
             - name: API_BASE
