@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
+use base64uuid::Base64Uuid;
 use fiberplane::protocols::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
-use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::ProxyToken};
+use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::*};
 use fp_provider_bindings::{Blob, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse};
 use fp_provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
@@ -8,7 +9,6 @@ use http::{Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Server};
 use once_cell::sync::Lazy;
-use proxy_types::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ pub struct ProxyDataSource {
     pub description: Option<String>,
 }
 
-pub(crate) type WasmModules = HashMap<String, Result<Runtime, String>>;
+pub(crate) type WasmModules = HashMap<String, Result<Runtime, Error>>;
 const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 
 static STATUS_REQUEST_V1: Lazy<Vec<u8>> =
@@ -156,7 +156,7 @@ impl ProxyService {
             .in_current_span(),
         );
 
-        let (outgoing_sender, mut outgoing_receiver) = unbounded_channel::<RelayMessage>();
+        let (outgoing_sender, mut outgoing_receiver) = unbounded_channel::<ProxyMessage>();
 
         // Health check endpoints
         let ws_clone = ws.clone();
@@ -184,7 +184,7 @@ impl ProxyService {
                     _ = status_check_interval.tick().fuse() => {
                         let data_sources = service.get_data_sources().await;
                         debug!("sending data sources to relay: {:?}", data_sources);
-                        let message = RelayMessage::SetDataSources(data_sources);
+                        let message = ProxyMessage::SetDataSources(data_sources);
                         data_sources_sender.send(message).ok();
                     }
                     _ = shutdown_clone.recv().fuse() => {
@@ -200,7 +200,7 @@ impl ProxyService {
                                 status: DataSourceStatus::Error(Error::ProxyDisconnected),
                             })
                             .collect();
-                        let message = RelayMessage::SetDataSources(SetDataSourcesMessage{ data_sources});
+                        let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources});
                         data_sources_sender.send(message).ok();
 
                         break;
@@ -318,7 +318,7 @@ impl ProxyService {
     async fn handle_message(
         &self,
         message: ServerMessage,
-        reply: UnboundedSender<RelayMessage>,
+        reply: UnboundedSender<ProxyMessage>,
     ) -> Result<()> {
         let response = match message {
             ServerMessage::InvokeProxy(message) => self.handle_invoke_proxy_message(message).await,
@@ -336,7 +336,7 @@ impl ProxyService {
         data_source_name = ?message.data_source_name,
         message.data = %msgpack_to_json(&message.data).unwrap_or_default()
     ))]
-    async fn handle_invoke_proxy_message(&self, message: InvokeProxyMessage) -> RelayMessage {
+    async fn handle_invoke_proxy_message(&self, message: InvokeProxyMessage) -> ProxyMessage {
         debug!("handling relay message");
         let op_id = message.op_id;
 
@@ -345,22 +345,19 @@ impl ProxyService {
             Some(data_source) => data_source.clone(),
             None => {
                 error!("received relay message for unknown data source");
-                return RelayMessage::Error(ErrorMessage {
+                return ProxyMessage::Error(ErrorMessage {
                     op_id,
-                    message: format!(
-                        "received relay message for unknown data source: {}",
-                        message.data_source_name
-                    ),
+                    error: Error::NotFound,
                 });
             }
         };
 
         let runtime: Runtime = match &self.inner.wasm_modules[&data_source.provider_type] {
             Ok(runtime) => runtime.clone(),
-            Err(message) => {
-                return RelayMessage::Error(ErrorMessage {
+            Err(error) => {
+                return ProxyMessage::Error(ErrorMessage {
                     op_id,
-                    message: message.to_string(),
+                    error: error.clone(),
                 });
             }
         };
@@ -368,17 +365,16 @@ impl ProxyService {
         let result = match message.protocol_version {
             1 => invoke_provider_v1(runtime, message.data, data_source.config.clone()).await,
             2 => invoke_provider_v2(runtime, message.data, data_source.config.clone()).await,
-            _ => Err(format!(
-                "unsupported protocol version: {}",
-                message.protocol_version
-            )),
+            _ => Err(Error::Invocation {
+                message: format!("unsupported protocol version: {}", message.protocol_version),
+            }),
         };
         match result {
-            Ok(response) => RelayMessage::InvokeProxyResponse(InvokeProxyResponseMessage {
+            Ok(response) => ProxyMessage::InvokeProxyResponse(InvokeProxyResponseMessage {
                 op_id,
                 data: response,
             }),
-            Err(message) => RelayMessage::Error(ErrorMessage { op_id, message }),
+            Err(error) => ProxyMessage::Error(ErrorMessage { op_id, error }),
         }
     }
 
@@ -417,18 +413,16 @@ impl ProxyService {
             &data_source_name
         );
         let message = InvokeProxyMessage {
-            op_id: Uuid::new_v4(),
+            op_id: Base64Uuid::new(),
             data_source_name,
             data: STATUS_REQUEST_V1.clone(),
             protocol_version: 1,
         };
         let response = self.handle_invoke_proxy_message(message).await;
         let response = match response {
-            RelayMessage::InvokeProxyResponse(response) => response,
-            RelayMessage::Error(err) => {
-                return Err(Error::Invocation {
-                    message: err.message,
-                });
+            ProxyMessage::InvokeProxyResponse(response) => response,
+            ProxyMessage::Error(err) => {
+                return Err(err.error);
             }
             _ => {
                 return Err(Error::Other {
@@ -480,14 +474,14 @@ impl ProxyService {
             &data_source_name
         );
         let message = InvokeProxyMessage {
-            op_id: Uuid::new_v4(),
+            op_id: Base64Uuid::new(),
             data_source_name: data_source_name.clone(),
             data: STATUS_REQUEST_V2.clone(),
             protocol_version: 2,
         };
 
         match self.handle_invoke_proxy_message(message).await {
-            RelayMessage::InvokeProxyResponse(response) => {
+            ProxyMessage::InvokeProxyResponse(response) => {
                 let result: Result<Blob, Error> =
                     rmp_serde::from_slice(&response.data).map_err(|err| {
                         Error::Deserialization {
@@ -497,12 +491,7 @@ impl ProxyService {
                 result?;
                 Ok(())
             }
-            RelayMessage::Error(error) => Err(Error::Invocation {
-                message: format!(
-                    "Error invoking provider for data source: {} {}",
-                    data_source_name, error.message
-                ),
-            }),
+            ProxyMessage::Error(err) => Err(err.error),
             message => Err(Error::Invocation {
                 message: format!("Unexpected provider response: {:?}", message),
             }),
@@ -514,10 +503,18 @@ async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> Wasm
     let runtimes = join_all(provider_types.iter().map(|data_source_type| async move {
         // Each provider's wasm module is found in the wasm_dir as data_source_type.wasm
         let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
-        let wasm_module = fs::read(wasm_path)
-            .await
-            .map_err(|err| format!("Error reading wasm file: {}", err))?;
-        Runtime::new(wasm_module).map_err(|err| format!("Error compiling wasm module: {}", err))
+        let wasm_module = fs::read(wasm_path).await.map_err(|err| {
+            error!("Error reading wasm file: {} {}", wasm_path.display(), err);
+            Error::Invocation {
+                message: format!("Error reading wasm file: {}", err),
+            }
+        })?;
+        Runtime::new(wasm_module).map_err(|err| {
+            error!("Error compiling wasm module: {}", err);
+            Error::Invocation {
+                message: format!("Error compiling wasm module: {}", err),
+            }
+        })
     }))
     .await;
 
@@ -528,30 +525,38 @@ async fn invoke_provider_v1(
     runtime: Runtime,
     request: Vec<u8>,
     config: Map<String, Value>,
-) -> Result<Vec<u8>, String> {
-    let config = rmp_serde::to_vec_named(&config)
-        .map_err(|err| format!("Error serializing config as JSON: {:?}", err))?;
+) -> Result<Vec<u8>, Error> {
+    let config = rmp_serde::to_vec_named(&config).map_err(|err| Error::Config {
+        message: format!("Error serializing config as JSON: {:?}", err),
+    })?;
     runtime
         .invoke_raw(request, config)
         .await
-        .map_err(|err| format!("Error invoking provider: {:?}", err))
+        .map_err(|err| Error::Invocation {
+            message: format!("Error invoking provider: {:?}", err),
+        })
 }
 
 async fn invoke_provider_v2(
     runtime: Runtime,
     request: Vec<u8>,
     config: Map<String, Value>,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, Error> {
     // In v2, the request is a single object so we need to deserialize it to inject the config
-    let mut request: ProviderRequest = rmp_serde::from_slice(&request)
-        .map_err(|err| format!("Error deserializing provider request: {:?}", err))?;
+    let mut request: ProviderRequest =
+        rmp_serde::from_slice(&request).map_err(|err| Error::Deserialization {
+            message: format!("Error deserializing provider request: {:?}", err),
+        })?;
     request.config = Value::Object(config);
-    let request = rmp_serde::to_vec_named(&request)
-        .map_err(|err| format!("Error serializing request: {:?}", err))?;
+    let request = rmp_serde::to_vec_named(&request).map_err(|err| Error::Deserialization {
+        message: format!("Error serializing request: {:?}", err),
+    })?;
     runtime
         .invoke2_raw(request)
         .await
-        .map_err(|err| format!("Error invoking provider: {:?}", err))
+        .map_err(|err| Error::Invocation {
+            message: format!("Error invoking provider: {:?}", err),
+        })
 }
 
 /// Listen on the given address and return a 200 for GET /

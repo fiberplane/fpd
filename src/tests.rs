@@ -1,7 +1,7 @@
 use crate::service::{ProxyDataSource, ProxyService, WasmModules};
 use base64uuid::Base64Uuid;
 use fiberplane::protocols::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
-use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::ProxyToken};
+use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::*};
 use fp_provider_bindings::Blob;
 use fp_provider_runtime::spec::types::ProviderRequest;
 use futures::{select, FutureExt, SinkExt, StreamExt};
@@ -9,7 +9,6 @@ use http::{Request, Response, StatusCode};
 use httpmock::prelude::*;
 use hyper::header::HeaderValue;
 use once_cell::sync::Lazy;
-use proxy_types::{InvokeProxyMessage, RelayMessage, ServerMessage, SetDataSourcesMessage, Uuid};
 use serde_json::{json, Map, Value};
 use std::iter::FromIterator;
 use std::{collections::HashMap, path::Path, time::Duration};
@@ -81,7 +80,7 @@ fn parses_data_sources_from_yaml() {
 }
 
 #[test(tokio::test)]
-async fn sends_TOKEN_in_header() {
+async fn sends_auth_token_header() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
@@ -172,7 +171,7 @@ async fn sends_data_sources_on_connect() {
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        Path::new("../providers"),
+        Path::new("./providers"),
         data_sources,
         5,
         None,
@@ -192,11 +191,11 @@ async fn sends_data_sources_on_connect() {
 
         let message = ws.next().await.unwrap().unwrap();
         let message = match message {
-            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
         let data_sources =
-            if let RelayMessage::SetDataSources(SetDataSourcesMessage { data_sources }) = message {
+            if let ProxyMessage::SetDataSources(SetDataSourcesMessage { data_sources }) = message {
                 data_sources
             } else {
                 panic!("wrong type");
@@ -275,7 +274,7 @@ async fn checks_data_source_status_on_interval() {
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        Path::new("../providers"),
+        Path::new("./providers"),
         data_sources,
         5,
         None,
@@ -295,10 +294,10 @@ async fn checks_data_source_status_on_interval() {
         for _i in 0..2 {
             let message = ws.next().await.unwrap().unwrap();
             let message = match message {
-                Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+                Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
                 _ => panic!("wrong type"),
             };
-            if let RelayMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
+            if let ProxyMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
                 message
             {
                 assert_eq!(
@@ -314,10 +313,10 @@ async fn checks_data_source_status_on_interval() {
 
         let message = ws.next().await.unwrap().unwrap();
         let message = match message {
-            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        if let RelayMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) = message {
+        if let ProxyMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) = message {
             assert_eq!(
                 data_sources.pop().unwrap().status,
                 DataSourceStatus::Error(Error::Http {
@@ -410,7 +409,7 @@ async fn health_check_endpoints() {
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
-        let mut ws = accept_hdr_async(stream, |req: &Request<()>, mut res: Response<()>| {
+        let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
                 .insert("fp-conn-id", HeaderValue::from_static("conn-id"));
             Ok(res)
@@ -473,7 +472,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         // first message is data sources
         ws.next().await.unwrap().unwrap();
 
-        let op_id = Uuid::new_v4();
+        let op_id = Base64Uuid::new();
         let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id,
             data_source_name: Name::from_static("data-source-1"),
@@ -486,15 +485,15 @@ async fn returns_error_for_query_to_unknown_provider() {
         // Parse the query result
         let response = ws.next().await.unwrap().unwrap();
         let response = match response {
-            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong message type"),
         };
         let error = match response {
-            RelayMessage::Error(error) => error,
+            ProxyMessage::Error(error) => error,
             other => panic!("wrong message type {:?}", other),
         };
         assert_eq!(error.op_id, op_id);
-        assert!(error.message.contains("unknown data source"));
+        assert!(matches!(error.error, Error::NotFound));
     };
 
     let (tx, _) = broadcast::channel(3);
@@ -534,7 +533,7 @@ async fn calls_provider_with_query_and_sends_result() {
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        Path::new("../providers"),
+        Path::new("./providers"),
         data_sources,
         5,
         None,
@@ -555,7 +554,7 @@ async fn calls_provider_with_query_and_sends_result() {
         ws.next().await.unwrap().unwrap();
 
         // Send query
-        let op_id = Uuid::new_v4();
+        let op_id = Base64Uuid::new();
         let request = ProviderRequest {
             query_type: "x-instants".to_string(),
             query_data: Blob {
@@ -577,11 +576,11 @@ async fn calls_provider_with_query_and_sends_result() {
         // Parse the query result
         let response = ws.next().await.unwrap().unwrap();
         let response = match response {
-            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong message type"),
         };
         let result = match response {
-            RelayMessage::InvokeProxyResponse(message) => message,
+            ProxyMessage::InvokeProxyResponse(message) => message,
             other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
@@ -626,7 +625,7 @@ async fn handles_multiple_concurrent_messages() {
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        Path::new("../providers"),
+        Path::new("./providers"),
         data_sources,
         5,
         None,
@@ -648,7 +647,7 @@ async fn handles_multiple_concurrent_messages() {
         ws.next().await.unwrap().unwrap();
 
         // Send two queries
-        let op_1 = Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
+        let op_1 = Base64Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
         let message_1 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_1,
             data_source_name: Name::from_static("prometheus-dev"),
@@ -667,7 +666,7 @@ async fn handles_multiple_concurrent_messages() {
         .serialize_msgpack();
         ws.send(Message::Binary(message_1)).await.unwrap();
 
-        let op_2 = Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
+        let op_2 = Base64Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
         let message_2 = ServerMessage::InvokeProxy(InvokeProxyMessage {
             op_id: op_2,
             data_source_name: Name::from_static("prometheus-dev"),
@@ -688,16 +687,16 @@ async fn handles_multiple_concurrent_messages() {
 
         // Parse the query result
         if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
-            if let RelayMessage::InvokeProxyResponse(message) =
-                RelayMessage::deserialize_msgpack(message).unwrap()
+            if let ProxyMessage::InvokeProxyResponse(message) =
+                ProxyMessage::deserialize_msgpack(message).unwrap()
             {
                 // Check that the second query comes back first
                 assert_eq!(message.op_id, op_2);
 
                 // Now we will wait for the first query
                 if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
-                    if let RelayMessage::InvokeProxyResponse(message) =
-                        RelayMessage::deserialize_msgpack(message).unwrap()
+                    if let ProxyMessage::InvokeProxyResponse(message) =
+                        ProxyMessage::deserialize_msgpack(message).unwrap()
                     {
                         assert_eq!(message.op_id, op_1);
                         return;
@@ -735,7 +734,7 @@ async fn calls_provider_with_query_and_sends_error() {
     let service = ProxyService::init(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        Path::new("../providers"),
+        Path::new("./providers"),
         data_sources,
         5,
         None,
@@ -756,7 +755,7 @@ async fn calls_provider_with_query_and_sends_error() {
         ws.next().await.unwrap().unwrap();
 
         // Send query
-        let op_id = Uuid::new_v4();
+        let op_id = Base64Uuid::new();
         let request = ProviderRequest {
             query_type: "x-instants".to_string(),
             query_data: Blob {
@@ -778,11 +777,11 @@ async fn calls_provider_with_query_and_sends_error() {
         // Parse the query result
         let response = ws.next().await.unwrap().unwrap();
         let response = match response {
-            Message::Binary(message) => RelayMessage::deserialize_msgpack(message).unwrap(),
+            Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong message type"),
         };
         let result = match response {
-            RelayMessage::InvokeProxyResponse(message) => message,
+            ProxyMessage::InvokeProxyResponse(message) => message,
             other => panic!("wrong message type: {:?}", other),
         };
         assert_eq!(result.op_id, op_id);
