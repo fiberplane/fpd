@@ -5,19 +5,18 @@ WORKDIR /app
 
 # Build a dummy project to download and build all dependencies first
 COPY Cargo.toml Cargo.lock ./
-COPY proxy/Cargo.toml proxy/Cargo.toml
-COPY proxy_types proxy_types
-RUN mkdir proxy/src
-RUN echo "fn main() {}" > proxy/src/main.rs
+COPY src/Cargo.toml src/Cargo.toml
+RUN mkdir src
+RUN echo "fn main() {}" > src/main.rs
 # The --mount=type=ssh option uses the host's ssh credentials
 RUN --mount=type=ssh cargo build
 
 # Now build the repo itself
 COPY providers providers
 COPY data_sources.yaml data_sources.yaml
-COPY proxy/src proxy/src
+COPY src src
 # Touch the main file so docker doesn't use the cached (dummy) version
-RUN touch proxy/src/main.rs
+RUN touch src/main.rs
 RUN --mount=type=ssh cargo build
 
 ENTRYPOINT ["/app/target/debug/proxy"]

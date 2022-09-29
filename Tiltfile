@@ -36,11 +36,11 @@ for provider in providers:
   k8s_resource(provider, port_forwards=port, labels=['customer'])
   # Append the configuration to the data sources file used to configure the proxy
   data_sources_yaml += '''
-  - name: {provider}
-    providerType: {provider}
-    description: {provider} on the local proxy
-    config:
-      url: {url}
+- name: {provider}
+  providerType: {provider}
+  description: {provider} on the local proxy
+  config:
+    url: {url}
 '''.format(provider=provider, url=url)
 
 # If elasticsearch is running, add fluentd to forward logs to it
@@ -77,7 +77,7 @@ if run_proxy_on_host:
 
   local_resource('proxy',
     serve_env=env,
-    serve_cmd='cargo run --bin proxy',
+    serve_cmd='cargo run',
     deps=['proxy', 'providers', 'deployment/local/data_sources.yaml'],
     resource_deps=providers,
     # Note: this endpoint is called "/health" rather than "healthz"
