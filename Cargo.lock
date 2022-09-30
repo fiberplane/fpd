@@ -275,6 +275,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "base64uuid"
+version = "0.1.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
+dependencies = [
+ "base64",
+ "fp-bindgen",
+ "serde",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "basic-cookies"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -815,9 +827,10 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
 dependencies = [
  "base64",
+ "base64uuid",
  "bytes",
  "clap",
  "form_urlencoded",
@@ -825,7 +838,11 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "regex",
+ "rmp-serde",
+ "rmpv",
  "serde",
+ "serde_bytes",
+ "serde_json",
  "strum",
  "strum_macros",
  "thiserror",
@@ -856,9 +873,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6714e557eae1700a7a8924257826996ab07e028ff943bc8d27bad5048042199"
+checksum = "709b1bf380cc5cebc777782dc65abffbdc6e35f50eb20632850d0934caee956e"
 dependencies = [
  "Inflector",
  "bytes",
@@ -876,9 +893,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-macros"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e28012ebf5e635af62591a27a5e83847bc589eeea03252fabf56e3cf873d1d4"
+checksum = "f62d7398c2af5acd2e299e459043ab0b58214e7df7c4b5d2ca3261cc4a747477"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -888,9 +905,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-support"
-version = "2.2.0"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488e1cef84b2e773c09c14cf03e268b1ae657fd037bb4bb1b2c2d7a9895ccfb0"
+checksum = "93dfda7c987faf83edf24e57337d688492b1f8f00afebe1da6ae530dcaf0cddf"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
@@ -904,7 +921,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -913,12 +930,14 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "serde",
+ "serde_json",
+ "time",
 ]
 
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#66a450d360d739936606e4676e2e0c2d80563054"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -928,6 +947,7 @@ dependencies = [
  "rmp-serde",
  "rmpv",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",
@@ -1644,9 +1664,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.13.0"
+version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18a6dbe30758c9f83eb00cbea4ac95966305f5a7772f3f42ebfc7fc7eddbd8e1"
+checksum = "e82dad04139b71a90c080c8463fe0dc7902db5192d939bd0950f074d014339e1"
 
 [[package]]
 name = "opaque-debug"
@@ -1866,6 +1886,7 @@ name = "proxy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64uuid",
  "clap",
  "ctrlc",
  "fiberplane",
@@ -1875,10 +1896,8 @@ dependencies = [
  "http",
  "httpmock",
  "hyper",
- "lazy_static",
- "proxy_types",
+ "once_cell",
  "reqwest",
- "ring",
  "rmp-serde",
  "routerify",
  "serde",
@@ -1886,25 +1905,13 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "test-log",
+ "time",
  "tokio",
  "tokio-tungstenite",
  "tokio-tungstenite-reconnect",
  "tracing",
  "tracing-subscriber",
  "url",
-]
-
-[[package]]
-name = "proxy_types"
-version = "0.1.0"
-dependencies = [
- "fiberplane",
- "rmp-serde",
- "serde",
- "serde_bytes",
- "serde_json",
- "thiserror",
- "uuid",
 ]
 
 [[package]]
@@ -2641,15 +2648,22 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.11"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
+checksum = "3c3f9a28b618c3a6b9251b6908e9c99e04b9e5c02e6581ccbb67d59c34ef7f9b"
 dependencies = [
  "itoa 1.0.1",
  "libc",
  "num_threads",
  "serde",
+ "time-macros",
 ]
+
+[[package]]
+name = "time-macros"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42657b1a6f4d817cda8e7a0ace261fe0cc946cf3a80314390b22cc61ae080792"
 
 [[package]]
 name = "tiny-keccak"
@@ -2936,12 +2950,11 @@ checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "uuid"
-version = "0.8.2"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
 dependencies = [
  "getrandom",
- "serde",
 ]
 
 [[package]]

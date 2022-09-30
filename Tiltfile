@@ -4,10 +4,7 @@
 #     eval $(ssh-agent) && ssh-add
 #   (you should run this in the same terminal session as you run `tilt up` in)
 
-include('../relay/Tiltfile')
-
 run_proxy_on_host = 'proxy' in os.getenv('RUN_ON_HOST', '').split(',') or os.getenv('RUN_ON_HOST') == 'all'
-run_relay_on_host = 'relay' in os.getenv('RUN_ON_HOST', '').split(',') or os.getenv('RUN_ON_HOST') == 'all'
 
 # Mapping from the provider name to the port it listens on
 all_providers = {
@@ -39,11 +36,12 @@ for provider in providers:
   k8s_resource(provider, port_forwards=port, labels=['customer'])
   # Append the configuration to the data sources file used to configure the proxy
   data_sources_yaml += '''
-{}:
-  type: {}
-  options:
-    url: {}
-'''.format(provider.capitalize(), provider, url)
+- name: {provider}
+  providerType: {provider}
+  description: {provider} on the local proxy
+  config:
+    url: {url}
+'''.format(provider=provider, url=url)
 
 # If elasticsearch is running, add fluentd to forward logs to it
 if 'elasticsearch' in providers:
@@ -60,20 +58,15 @@ if 'elasticsearch' in providers:
     objects=['fluentd:serviceaccount', 'fluentd:clusterrole', 'fluentd:clusterrolebinding'],
     labels=['customer'])
 
-resource_deps = ['relay']
-if len(providers) > 0:
-  resource_deps.extend(providers)
 if run_proxy_on_host:
-  fiberplane_endpoint = 'ws://localhost:3001'
-elif run_relay_on_host:
-  fiberplane_endpoint = 'ws://host.docker.internal:3001'
+  api_base = 'ws://localhost:3000'
 else:
-  fiberplane_endpoint = 'ws://relay'
+  api_base = 'ws://api'
 env={
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
-  'FIBERPLANE_ENDPOINT': fiberplane_endpoint,
-  'AUTH_TOKEN':'MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
+  'API_BASE': api_base,
+  'TOKEN':'8Z3flBLMQ7O7-b2uS85QLw:proxy:MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 
 if run_proxy_on_host:
@@ -84,15 +77,15 @@ if run_proxy_on_host:
 
   local_resource('proxy',
     serve_env=env,
-    serve_cmd='cargo run --bin proxy',
+    serve_cmd='cargo run',
     deps=['proxy', 'providers', 'deployment/local/data_sources.yaml'],
-    resource_deps=resource_deps,
+    resource_deps=providers,
     # Note: this endpoint is called "/health" rather than "healthz"
     readiness_probe=probe(http_get=http_get_action(3002, path='/health')))
 else:
   # Run docker with ssh option to access private git repositories
   docker_build('proxy:latest', '.', dockerfile='./Dockerfile.dev', ssh='default')
-  k8s_resource(workload='proxy', resource_deps=resource_deps, objects=['proxy:configmap'], port_forwards=3002, labels=['customer'])
+  k8s_resource(workload='proxy', resource_deps=providers, objects=['proxy:configmap'], port_forwards=3002, labels=['customer'])
 
   k8s_yaml(local('./scripts/template.sh deployment/deployment.template.yaml', env=env))
 
