@@ -7,24 +7,25 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.44"
-base64uuid = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "include-proxy-types" }
+base64uuid = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "single_player" }
 clap = { version = "3.0.0", features = ["derive", "env"] }
 ctrlc = "3.2.1"
-fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "include-proxy-types" }
-fp-provider-bindings = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "include-proxy-types" }
-fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "include-proxy-types" }
+fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "single_player" }
+fp-provider-bindings = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "single_player" }
+fp-provider-runtime = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "single_player" }
 futures = "0.3.17"
 http = "0.2.4"
-hyper = { version = "0.14.12", features = ["http1", "server"] }
+hyper = { version = "0.14.12", features = ["full"] }
 once_cell = "1.15.0"
 prometheus = { version = "0.13", default-features = false }
 rmp-serde = "1.0.0"
+routerify = "2.2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.78"
 serde-transcode = "1.1.1"
-serde_yaml = "0.9.13"
+serde_yaml = "0.8.21"
 time = "0.3.14"
-tokio = { version = "1.10.1", features = ["fs", "parking_lot", "rt-multi-thread", "sync"] }
+tokio = { version = "1.10.1", features = ["full"] }
 tokio-tungstenite-reconnect = { git = "ssh://git@github.com/fiberplane/tokio-tungstenite-reconnect.git", branch = "main" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
