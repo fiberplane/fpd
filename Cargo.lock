@@ -277,7 +277,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#eb0752912f9bb18e40239099a40395a535d36e76"
 dependencies = [
  "base64",
  "fp-bindgen",
@@ -827,7 +827,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#eb0752912f9bb18e40239099a40395a535d36e76"
 dependencies = [
  "base64",
  "base64uuid",
@@ -921,7 +921,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#eb0752912f9bb18e40239099a40395a535d36e76"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -937,7 +937,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#1db67b5129c81b2df50fda6ef8c5614001c784c6"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#eb0752912f9bb18e40239099a40395a535d36e76"
 dependencies = [
  "bytes",
  "fiberplane",
