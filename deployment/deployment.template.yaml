@@ -27,7 +27,7 @@ spec:
               value: 0.0.0.0:3002
             - name: API_BASE
               value: ${API_BASE-https://fiberplane.com/}
-            - name: DATA_SOURCES
+            - name: DATA_SOURCES_PATH
               value: /app/config/data_sources.yaml
           ports:
             - containerPort: 3002

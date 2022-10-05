@@ -29,7 +29,7 @@ pub struct Arguments {
 
     /// Path to data sources YAML file
     #[clap(long, short, env, default_value = "data_sources.yaml")]
-    data_sources: PathBuf,
+    data_sources_path: PathBuf,
 
     /// Max retries to connect to the fiberplane server before giving up on failed connections
     #[clap(long, short, env, default_value = "10")]
@@ -79,28 +79,28 @@ async fn main() {
 
     // Load data sources config file
     let data_sources = {
-        match fs::read_to_string(&args.data_sources).await {
+        match fs::read_to_string(&args.data_sources_path).await {
             Ok(data_sources) => data_sources,
             Err(err) => {
                 match err.kind() {
                     io::ErrorKind::NotFound => {
                         error!(
                             "Data sources file not found at {} ({})",
-                            args.data_sources.display(),
+                            args.data_sources_path.display(),
                             err
                         );
                     }
                     io::ErrorKind::PermissionDenied => {
                         error!(
                             "Insufficient permissions to read data sources file {} ({})",
-                            args.data_sources.display(),
+                            args.data_sources_path.display(),
                             err
                         );
                     }
                     _ => {
                         error!(
                             "Unable to read data sources file at {}: {}",
-                            args.data_sources.display(),
+                            args.data_sources_path.display(),
                             err
                         );
                     }
