@@ -1,0 +1,145 @@
+# This will deploy the Kubernetes manifests to a cluster, containing references
+# to our development Docker images (ie. tags that use the branch).
+---
+name: Deploy development images to cluster
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: The fiberplane environment
+        required: true
+        default: "dev"
+        type: string
+      service_name:
+        description: The name of the service that will be deployed
+        required: true
+        type: string
+      trigger:
+        description: The source that triggered the deploy, either manual or auto
+        required: true
+        type: string
+    secrets:
+      DEPLOY_AWS_ACCESS_KEY_ID:
+        required: true
+      DEPLOY_AWS_SECRET_ACCESS_KEY:
+        required: true
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL:
+        required: true
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL:
+        required: true
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  deploy:
+    name: "Deploy development image to '${{ inputs.environment }}'"
+    runs-on: ubuntu-latest
+    concurrency:
+      group: "cluster-${{ inputs.environment }}"
+    steps:
+      - uses: actions/checkout@v2
+
+      - id: vars
+        name: Export variables
+        run: |
+          echo "::set-output name=branch::${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}"
+          echo "::set-output name=short_sha::$(git rev-parse --short "$GITHUB_SHA")"
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            echo "::set-output name=ingress_root_domain::fiberplane.com"
+          else
+            echo "::set-output name=ingress_root_domain::${{ inputs.environment }}.fiberplane.io"
+          fi
+
+      - name: Send "deploy started" to Slack
+        uses: slackapi/slack-github-action@v1.18.0
+        with:
+          payload: |
+            {
+              "environment": "${{ inputs.environment }}",
+              "component": "${{ inputs.service_name }}",
+              "trigger": "${{ inputs.trigger }}",
+              "version": "${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.short_sha }}",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+
+      - name: Downgrade kubectl to version v1.23.6
+        run: |
+          curl -LO https://dl.k8s.io/release/v1.23.6/bin/linux/amd64/kubectl
+          chmod u+x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Verify image exists
+        env:
+          IMAGE: "${{ steps.ecr.outputs.registry }}/${{ inputs.service_name }}"
+          TAG: "dev-${{ steps.vars.outputs.branch }}"
+        run: |
+          if ! docker pull "$IMAGE:$TAG" ; then
+            echo "::error::Image was not found, please wait until it is finished uploading"
+            exit 1
+          fi
+
+      - name: Template Kubernetes files
+        env:
+          IMAGE: "${{ steps.ecr.outputs.registry }}/${{ inputs.service_name }}"
+          TAG: "dev-${{ steps.vars.outputs.branch }}"
+          VERSION: "${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.short_sha }}"
+          FP_ENVIRONMENT: "${{ inputs.environment }}"
+          FP_INGRESS_ROOT_DOMAIN: ${{ steps.vars.outputs.ingress_root_domain }}
+        run: scripts/template_all.sh "deployment/*.template.yaml" > result.yaml
+
+      - name: Create kubeconfig
+        env:
+          FP_ENVIRONMENT: "${{ inputs.environment }}"
+        run: aws eks update-kubeconfig --name "${FP_ENVIRONMENT}-cluster"
+
+      - name: Kubectl version
+        run: kubectl version --client=true
+
+      - name: Apply kubernetes resources
+        run: kubectl apply -f result.yaml
+
+      - name: Wait for Kubernetes deployment
+        run: kubectl rollout status deployment ${{ inputs.service_name }}
+
+      - name: Send "deploy finished" to Slack
+        uses: slackapi/slack-github-action@v1.18.0
+        with:
+          payload: |
+            {
+              "environment": "${{ inputs.environment }}",
+              "component": "${{ inputs.service_name }}",
+              "trigger": "${{ inputs.trigger }}",
+              "version": "${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.short_sha }}",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+
+      - name: Send "deploy failed" to Slack
+        if: ${{ failure() }}
+        uses: slackapi/slack-github-action@v1.18.0
+        with:
+          payload: |
+            {
+              "environment": "${{ inputs.environment }}",
+              "component": "${{ inputs.service_name }}",
+              "trigger": "${{ inputs.trigger }}",
+              "version": "${{ steps.vars.outputs.branch }}-${{ steps.vars.outputs.short_sha }}",
+              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}

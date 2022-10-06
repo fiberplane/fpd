@@ -1,0 +1,40 @@
+# This will deploy the Kubernetes manifests to a cluster, containing references
+# to our development Docker images (ie. tags that use the branch).
+---
+name: Deploy development images to cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The fiberplane environment
+        required: true
+        default: "dev"
+
+jobs:
+  deploy:
+    uses: fiberplane/api/.github/workflows/reusable_deploy_development.yml@main
+    with:
+      service_name: "proxy"
+      environment: ${{ github.event.inputs.environment }}
+      trigger: manual
+    secrets:
+      DEPLOY_AWS_ACCESS_KEY_ID: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+      DEPLOY_AWS_SECRET_ACCESS_KEY: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}
+
+  post-event:
+    name: Post deployment to all Fiberplane environments
+    uses: fiberplane/proxy/.github/workflows/post_event.yml@main
+    needs: deploy
+    with:
+      service: proxy
+      trigger: manual
+      environment: ${{ inputs.environment }}
+      version: "pre-release"
+    secrets:
+      FIBERPLANE_TOKEN: ${{ secrets.FIBERPLANE_TOKEN }}
+      FIBERPLANE_DEMO_TOKEN: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+      FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
