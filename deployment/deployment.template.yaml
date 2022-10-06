@@ -16,17 +16,26 @@ spec:
     spec:
       containers:
         - name: proxy
-          image: proxy:latest
+          image: "${IMAGE-proxy}:${TAG-latest}"
           imagePullPolicy: Always
           env:
             - name: RUST_LOG
-              value: ${RUST_LOG-proxy=trace}
+              valueFrom:
+                configMapKeyRef:
+                  name: proxy-config
+                  key: rust_log
             - name: TOKEN
-              value: ${TOKEN}
+              valueFrom:
+                secretKeyRef:
+                  name: proxy-secrets
+                  key: token
             - name: LISTEN_ADDRESS
               value: 0.0.0.0:3002
             - name: API_BASE
-              value: ${API_BASE-https://fiberplane.com/}
+              valueFrom:
+                configMapKeyRef:
+                  nmae: fiberplane-config
+                  key: base_url
             - name: DATA_SOURCES_PATH
               value: /app/config/data_sources.yaml
           ports:
@@ -37,9 +46,8 @@ spec:
               subPath: data_sources.yaml
       volumes:
         - name: data-sources
-          configMap:
-            name: proxy
-            defaultMode: 420
+          secret:
+            secretName: proxy-secrets
             items:
-              - key: data_sources.yaml
+              - key: data_sources_yaml
                 path: data_sources.yaml
