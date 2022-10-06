@@ -87,7 +87,7 @@ else:
   docker_build('proxy:latest', '.', dockerfile='./Dockerfile.dev', ssh='default')
   k8s_resource(workload='proxy', resource_deps=providers, objects=['proxy:configmap'], port_forwards=3002, labels=['customer'])
 
-  k8s_yaml(local('./scripts/template.sh deployment/deployment.template.yaml', env=env))
+  k8s_yaml(local('./scripts/template.sh deployment/local/deployment.template.yaml', env=env))
 
   # Apply the data sources configuration using k8s configmap
   configmap = '''
