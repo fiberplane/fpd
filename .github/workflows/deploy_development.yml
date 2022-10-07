@@ -13,7 +13,7 @@ on:
 
 jobs:
   deploy:
-    uses: fiberplane/api/.github/workflows/reusable_deploy_development.yml@main
+    uses: fiberplane/proxy/.github/workflows/reusable_deploy_development.yml@main
     with:
       service_name: "proxy"
       environment: ${{ github.event.inputs.environment }}
