@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Build a dummy project to download and build all dependencies first
 COPY Cargo.toml Cargo.lock ./
-COPY src/Cargo.toml src/Cargo.toml
 RUN mkdir src
 RUN echo "fn main() {}" > src/main.rs
 # The --mount=type=ssh option uses the host's ssh credentials

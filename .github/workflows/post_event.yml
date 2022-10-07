@@ -1,0 +1,82 @@
+# This workflow will post deployment events to all our existing environments. It
+# will be called by other workflows (deploy development and deploy release).
+---
+name: Post events to Fiberplane environments
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: Service that was deployed
+        required: true
+        type: string
+      trigger:
+        description: How this workflow was triggered (manual or auto)
+        required: true
+        type: string
+      environment:
+        description: The Fiberplane environment that was deployed
+        required: true
+        type: string
+      version:
+        description: Version that was deployed
+        required: true
+        default: pre-release
+        type: string
+    secrets:
+      FIBERPLANE_TOKEN:
+        required: true
+      FIBERPLANE_DEMO_TOKEN:
+        required: true
+      FIBERPLANE_DEV_TOKEN:
+        required: true
+
+jobs:
+  post-event:
+    name: Post events to Fiberplane environments
+    runs-on: ubuntu-latest
+    steps:
+      - id: vars
+        name: Export variables
+        continue-on-error: true
+        run: |
+          echo "::set-output name=branch::${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}"
+          echo "::set-output name=short_sha::$(git rev-parse --short "$GITHUB_SHA")"
+
+      - name: Post deployment event to Fiberplane (Production)
+        id: production
+        continue-on-error: true
+        uses: fiberplane/publish-event@v1
+        with:
+          api-token: ${{ secrets.FIBERPLANE_TOKEN }}
+          title: "Deployment using GitHub Actions"
+          labels: "service=${{ inputs.service }}|source=gh-actions|trigger=${{ inputs.trigger }}|environment=${{ inputs.environment }}|branch=${{ steps.vars.outputs.branch }}|commit=${{ steps.vars.outputs.short_sha }}|version=${{ inputs.version }}"
+          fp-base-url: "https://fiberplane.com"
+
+      - name: Post deployment event to Fiberplane (Demo)
+        id: demo
+        continue-on-error: true
+        uses: fiberplane/publish-event@v1
+        with:
+          api-token: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+          title: "Deployment using GitHub Actions"
+          labels: "service=${{ inputs.service }}|source=gh-actions|trigger=${{ inputs.trigger }}|environment=${{ inputs.environment }}|branch=${{ steps.vars.outputs.branch }}|commit=${{ steps.vars.outputs.short_sha }}|version=${{ inputs.version }}"
+          fp-base-url: "https://demo.fiberplane.io"
+
+      - name: Post deployment event to Fiberplane (Dev)
+        id: dev
+        continue-on-error: true
+        uses: fiberplane/publish-event@v1
+        with:
+          api-token: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
+          title: "Deployment using GitHub Actions"
+          labels: "service=${{ inputs.service }}|source=gh-actions|trigger=${{ inputs.trigger }}|environment=${{ inputs.environment }}|branch=${{ steps.vars.outputs.branch }}|commit=${{ steps.vars.outputs.short_sha }}|version=${{ inputs.version }}"
+          fp-base-url: "https://dev.fiberplane.io"
+
+      - name: Output event IDs
+        continue-on-error: true
+        run: |
+          echo "All events have been successfully posted!"
+          echo "Production event id: ${{ steps.production.outputs.id }}"
+          echo "Demo event id:       ${{ steps.demo.outputs.id }}"
+          echo "Dev event id:        ${{ steps.dev.outputs.id }}"
