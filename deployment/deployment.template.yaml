@@ -49,5 +49,5 @@ spec:
           secret:
             secretName: proxy-secrets
             items:
-              - key: data_sources_yaml
+              - key: data_sources.yaml
                 path: data_sources.yaml
