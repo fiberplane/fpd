@@ -50,6 +50,10 @@ jobs:
           else
             echo "::set-output name=ingress_root_domain::${{ inputs.environment }}.fiberplane.io"
           fi
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
+          echo "IMAGE=${{ steps.ecr.outputs.registry }}/${{ inputs.service_name }}" >> $GITHUB_ENV
+          echo "TAG=dev-${short_sha}" >> $GITHUB_ENV
 
       - name: Send "deploy started" to Slack
         uses: slackapi/slack-github-action@v1.18.0
@@ -83,9 +87,6 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Verify image exists
-        env:
-          IMAGE: "${{ steps.ecr.outputs.registry }}/${{ inputs.service_name }}"
-          TAG: "dev-${{ steps.vars.outputs.branch }}"
         run: |
           if ! docker pull "$IMAGE:$TAG" ; then
             echo "::error::Image was not found, please wait until it is finished uploading"

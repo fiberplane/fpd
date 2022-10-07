@@ -24,12 +24,19 @@ jobs:
 
       - id: vars
         name: Export variables
+        env:
+          SERVICE: proxy
         run: |
           if [ "${{ github.event.inputs.environment }}" == "production" ]; then
             echo "::set-output name=ingress_root_domain::fiberplane.com"
           else
             echo "::set-output name=ingress_root_domain::${{ github.event.inputs.environment }}.fiberplane.io"
           fi
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
+          echo "SERVICE=${SERVICE}" >> $GITHUB_ENV
+          echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
+          echo "TAG=dev-${short_sha}" >> $GITHUB_ENV
 
       - name: Send "deploy started" to Slack
         uses: slackapi/slack-github-action@v1.18.0
@@ -37,7 +44,7 @@ jobs:
           payload: |
             {
               "environment": "${{ github.event.inputs.environment }}",
-              "component": "proxy",
+              "component": "${{ env.SERVICE }}",
               "trigger": "manual",
               "version": "${{ github.event.inputs.version }}",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -63,9 +70,6 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Verify image exists
-        env:
-          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
-          TAG: "release-${{ github.event.inputs.version }}"
         run: |
           if ! docker pull "$IMAGE:$TAG" ; then
             echo "::error::Image was not found, please wait until it is finished uploading"
@@ -74,8 +78,6 @@ jobs:
 
       - name: Template Kubernetes files
         env:
-          IMAGE: "${{ steps.ecr.outputs.registry }}/proxy"
-          TAG: "release-${{ github.event.inputs.version }}"
           VERSION: "${{ github.event.inputs.version }}"
           FP_ENVIRONMENT: "${{ github.event.inputs.environment }}"
           FP_INGRESS_ROOT_DOMAIN: ${{ steps.vars.outputs.ingress_root_domain }}
@@ -101,7 +103,7 @@ jobs:
           payload: |
             {
               "environment": "${{ github.event.inputs.environment }}",
-              "component": "proxy",
+              "component": "${{ env.SERVICE }}",
               "trigger": "manual",
               "version": "${{ github.event.inputs.version }}",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -116,7 +118,7 @@ jobs:
           payload: |
             {
               "environment": "${{ github.event.inputs.environment }}",
-              "component": "proxy",
+              "component": "${{ env.SERVICE }}",
               "trigger": "manual",
               "version": "${{ github.event.inputs.version }}",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -126,10 +128,10 @@ jobs:
 
   post-event:
     name: Post deployment to all Fiberplane environments
-    uses: fiberplane/proxy/.github/workflows/post_event.yml@main
+    uses: fiberplane/${{ env.SERVICE }}/.github/workflows/post_event.yml@main
     needs: deploy
     with:
-      service: proxy
+      service: ${{ env.SERVICE }}
       trigger: manual
       environment: ${{ inputs.environment }}
       version: ${{ inputs.version }}
