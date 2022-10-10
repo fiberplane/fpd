@@ -128,7 +128,7 @@ jobs:
 
   post-event:
     name: Post deployment to all Fiberplane environments
-    uses: fiberplane/${{ env.SERVICE }}/.github/workflows/post_event.yml@main
+    uses: fiberplane/proxy/.github/workflows/post_event.yml@main
     needs: deploy
     with:
       service: ${{ env.SERVICE }}
