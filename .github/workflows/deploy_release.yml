@@ -47,7 +47,7 @@ jobs:
           echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
           echo "SERVICE=${SERVICE}" >> $GITHUB_ENV
           echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
-          echo "TAG=dev-${short_sha}" >> $GITHUB_ENV
+          echo "TAG=release-${{ github.event.inputs.version }}" >> $GITHUB_ENV
 
       - name: Send "deploy started" to Slack
         uses: slackapi/slack-github-action@v1.18.0
