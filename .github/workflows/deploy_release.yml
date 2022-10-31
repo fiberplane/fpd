@@ -131,7 +131,7 @@ jobs:
     uses: fiberplane/proxy/.github/workflows/post_event.yml@main
     needs: deploy
     with:
-      service: ${{ env.SERVICE }}
+      service: proxy
       trigger: manual
       environment: ${{ inputs.environment }}
       version: ${{ inputs.version }}
