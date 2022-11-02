@@ -22,6 +22,17 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
       - id: vars
         name: Export variables
         env:
@@ -36,7 +47,7 @@ jobs:
           echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
           echo "SERVICE=${SERVICE}" >> $GITHUB_ENV
           echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
-          echo "TAG=dev-${short_sha}" >> $GITHUB_ENV
+          echo "TAG=release-${{ github.event.inputs.version }}" >> $GITHUB_ENV
 
       - name: Send "deploy started" to Slack
         uses: slackapi/slack-github-action@v1.18.0
@@ -57,17 +68,6 @@ jobs:
           curl -LO https://dl.k8s.io/release/v1.23.6/bin/linux/amd64/kubectl
           chmod u+x kubectl
           sudo mv kubectl /usr/local/bin/kubectl
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-central-1
-
-      - name: Login to Amazon ECR
-        id: ecr
-        uses: aws-actions/amazon-ecr-login@v1
 
       - name: Verify image exists
         run: |
@@ -131,7 +131,7 @@ jobs:
     uses: fiberplane/proxy/.github/workflows/post_event.yml@main
     needs: deploy
     with:
-      service: ${{ env.SERVICE }}
+      service: proxy
       trigger: manual
       environment: ${{ inputs.environment }}
       version: ${{ inputs.version }}
