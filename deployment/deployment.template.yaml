@@ -34,7 +34,7 @@ spec:
             - name: API_BASE
               valueFrom:
                 configMapKeyRef:
-                  nmae: fiberplane-config
+                  name: fiberplane-config
                   key: base_url
             - name: DATA_SOURCES_PATH
               value: /app/config/data_sources.yaml
