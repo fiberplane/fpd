@@ -59,7 +59,7 @@ if 'elasticsearch' in providers:
     labels=['customer'])
 
 if run_proxy_on_host:
-  api_base = 'ws://localhost:3000'
+  api_base = 'ws://localhost:3030'
 else:
   api_base = 'ws://api'
 env={
