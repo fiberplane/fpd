@@ -467,18 +467,15 @@ impl ProxyService {
                         error:
                             HttpRequestError::ServerError {
                                 status_code,
-                                mut response,
+                                response,
                             },
                     },
-            }) => {
-                response.truncate(1000);
-                Err(Error::Http {
-                    error: HttpRequestError::ServerError {
-                        status_code,
-                        response,
-                    },
-                })
-            }
+            }) => Err(Error::Http {
+                error: HttpRequestError::ServerError {
+                    status_code,
+                    response,
+                },
+            }),
             Ok(LegacyProviderResponse::Error { error }) => Err(error),
             Err(err) => Err(Error::Deserialization {
                 message: format!("Error deserializing provider response: {:?}", err),
