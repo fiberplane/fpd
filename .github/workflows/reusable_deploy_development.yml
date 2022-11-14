@@ -46,7 +46,7 @@ jobs:
           echo "::set-output name=branch::${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}"
           echo "::set-output name=short_sha::$(git rev-parse --short "$GITHUB_SHA")"
           if [ "${{ inputs.environment }}" == "production" ]; then
-            echo "::set-output name=ingress_root_domain::fiberplane.com"
+            echo "ingress_root_domain=studio.fiberplane.com" >> $GITHUB_OUTPUT
           else
             echo "::set-output name=ingress_root_domain::${{ inputs.environment }}.fiberplane.io"
           fi
