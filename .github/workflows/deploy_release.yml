@@ -39,7 +39,7 @@ jobs:
           SERVICE: proxy
         run: |
           if [ "${{ github.event.inputs.environment }}" == "production" ]; then
-            echo "::set-output name=ingress_root_domain::fiberplane.com"
+            echo "ingress_root_domain=studio.fiberplane.com" >> $GITHUB_OUTPUT
           else
             echo "::set-output name=ingress_root_domain::${{ github.event.inputs.environment }}.fiberplane.io"
           fi

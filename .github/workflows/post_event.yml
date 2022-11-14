@@ -51,7 +51,7 @@ jobs:
           api-token: ${{ secrets.FIBERPLANE_TOKEN }}
           title: "Deployment using GitHub Actions"
           labels: "service=${{ inputs.service }}|source=gh-actions|trigger=${{ inputs.trigger }}|environment=${{ inputs.environment }}|branch=${{ steps.vars.outputs.branch }}|commit=${{ steps.vars.outputs.short_sha }}|version=${{ inputs.version }}"
-          fp-base-url: "https://fiberplane.com"
+          fp-base-url: "https://studio.fiberplane.com"
 
       - name: Post deployment event to Fiberplane (Demo)
         id: demo
