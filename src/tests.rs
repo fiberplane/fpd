@@ -523,7 +523,7 @@ async fn calls_provider_with_query_and_sends_result() {
        }
     }"#;
     let query_mock = prometheus.mock(|when, then| {
-        when.method("GET").path("/api/v1/query");
+        when.path("/api/v1/query");
         then.status(200).body(prometheus_response);
     });
 
@@ -609,13 +609,13 @@ async fn handles_multiple_concurrent_messages() {
        }
     }"#;
     prometheus.mock(|when, then| {
-        when.method("GET").path("/api/v1/query");
+        when.path("/api/v1/query");
         then.delay(Duration::from_secs(2))
             .status(200)
             .body(prometheus_response);
     });
     prometheus.mock(|when, then| {
-        when.method("GET").path("/api/v1/query_range");
+        when.path("/api/v1/query_range");
         then.status(200).body(prometheus_response);
     });
 
@@ -720,7 +720,7 @@ async fn handles_multiple_concurrent_messages() {
 async fn calls_provider_with_query_and_sends_error() {
     let (prometheus, data_sources) = mock_prometheus().await;
     let query_mock = prometheus.mock(|when, then| {
-        when.method("GET").path("/api/v1/query");
+        when.path("/api/v1/query");
         then.status(418).body("Some error");
     });
 
