@@ -376,6 +376,7 @@ impl ProxyService {
             .with_label_values(&labels)
             .start_timer();
 
+        debug!(%protocol_version, %data_source.provider_type, "Invoking provider");
         let result = match message.protocol_version {
             1 => invoke_provider_v1(runtime, message.data, data_source.config.clone()).await,
             2 => invoke_provider_v2(runtime, message.data, data_source.config.clone()).await,
