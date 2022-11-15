@@ -904,8 +904,14 @@ fn exponential_backoff_cap() {
                 delay > old_delay,
                 "the new delay is longer than the old one."
             );
-            let new_remaining_budget = remaining_budget.checked_sub(delay).unwrap();
-            test_rec(new_task, delay, new_remaining_budget);
+            let new_remaining_budget = remaining_budget.checked_sub(delay);
+            assert!(
+                new_remaining_budget.is_some(),
+                "The delay ({:?}) is bigger than the remaining budget {:?}",
+                delay,
+                remaining_budget
+            );
+            test_rec(new_task, delay, new_remaining_budget.unwrap());
         }
     }
 

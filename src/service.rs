@@ -728,8 +728,7 @@ impl DataSourceCheckTask {
 
         Self {
             name,
-            // Adding 1 back to account for the "instant" first try
-            retries_left: max_retries + 1,
+            retries_left: max_retries,
             delay_till_next: initial_delay,
             backoff_factor,
         }
