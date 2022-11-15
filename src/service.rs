@@ -177,16 +177,27 @@ impl ProxyService {
         let service = self.clone();
         let data_sources_sender = outgoing_sender.clone();
         let mut shutdown_clone = shutdown.subscribe();
+        let (data_source_check_task_sender, mut data_source_check_task_receiver) =
+            unbounded_channel::<DataSourceCheckTask>();
+        let data_source_check_task_tx_too = data_source_check_task_sender.clone();
         tokio::spawn(async move {
             let mut status_check_interval = interval(service.inner.status_check_interval);
             loop {
                 select! {
                     // Note that the first tick returns immediately
                     _ = status_check_interval.tick().fuse() => {
-                        let data_sources = service.get_data_sources().await;
+                        let data_sources = service.get_data_sources(data_source_check_task_sender.clone()).await;
                         debug!("sending data sources to relay: {:?}", data_sources);
                         let message = ProxyMessage::SetDataSources(data_sources);
                         data_sources_sender.send(message).ok();
+                    }
+                    task = data_source_check_task_receiver.recv().fuse() => {
+                        if let Some(task) = task {
+                            let attempt = service.get_data_source(task, data_source_check_task_tx_too.clone()).await;
+                            debug!("sending data sources to relay: {:?}", attempt);
+                            let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources: vec![attempt]});
+                            data_sources_sender.send(message).ok();
+                        }
                     }
                     _ = shutdown_clone.recv().fuse() => {
                         // Let the relay know that all of these data sources are going offline
@@ -397,9 +408,21 @@ impl ProxyService {
         }
     }
 
-    async fn get_data_sources(&self) -> SetDataSourcesMessage {
-        let data_sources = join_all(self.inner.data_sources.iter().map(
-            |(name, data_source)| async move {
+    /// Try to connect to a data source according to task
+    ///
+    /// On success, return the update message
+    /// On failure, return the next retry task in the Err variant if there are retries left
+    ///    otherwise return the status as error in the Ok variant.
+    async fn get_data_source(
+        &self,
+        task: DataSourceCheckTask,
+        individual_check_task_queue_tx: UnboundedSender<DataSourceCheckTask>,
+    ) -> UpsertProxyDataSource {
+        self.inner
+            .data_sources
+            .iter()
+            .find(|(name, _)| *name == task.name())
+            .map(|(name, data_source)| async move {
                 let response = if V1_PROVIDERS.contains(&data_source.provider_type.as_str()) {
                     self.check_provider_status_v1(name.clone()).await
                 } else {
@@ -408,8 +431,17 @@ impl ProxyService {
 
                 let status = match response {
                     Ok(_) => DataSourceStatus::Connected,
-                    Err(err) => DataSourceStatus::Error(err),
+                    Err(ref err) => DataSourceStatus::Error(err.clone()),
                 };
+
+                if let Some((delay, task)) = task.next() {
+                    if response.is_err() {
+                        tokio::spawn(async move {
+                            tokio::time::sleep(delay).await;
+                            individual_check_task_queue_tx.send(task)
+                        });
+                    }
+                }
 
                 UpsertProxyDataSource {
                     name: name.clone(),
@@ -417,8 +449,31 @@ impl ProxyService {
                     provider_type: data_source.provider_type.clone(),
                     status,
                 }
-            },
-        ))
+            })
+            .unwrap()
+            .await
+    }
+
+    async fn get_data_sources(
+        &self,
+        to_check_task_queue: UnboundedSender<DataSourceCheckTask>,
+    ) -> SetDataSourcesMessage {
+        let data_sources = join_all(
+            self.inner
+                .data_sources
+                .iter()
+                .zip(std::iter::repeat(to_check_task_queue))
+                .map(|((name, _), to_check_task_queue)| async move {
+                    let task = DataSourceCheckTask::new(
+                        name.clone(),
+                        self.inner.status_check_interval,
+                        Duration::from_secs(10),
+                        1.5,
+                    );
+                    self.get_data_source(task, to_check_task_queue.clone())
+                        .await
+                }),
+        )
         .await
         .into_iter()
         .collect();
@@ -630,4 +685,86 @@ fn msgpack_to_json(input: &[u8]) -> Result<String> {
     let mut serializer = serde_json::Serializer::new(Vec::new());
     serde_transcode::transcode(&mut deserializer, &mut serializer)?;
     Ok(String::from_utf8(serializer.into_inner())?)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DataSourceCheckTask {
+    name: Name,
+    retries_left: isize,
+    delay_till_next: Duration,
+    backoff_factor: f32,
+}
+
+impl DataSourceCheckTask {
+    /// Constructor
+    ///
+    /// `backoff_factor` MUST be greater than 1
+    /// `initial_delay` MUST be greater than 0s
+    ///
+    /// The constructor guarantees that:
+    /// - assuming a "try" takes a negligible amount of time,
+    /// - no retry will be attempted past `total_checks_duration`
+    ///
+    /// If you are not sure that a "try" is going to be instant,
+    /// you should add a safety buffer by decreasing the `total_checks_duration` argument.
+    pub(crate) fn new(
+        name: Name,
+        total_checks_duration: Duration,
+        initial_delay: Duration,
+        backoff_factor: f32,
+    ) -> DataSourceCheckTask {
+        let max_retries: isize = if initial_delay > total_checks_duration {
+            0
+        } else {
+            // Formula comes from the sum of terms in geometric series
+            (((1.0
+                + (backoff_factor - 1.0) * total_checks_duration.as_secs_f32()
+                    / initial_delay.as_secs_f32())
+            .ln()
+                / backoff_factor.ln())
+            .floor()
+                - 1.0) as isize
+        };
+
+        Self {
+            name,
+            // Adding 1 back to account for the "instant" first try
+            retries_left: max_retries + 1,
+            delay_till_next: initial_delay,
+            backoff_factor,
+        }
+    }
+
+    /// Return the next check task to accomplish after this one, with
+    /// the delay to wait before sending it to the channel.
+    pub(crate) fn next(self) -> Option<(Duration, Self)> {
+        let Self {
+            name,
+            retries_left,
+            delay_till_next,
+            backoff_factor,
+        } = self;
+        if retries_left <= 0 {
+            return None;
+        }
+        Some((
+            delay_till_next,
+            Self {
+                name,
+                retries_left: retries_left - 1,
+                delay_till_next: Duration::from_secs_f32(
+                    delay_till_next.as_secs_f32() * backoff_factor,
+                ),
+                backoff_factor,
+            },
+        ))
+    }
+
+    pub(crate) fn name(&self) -> &Name {
+        &self.name
+    }
+
+    pub(crate) fn retries_left(&self) -> isize {
+        self.retries_left
+    }
 }

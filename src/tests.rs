@@ -1,4 +1,4 @@
-use crate::service::{ProxyDataSource, ProxyService, WasmModules};
+use crate::service::{DataSourceCheckTask, ProxyDataSource, ProxyService, WasmModules};
 use base64uuid::Base64Uuid;
 use fiberplane::protocols::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
 use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::*};
@@ -894,4 +894,33 @@ async fn service_shutdown() {
     if let Err(err) = result {
         panic!("unexpected error occurred: {:?}", err);
     }
+}
+
+#[test]
+fn exponential_backoff_cap() {
+    fn test_rec(task: DataSourceCheckTask, old_delay: Duration, remaining_budget: Duration) {
+        if let Some((delay, new_task)) = task.next() {
+            assert!(
+                delay > old_delay,
+                "the new delay is longer than the old one."
+            );
+            let new_remaining_budget = remaining_budget.checked_sub(delay).unwrap();
+            test_rec(new_task, delay, new_remaining_budget);
+        }
+    }
+
+    fn test_case(total_duration: Duration, initial_delay: Duration, backoff_factor: f32) {
+        let task = DataSourceCheckTask::new(
+            Name::from_static("be-the-change"),
+            total_duration,
+            initial_delay,
+            backoff_factor,
+        );
+        assert!(task.retries_left() >= 0, "At least 1 try will be attempted");
+        test_rec(task, Duration::from_secs(0), total_duration);
+    }
+
+    test_case(Duration::from_secs(300), Duration::from_secs(10), 1.5);
+    test_case(Duration::from_secs(300), Duration::from_secs(1000), 1.5);
+    test_case(Duration::from_secs(300), Duration::from_secs(300), 1.5);
 }
