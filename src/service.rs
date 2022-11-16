@@ -18,7 +18,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::{broadcast::Sender, watch};
 use tokio::{fs, time::interval};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
-use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
+use tracing::{debug, error, info, info_span, instrument, trace, warn, Instrument, Span};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -193,8 +193,9 @@ impl ProxyService {
                     }
                     task = data_source_check_task_receiver.recv().fuse() => {
                         if let Some(task) = task {
+                            let source_name = task.name().clone();
                             let attempt = service.get_data_source(task, data_source_check_task_tx_too.clone()).await;
-                            debug!("sending data sources to relay: {:?}", attempt);
+                            info!("Retried connecting to {}: sending new status to relay: {:?}", source_name, attempt);
                             let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources: vec![attempt]});
                             data_sources_sender.send(message).ok();
                         }
@@ -411,8 +412,9 @@ impl ProxyService {
     /// Try to connect to a data source according to task
     ///
     /// On success, return the update message
-    /// On failure, return the next retry task in the Err variant if there are retries left
-    ///    otherwise return the status as error in the Ok variant.
+    /// On failure, return the update message _and_ queue the next retry task to the
+    ///     individual_check_task_queue_tx sender if the retry policy allows for a new
+    ///     retry.
     async fn get_data_source(
         &self,
         task: DataSourceCheckTask,
@@ -436,6 +438,10 @@ impl ProxyService {
 
                 if let Some((delay, task)) = task.next() {
                     if response.is_err() {
+                        warn!(
+                            "Data source {name} failed, retrying in {}s",
+                            delay.as_secs()
+                        );
                         tokio::spawn(async move {
                             tokio::time::sleep(delay).await;
                             individual_check_task_queue_tx.send(task)
