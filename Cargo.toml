@@ -2,8 +2,8 @@
 name = "proxy"
 version = "0.1.0"
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "The Fiberplane Proxy enables secure communication between Fiberplane and your data sources using WebAssembly-based providers."
+authors = ["Fiberplane <info@fiberplane.com>"]
 
 [dependencies]
 anyhow = "1.0.44"
