@@ -157,7 +157,7 @@ async fn main() {
 
 fn initialize_logger(args: &Arguments) {
     let env_filter = if let Some(rust_log) = &args.rust_log {
-        EnvFilter::from_str(&rust_log).expect("Invalid RUST_LOG value")
+        EnvFilter::from_str(rust_log).expect("Invalid RUST_LOG value")
     } else if let Some(log_level) = args.log_level {
         // Enable logs from both the proxy and the provider runtime
         EnvFilter::new(format!(
