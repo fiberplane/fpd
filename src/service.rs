@@ -236,8 +236,8 @@ impl ProxyService {
 
                             // Log the result of the new update attempt
                             match service.data_sources_state(&source_name).await {
-                                Ok(attempt) => info!("Retried connecting to {}: sending new status to relay: {:?}", source_name, attempt),
-                                Err(err) => warn!("Retried connecting to {}: {err}", source_name),
+                                Ok(attempt) => debug!("retried connecting to {}: new status is: {:?}", source_name, attempt),
+                                Err(err) => warn!("retried connecting to {}: {err}", source_name),
                             }
 
                             let data_sources = service.to_data_sources_proxy_message().await;
@@ -486,7 +486,7 @@ impl ProxyService {
                 if let Some((delay, task)) = task.next() {
                     if response.is_err() {
                         warn!(
-                            "Data source {name} failed, retrying in {}s",
+                            "data source {name} failed, retrying in {}s",
                             delay.as_secs()
                         );
                         tokio::spawn(async move {
