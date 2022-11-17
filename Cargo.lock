@@ -277,7 +277,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#95508b6eb3944bc39a7f1d463d941c77b8843f3d"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#713a83efcb2ef37dd3619b591c31dabbc2cae94b"
 dependencies = [
  "base64",
  "fp-bindgen",
@@ -827,7 +827,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#95508b6eb3944bc39a7f1d463d941c77b8843f3d"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#713a83efcb2ef37dd3619b591c31dabbc2cae94b"
 dependencies = [
  "base64",
  "base64uuid",
@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-bindings"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#95508b6eb3944bc39a7f1d463d941c77b8843f3d"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#713a83efcb2ef37dd3619b591c31dabbc2cae94b"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -934,7 +934,7 @@ dependencies = [
 [[package]]
 name = "fp-provider-runtime"
 version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#95508b6eb3944bc39a7f1d463d941c77b8843f3d"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#713a83efcb2ef37dd3619b591c31dabbc2cae94b"
 dependencies = [
  "bytes",
  "fiberplane",
@@ -1940,9 +1940,7 @@ dependencies = [
  "prometheus",
  "reqwest",
  "rmp-serde",
- "routerify",
  "serde",
- "serde-transcode",
  "serde_json",
  "serde_yaml",
  "test-log",
@@ -2247,19 +2245,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "routerify"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c6bb49594c791cadb5ccfa5f36d41b498d40482595c199d10cd318800280bd9"
-dependencies = [
- "http",
- "hyper",
- "lazy_static",
- "percent-encoding",
- "regex",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2378,15 +2363,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "728eb6351430bccb993660dfffc5a72f91ccc1295abaa8ce19b27ebe4f75568b"
 dependencies = [
  "serde_derive",
-]
-
-[[package]]
-name = "serde-transcode"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "590c0e25c2a5bb6e85bf5c1bce768ceb86b316e7a01bdf07d2cb4ec2271990e2"
-dependencies = [
- "serde",
 ]
 
 [[package]]
