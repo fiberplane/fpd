@@ -1,18 +1,23 @@
-# Change this file to point to your actual data source(s)
-
-# You can add data sources using this format:
-# - name: data-source-name
-#   providerType: prometheus / elasticsearch / loki
-#   description: My prometheus instance
-#   config:
-#     url: ...
-
-# More data source types are coming soon!
-
-# The data source name will appear in the Fiberplane Studio
-#
-- name: prometheus-demo
-  providerType: prometheus
-  description: Demo Prometheus
+- name: elastic-starter
+  description: ElasticSearch for starter kit
+  providerType: elasticsearch
   config:
-    url: https://prometheus.dev.fiberplane.io
+    url: http://elasticsearch:9200
+
+- name: elasticsearch
+  providerType: elasticsearch
+  description: elasticsearch on the local proxy
+  config:
+    url: http://localhost:9200
+
+- name: loki
+  providerType: loki
+  description: loki on the local proxy
+  config:
+    url: http://localhost:3100
+
+- name: prometheus
+  providerType: prometheus
+  description: prometheus on the local proxy
+  config:
+    url: http://localhost:9090

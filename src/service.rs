@@ -15,11 +15,16 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::RwLock;
 use tokio::sync::{broadcast::Sender, watch};
 use tokio::{fs, time::interval};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, warn, Instrument, Span};
 use url::Url;
+
+mod status_check;
+
+pub(crate) use status_check::{DataSourceCheckTask, DataSourcesStatusMap};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +56,7 @@ static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
 #[derive(Clone)]
 pub struct ProxyService {
     pub(crate) inner: Arc<Inner>,
+    pub(crate) data_source_state: Arc<RwLock<DataSourcesStatusMap>>,
 }
 
 pub(crate) struct Inner {
@@ -126,7 +132,29 @@ impl ProxyService {
                 listen_address,
                 status_check_interval,
             }),
+            data_source_state: Default::default(),
         }
+    }
+
+    /// Return a suitable ProxyMessage payload informing of the current
+    /// state of all data sources.
+    #[instrument(skip_all)]
+    pub async fn to_data_sources_proxy_message(&self) -> SetDataSourcesMessage {
+        self.data_source_state
+            .read()
+            .await
+            .to_set_data_sources_message()
+    }
+
+    /// Delegate to access the current state of a single data source by name
+    /// state of all data sources.
+    #[instrument(err, skip(self))]
+    pub async fn data_sources_state(&self, name: &Name) -> Result<UpsertProxyDataSource> {
+        self.data_source_state
+            .read()
+            .await
+            .get_source_status(name)
+            .ok_or_else(|| anyhow!("{name} is an unknown data source for this proxy"))
     }
 
     #[instrument(err, skip_all)]
@@ -186,17 +214,33 @@ impl ProxyService {
                 select! {
                     // Note that the first tick returns immediately
                     _ = status_check_interval.tick().fuse() => {
-                        let data_sources = service.get_data_sources(data_source_check_task_sender.clone()).await;
+                        service.update_all_data_sources(data_source_check_task_sender.clone()).await;
+                        // Update data sources will both try to connect and automatically queue individual retries to the
+                        // `data_source_check_task_receiver` queue with the correct delay if necessary
+                        let data_sources = service.to_data_sources_proxy_message().await;
                         debug!("sending data sources to relay: {:?}", data_sources);
                         let message = ProxyMessage::SetDataSources(data_sources);
                         data_sources_sender.send(message).ok();
                     }
+                    // A status check for a data source failed, and
+                    // the queued retry will arrive here.
                     task = data_source_check_task_receiver.recv().fuse() => {
                         if let Some(task) = task {
                             let source_name = task.name().clone();
-                            let attempt = service.get_data_source(task, data_source_check_task_tx_too.clone()).await;
-                            info!("Retried connecting to {}: sending new status to relay: {:?}", source_name, attempt);
-                            let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources: vec![attempt]});
+                            // Update data source will both try to connect and automatically queue a retry
+                            // to the same queue as here (`data_source_check_task_receiver`)
+                            // with the correct delay if necessary
+                            service.update_data_source(task, data_source_check_task_tx_too.clone()).await;
+
+                            // Log the result of the new update attempt
+                            match service.data_sources_state(&source_name).await {
+                                Ok(attempt) => info!("Retried connecting to {}: sending new status to relay: {:?}", source_name, attempt),
+                                Err(err) => warn!("Retried connecting to {}: {err}", source_name),
+                            }
+
+                            let data_sources = service.to_data_sources_proxy_message().await;
+                            debug!("sending data sources to relay: {:?}", data_sources);
+                            let message = ProxyMessage::SetDataSources(data_sources);
                             data_sources_sender.send(message).ok();
                         }
                     }
@@ -213,7 +257,7 @@ impl ProxyService {
                                 status: DataSourceStatus::Error(Error::ProxyDisconnected),
                             })
                             .collect();
-                        let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources});
+                        let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources });
                         data_sources_sender.send(message).ok();
 
                         break;
@@ -415,12 +459,13 @@ impl ProxyService {
     /// On failure, return the update message _and_ queue the next retry task to the
     ///     individual_check_task_queue_tx sender if the retry policy allows for a new
     ///     retry.
-    async fn get_data_source(
+    async fn update_data_source(
         &self,
         task: DataSourceCheckTask,
         individual_check_task_queue_tx: UnboundedSender<DataSourceCheckTask>,
-    ) -> UpsertProxyDataSource {
-        self.inner
+    ) {
+        let update = self
+            .inner
             .data_sources
             .iter()
             .find(|(name, _)| *name == task.name())
@@ -457,14 +502,16 @@ impl ProxyService {
                 }
             })
             .unwrap()
-            .await
+            .await;
+
+        self.data_source_state.write().await.update_source(update);
     }
 
-    async fn get_data_sources(
+    async fn update_all_data_sources(
         &self,
         to_check_task_queue: UnboundedSender<DataSourceCheckTask>,
-    ) -> SetDataSourcesMessage {
-        let data_sources = join_all(
+    ) {
+        join_all(
             self.inner
                 .data_sources
                 .iter()
@@ -476,14 +523,11 @@ impl ProxyService {
                         Duration::from_secs(10),
                         1.5,
                     );
-                    self.get_data_source(task, to_check_task_queue.clone())
+                    self.update_data_source(task, to_check_task_queue.clone())
                         .await
                 }),
         )
-        .await
-        .into_iter()
-        .collect();
-        SetDataSourcesMessage { data_sources }
+        .await;
     }
 
     #[instrument(err, skip(self))]
@@ -691,85 +735,4 @@ fn msgpack_to_json(input: &[u8]) -> Result<String> {
     let mut serializer = serde_json::Serializer::new(Vec::new());
     serde_transcode::transcode(&mut deserializer, &mut serializer)?;
     Ok(String::from_utf8(serializer.into_inner())?)
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct DataSourceCheckTask {
-    name: Name,
-    retries_left: isize,
-    delay_till_next: Duration,
-    backoff_factor: f32,
-}
-
-impl DataSourceCheckTask {
-    /// Constructor
-    ///
-    /// `backoff_factor` MUST be greater than 1
-    /// `initial_delay` MUST be greater than 0s
-    ///
-    /// The constructor guarantees that:
-    /// - assuming a "try" takes a negligible amount of time,
-    /// - no retry will be attempted past `total_checks_duration`
-    ///
-    /// If you are not sure that a "try" is going to be instant,
-    /// you should add a safety buffer by decreasing the `total_checks_duration` argument.
-    pub(crate) fn new(
-        name: Name,
-        total_checks_duration: Duration,
-        initial_delay: Duration,
-        backoff_factor: f32,
-    ) -> DataSourceCheckTask {
-        let max_retries: isize = if initial_delay > total_checks_duration {
-            0
-        } else {
-            // Formula comes from the sum of terms in geometric series
-            (((1.0
-                + (backoff_factor - 1.0) * total_checks_duration.as_secs_f32()
-                    / initial_delay.as_secs_f32())
-            .ln()
-                / backoff_factor.ln())
-            .floor()
-                - 1.0) as isize
-        };
-
-        Self {
-            name,
-            retries_left: max_retries,
-            delay_till_next: initial_delay,
-            backoff_factor,
-        }
-    }
-
-    /// Return the next check task to accomplish after this one, with
-    /// the delay to wait before sending it to the channel.
-    pub(crate) fn next(self) -> Option<(Duration, Self)> {
-        let Self {
-            name,
-            retries_left,
-            delay_till_next,
-            backoff_factor,
-        } = self;
-        if retries_left <= 0 {
-            return None;
-        }
-        Some((
-            delay_till_next,
-            Self {
-                name,
-                retries_left: retries_left - 1,
-                delay_till_next: Duration::from_secs_f32(
-                    delay_till_next.as_secs_f32() * backoff_factor,
-                ),
-                backoff_factor,
-            },
-        ))
-    }
-
-    pub(crate) fn name(&self) -> &Name {
-        &self.name
-    }
-
-    pub(crate) fn retries_left(&self) -> isize {
-        self.retries_left
-    }
 }
