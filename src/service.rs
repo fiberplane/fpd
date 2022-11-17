@@ -23,8 +23,10 @@ use tracing::{debug, error, info, info_span, instrument, trace, warn, Instrument
 use url::Url;
 
 mod status_check;
+#[cfg(test)]
+mod tests;
 
-pub(crate) use status_check::{DataSourceCheckTask, DataSourcesStatusMap};
+use status_check::DataSourceCheckTask;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -62,7 +64,7 @@ pub(crate) struct Inner {
     endpoint: Url,
     token: String,
     pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
-    pub(crate) data_sources_state: Mutex<DataSourcesStatusMap>,
+    data_sources_state: Mutex<HashMap<Name, UpsertProxyDataSource>>,
     wasm_modules: WasmModules,
     max_retries: u32,
     listen_address: Option<SocketAddr>,
@@ -140,11 +142,16 @@ impl ProxyService {
     /// state of all data sources.
     #[instrument(skip_all)]
     pub async fn to_data_sources_proxy_message(&self) -> SetDataSourcesMessage {
-        self.inner
-            .data_sources_state
-            .lock()
-            .await
-            .to_set_data_sources_message()
+        SetDataSourcesMessage {
+            data_sources: self
+                .inner
+                .data_sources_state
+                .lock()
+                .await
+                .values()
+                .cloned()
+                .collect(),
+        }
     }
 
     /// Delegate to access the current state of a single data source by name
@@ -155,7 +162,8 @@ impl ProxyService {
             .data_sources_state
             .lock()
             .await
-            .get_source_status(name)
+            .get(name)
+            .cloned()
             .ok_or_else(|| anyhow!("{name} is an unknown data source for this proxy"))
     }
 
@@ -510,7 +518,7 @@ impl ProxyService {
             .data_sources_state
             .lock()
             .await
-            .update_source(update);
+            .insert(update.name.clone(), update);
     }
 
     async fn update_all_data_sources(
