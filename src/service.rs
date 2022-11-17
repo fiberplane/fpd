@@ -129,7 +129,6 @@ impl ProxyService {
         }
     }
 
-    #[instrument(err, skip_all)]
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
         info!("connecting to fiberplane: {}", self.inner.endpoint);
         let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
@@ -335,7 +334,6 @@ impl ProxyService {
     #[instrument(skip_all, fields(
         trace_id = ?message.op_id,
         data_source_name = ?message.data_source_name,
-        message.data = %msgpack_to_json(&message.data).unwrap_or_default()
     ))]
     async fn handle_invoke_proxy_message(&self, message: InvokeProxyMessage) -> ProxyMessage {
         debug!("handling relay message");
@@ -566,6 +564,7 @@ async fn invoke_provider_v2(
         rmp_serde::from_slice(&request).map_err(|err| Error::Deserialization {
             message: format!("Error deserializing provider request: {:?}", err),
         })?;
+    trace!("Provider request: {:?}", request);
     request.config = Value::Object(config);
     let request = rmp_serde::to_vec_named(&request).map_err(|err| Error::Deserialization {
         message: format!("Error serializing request: {:?}", err),
@@ -623,11 +622,4 @@ async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocke
 
     let server = Server::bind(&addr).serve(make_svc);
     Ok(server.await?)
-}
-
-fn msgpack_to_json(input: &[u8]) -> Result<String> {
-    let mut deserializer = rmp_serde::Deserializer::new(input);
-    let mut serializer = serde_json::Serializer::new(Vec::new());
-    serde_transcode::transcode(&mut deserializer, &mut serializer)?;
-    Ok(String::from_utf8(serializer.into_inner())?)
 }
