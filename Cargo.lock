@@ -1940,7 +1940,6 @@ dependencies = [
  "prometheus",
  "reqwest",
  "rmp-serde",
- "routerify",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2243,19 +2242,6 @@ dependencies = [
  "rmp",
  "serde",
  "serde_bytes",
-]
-
-[[package]]
-name = "routerify"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c6bb49594c791cadb5ccfa5f36d41b498d40482595c199d10cd318800280bd9"
-dependencies = [
- "http",
- "hyper",
- "lazy_static",
- "percent-encoding",
- "regex",
 ]
 
 [[package]]
