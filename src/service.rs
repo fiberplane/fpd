@@ -178,7 +178,7 @@ impl ProxyService {
             async move {
                 while conn_id_receiver.changed().await.is_ok() {
                     if let Some(conn_id) = conn_id_receiver.borrow().clone() {
-                        Span::current().record("conn_id", &conn_id.as_str());
+                        Span::current().record("conn_id", conn_id.as_str());
                     } else {
                         Span::current().record("conn_id", &tracing::field::Empty);
                     }
