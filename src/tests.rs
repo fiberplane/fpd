@@ -1,4 +1,4 @@
-use crate::service::{DataSourceCheckTask, ProxyDataSource, ProxyService, WasmModules};
+use crate::service::{ProxyDataSource, ProxyService, WasmModules};
 use base64uuid::Base64Uuid;
 use fiberplane::protocols::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
 use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::*};

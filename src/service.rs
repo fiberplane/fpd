@@ -15,7 +15,7 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tokio::sync::{broadcast::Sender, watch};
 use tokio::{fs, time::interval};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
@@ -56,13 +56,13 @@ static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
 #[derive(Clone)]
 pub struct ProxyService {
     pub(crate) inner: Arc<Inner>,
-    pub(crate) data_source_state: Arc<RwLock<DataSourcesStatusMap>>,
 }
 
 pub(crate) struct Inner {
     endpoint: Url,
     token: String,
     pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
+    pub(crate) data_sources_state: Mutex<DataSourcesStatusMap>,
     wasm_modules: WasmModules,
     max_retries: u32,
     listen_address: Option<SocketAddr>,
@@ -127,12 +127,12 @@ impl ProxyService {
                 endpoint,
                 token: token.token,
                 data_sources,
+                data_sources_state: Default::default(),
                 wasm_modules,
                 max_retries,
                 listen_address,
                 status_check_interval,
             }),
-            data_source_state: Default::default(),
         }
     }
 
@@ -140,8 +140,9 @@ impl ProxyService {
     /// state of all data sources.
     #[instrument(skip_all)]
     pub async fn to_data_sources_proxy_message(&self) -> SetDataSourcesMessage {
-        self.data_source_state
-            .read()
+        self.inner
+            .data_sources_state
+            .lock()
             .await
             .to_set_data_sources_message()
     }
@@ -150,8 +151,9 @@ impl ProxyService {
     /// state of all data sources.
     #[instrument(err, skip(self))]
     pub async fn data_sources_state(&self, name: &Name) -> Result<UpsertProxyDataSource> {
-        self.data_source_state
-            .read()
+        self.inner
+            .data_sources_state
+            .lock()
             .await
             .get_source_status(name)
             .ok_or_else(|| anyhow!("{name} is an unknown data source for this proxy"))
@@ -504,7 +506,11 @@ impl ProxyService {
             .unwrap()
             .await;
 
-        self.data_source_state.write().await.update_source(update);
+        self.inner
+            .data_sources_state
+            .lock()
+            .await
+            .update_source(update);
     }
 
     async fn update_all_data_sources(
