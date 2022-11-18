@@ -4,7 +4,8 @@ use clap::Parser;
 use fiberplane::protocols::proxies::ProxyToken;
 use std::{io, net::SocketAddr, path::PathBuf, process, str::FromStr, time::Duration};
 use tokio::fs;
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn, Level};
+use tracing_subscriber::EnvFilter;
 use url::Url;
 
 mod metrics;
@@ -43,6 +44,14 @@ pub struct Arguments {
     #[clap(long, short, env, default_value = "5m")]
     status_check_interval: IntervalDuration,
 
+    /// Set the logging level for the proxy (trace, debug, info, warn, error)
+    #[clap(long, env)]
+    log_level: Option<Level>,
+
+    #[clap(env, hide = true)]
+    rust_log: Option<String>,
+
+    /// Output logs as JSON
     #[clap(long, env)]
     log_json: bool,
 }
@@ -71,7 +80,7 @@ impl FromStr for IntervalDuration {
 async fn main() {
     let args = Arguments::parse();
 
-    initialize_logger(args.log_json);
+    initialize_logger(&args);
 
     if !args.wasm_dir.is_dir() {
         panic!("wasm_dir must be a directory");
@@ -146,20 +155,37 @@ async fn main() {
     };
 }
 
-fn initialize_logger(log_json: bool) {
+fn initialize_logger(args: &Arguments) {
+    let env_filter = if let Some(rust_log) = &args.rust_log {
+        EnvFilter::from_str(rust_log).expect("Invalid RUST_LOG value")
+    } else if let Some(log_level) = args.log_level {
+        // Enable logs from both the proxy and the provider runtime
+        EnvFilter::new(format!(
+            "{}={log_level},fp_provider_runtime={log_level}",
+            env!("CARGO_PKG_NAME"),
+            log_level = log_level
+        ))
+    } else {
+        EnvFilter::from_default_env()
+    };
+
     // Initialize the builder with some defaults
-    let builder = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    let logger = tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
         .with_writer(io::stderr);
 
-    if log_json {
+    if args.log_json {
         // Add a JSON formatter
-        builder
+        logger
             .json()
             .try_init()
             .expect("unable to initialize logging");
     } else {
-        builder.try_init().expect("unable to initialize logging");
+        logger.try_init().expect("unable to initialize logging");
+    }
+
+    if args.rust_log.is_some() && args.log_level.is_some() {
+        warn!("Both RUST_LOG and LOG_LEVEL are set, RUST_LOG will be used and LOG_LEVEL will be ignored");
     }
 }
 
