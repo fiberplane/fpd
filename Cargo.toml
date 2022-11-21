@@ -39,3 +39,9 @@ test-log = { version = "0.2.8", default-features = false, features = [
 ] }
 tokio = { version = "1.10.1", features = ["full", "test-util"] }
 tokio-tungstenite = { version = "0.16", features = ["rustls-tls-native-roots"] }
+
+[patch.'ssh://git@github.com/fiberplane/fiberplane-rs.git']
+#base64uuid = { path = "../fiberplane-rs/base64uuid" }
+#fiberplane = { path = "../fiberplane-rs/fiberplane" }
+#fp-provider-bindings = { path = "../fiberplane-rs/fp-provider-protocol/fp-provider-bindings" }
+#fp-provider-runtime = { path = "../fiberplane-rs/fp-provider-protocol/fp-provider-runtime" }

@@ -263,6 +263,7 @@ impl ProxyService {
                                 name: data_source.name.clone(),
                                 description: data_source.description.clone(),
                                 provider_type: data_source.provider_type.clone(),
+                                protocol_version: get_protocol_version(&data_source.provider_type),
                                 status: DataSourceStatus::Error(Error::ProxyDisconnected),
                             })
                             .collect();
@@ -506,6 +507,7 @@ impl ProxyService {
                     name: name.clone(),
                     description: data_source.description.clone(),
                     provider_type: data_source.provider_type.clone(),
+                    protocol_version: get_protocol_version(&data_source.provider_type),
                     status,
                 }
             })
@@ -694,6 +696,14 @@ async fn invoke_provider_v2(
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
         })
+}
+
+fn get_protocol_version(provider_type: &str) -> u8 {
+    if V1_PROVIDERS.contains(&provider_type) {
+        1
+    } else {
+        2
+    }
 }
 
 /// Listen on the given address and return a 200 for GET /
