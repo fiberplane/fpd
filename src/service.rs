@@ -15,11 +15,18 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::Mutex;
 use tokio::sync::{broadcast::Sender, watch};
 use tokio::{fs, time::interval};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
-use tracing::{debug, error, info, info_span, instrument, trace, Instrument, Span};
+use tracing::{debug, error, info, info_span, instrument, trace, warn, Instrument, Span};
 use url::Url;
+
+mod status_check;
+#[cfg(test)]
+mod tests;
+
+use status_check::DataSourceCheckTask;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +64,7 @@ pub(crate) struct Inner {
     endpoint: Url,
     token: String,
     pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
+    data_sources_state: Mutex<HashMap<Name, UpsertProxyDataSource>>,
     wasm_modules: WasmModules,
     max_retries: u32,
     listen_address: Option<SocketAddr>,
@@ -121,6 +129,7 @@ impl ProxyService {
                 endpoint,
                 token: token.token,
                 data_sources,
+                data_sources_state: Default::default(),
                 wasm_modules,
                 max_retries,
                 listen_address,
@@ -129,6 +138,35 @@ impl ProxyService {
         }
     }
 
+    /// Return a suitable ProxyMessage payload informing of the current
+    /// state of all data sources.
+    #[instrument(skip_all)]
+    pub async fn to_data_sources_proxy_message(&self) -> SetDataSourcesMessage {
+        SetDataSourcesMessage {
+            data_sources: self
+                .inner
+                .data_sources_state
+                .lock()
+                .await
+                .values()
+                .cloned()
+                .collect(),
+        }
+    }
+
+    /// Delegate to access the current state of a single data source by name
+    #[instrument(err, skip(self))]
+    pub async fn data_source_state(&self, name: &Name) -> Result<UpsertProxyDataSource> {
+        self.inner
+            .data_sources_state
+            .lock()
+            .await
+            .get(name)
+            .cloned()
+            .ok_or_else(|| anyhow!("{name} is an unknown data source for this proxy"))
+    }
+
+    #[instrument(err, skip_all)]
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
         info!("connecting to fiberplane: {}", self.inner.endpoint);
         let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
@@ -147,7 +185,7 @@ impl ProxyService {
             async move {
                 while conn_id_receiver.changed().await.is_ok() {
                     if let Some(conn_id) = conn_id_receiver.borrow().clone() {
-                        Span::current().record("conn_id", &conn_id.as_str());
+                        Span::current().record("conn_id", conn_id.as_str());
                     } else {
                         Span::current().record("conn_id", &tracing::field::Empty);
                     }
@@ -176,16 +214,44 @@ impl ProxyService {
         let service = self.clone();
         let data_sources_sender = outgoing_sender.clone();
         let mut shutdown_clone = shutdown.subscribe();
+        let (data_source_check_task_sender, mut data_source_check_task_receiver) =
+            unbounded_channel::<DataSourceCheckTask>();
+        let data_source_check_task_tx_too = data_source_check_task_sender.clone();
         tokio::spawn(async move {
             let mut status_check_interval = interval(service.inner.status_check_interval);
             loop {
                 select! {
                     // Note that the first tick returns immediately
                     _ = status_check_interval.tick().fuse() => {
-                        let data_sources = service.get_data_sources().await;
+                        service.update_all_data_sources(data_source_check_task_sender.clone()).await;
+                        // Update data sources will both try to connect and automatically queue individual retries to the
+                        // `data_source_check_task_receiver` queue with the correct delay if necessary
+                        let data_sources = service.to_data_sources_proxy_message().await;
                         debug!("sending data sources to relay: {:?}", data_sources);
                         let message = ProxyMessage::SetDataSources(data_sources);
                         data_sources_sender.send(message).ok();
+                    }
+                    // A status check for a data source failed, and
+                    // the queued retry will arrive here.
+                    task = data_source_check_task_receiver.recv().fuse() => {
+                        if let Some(task) = task {
+                            let source_name = task.name().clone();
+                            // Update data source will both try to connect and automatically queue a retry
+                            // to the same queue as here (`data_source_check_task_receiver`)
+                            // with the correct delay if necessary
+                            service.update_data_source(task, data_source_check_task_tx_too.clone()).await;
+
+                            // Log the result of the new update attempt
+                            match service.data_source_state(&source_name).await {
+                                Ok(attempt) => debug!("retried connecting to {}: new status is: {:?}", source_name, attempt),
+                                Err(err) => warn!("retried connecting to {}: {err}", source_name),
+                            }
+
+                            let data_sources = service.to_data_sources_proxy_message().await;
+                            debug!("sending data sources to relay: {:?}", data_sources);
+                            let message = ProxyMessage::SetDataSources(data_sources);
+                            data_sources_sender.send(message).ok();
+                        }
                     }
                     _ = shutdown_clone.recv().fuse() => {
                         // Let the relay know that all of these data sources are going offline
@@ -201,7 +267,7 @@ impl ProxyService {
                                 status: DataSourceStatus::Error(Error::ProxyDisconnected),
                             })
                             .collect();
-                        let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources});
+                        let message = ProxyMessage::SetDataSources(SetDataSourcesMessage{ data_sources });
                         data_sources_sender.send(message).ok();
 
                         break;
@@ -396,9 +462,23 @@ impl ProxyService {
         }
     }
 
-    async fn get_data_sources(&self) -> SetDataSourcesMessage {
-        let data_sources = join_all(self.inner.data_sources.iter().map(
-            |(name, data_source)| async move {
+    /// Try to connect to a data source according to task
+    ///
+    /// On success, return the update message
+    /// On failure, return the update message _and_ queue the next retry task to the
+    ///     individual_check_task_queue_tx sender if the retry policy allows for a new
+    ///     retry.
+    async fn update_data_source(
+        &self,
+        task: DataSourceCheckTask,
+        individual_check_task_queue_tx: UnboundedSender<DataSourceCheckTask>,
+    ) {
+        let update = self
+            .inner
+            .data_sources
+            .iter()
+            .find(|(name, _)| *name == task.name())
+            .map(|(name, data_source)| async move {
                 let response = if V1_PROVIDERS.contains(&data_source.provider_type.as_str()) {
                     self.check_provider_status_v1(name.clone()).await
                 } else {
@@ -407,8 +487,21 @@ impl ProxyService {
 
                 let status = match response {
                     Ok(_) => DataSourceStatus::Connected,
-                    Err(err) => DataSourceStatus::Error(err),
+                    Err(ref err) => DataSourceStatus::Error(err.clone()),
                 };
+
+                if let Some((delay, task)) = task.next() {
+                    if response.is_err() {
+                        warn!(
+                            "error connecting to data source: {name}, retrying in {}s",
+                            delay.as_secs()
+                        );
+                        tokio::spawn(async move {
+                            tokio::time::sleep(delay).await;
+                            individual_check_task_queue_tx.send(task)
+                        });
+                    }
+                }
 
                 UpsertProxyDataSource {
                     name: name.clone(),
@@ -417,12 +510,38 @@ impl ProxyService {
                     protocol_version: get_protocol_version(&data_source.provider_type),
                     status,
                 }
-            },
-        ))
-        .await
-        .into_iter()
-        .collect();
-        SetDataSourcesMessage { data_sources }
+            })
+            .unwrap()
+            .await;
+
+        self.inner
+            .data_sources_state
+            .lock()
+            .await
+            .insert(update.name.clone(), update);
+    }
+
+    async fn update_all_data_sources(
+        &self,
+        to_check_task_queue: UnboundedSender<DataSourceCheckTask>,
+    ) {
+        join_all(
+            self.inner
+                .data_sources
+                .iter()
+                .zip(std::iter::repeat(to_check_task_queue))
+                .map(|((name, _), to_check_task_queue)| async move {
+                    let task = DataSourceCheckTask::new(
+                        name.clone(),
+                        self.inner.status_check_interval,
+                        Duration::from_secs(10),
+                        1.5,
+                    );
+                    self.update_data_source(task, to_check_task_queue.clone())
+                        .await
+                }),
+        )
+        .await;
     }
 
     #[instrument(err, skip(self))]

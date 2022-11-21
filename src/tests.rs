@@ -883,7 +883,7 @@ async fn service_shutdown() {
         // Read any message sent from the service, until it gets closed, which
         // will indicate that the service has shutdown.
         loop {
-            if let None = ws.next().await {
+            if (ws.next().await).is_none() {
                 break;
             };
         }
