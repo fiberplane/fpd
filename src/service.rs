@@ -155,9 +155,8 @@ impl ProxyService {
     }
 
     /// Delegate to access the current state of a single data source by name
-    /// state of all data sources.
     #[instrument(err, skip(self))]
-    pub async fn data_sources_state(&self, name: &Name) -> Result<UpsertProxyDataSource> {
+    pub async fn data_source_state(&self, name: &Name) -> Result<UpsertProxyDataSource> {
         self.inner
             .data_sources_state
             .lock()
@@ -243,7 +242,7 @@ impl ProxyService {
                             service.update_data_source(task, data_source_check_task_tx_too.clone()).await;
 
                             // Log the result of the new update attempt
-                            match service.data_sources_state(&source_name).await {
+                            match service.data_source_state(&source_name).await {
                                 Ok(attempt) => debug!("retried connecting to {}: new status is: {:?}", source_name, attempt),
                                 Err(err) => warn!("retried connecting to {}: {err}", source_name),
                             }
@@ -493,7 +492,7 @@ impl ProxyService {
                 if let Some((delay, task)) = task.next() {
                     if response.is_err() {
                         warn!(
-                            "data source {name} failed, retrying in {}s",
+                            "error connecting to data source: {name}, retrying in {}s",
                             delay.as_secs()
                         );
                         tokio::spawn(async move {
