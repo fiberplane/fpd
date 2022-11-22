@@ -16,3 +16,10 @@
   description: Demo Prometheus
   config:
     url: https://prometheus.dev.fiberplane.io
+- name: https-demo
+  providerType: https
+  description: JSON Placeholder API
+  config:
+    url: https://jsonplaceholder.typicode.com
+    # Using posts endpoint since there is no proper healthcheck there.
+    healthCheckPath: posts/1

@@ -55,6 +55,22 @@ static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
     .unwrap()
 });
 
+/// Forge a v2 protocol Data source status request, with a configuration.
+fn try_status_request_data_v2_with_config(config: Map<String, Value>) -> Result<Vec<u8>> {
+    let config = serde_json::to_value(config).map_err(|err| Error::Config {
+        message: format!("Error serializing config as JSON: {:?}", err),
+    })?;
+    Ok(rmp_serde::to_vec_named(&ProviderRequest {
+        query_type: STATUS_QUERY_TYPE.to_string(),
+        query_data: Blob {
+            data: Vec::new().into(),
+            mime_type: STATUS_MIME_TYPE.to_string(),
+        },
+        config,
+        previous_response: None,
+    })?)
+}
+
 #[derive(Clone)]
 pub struct ProxyService {
     pub(crate) inner: Arc<Inner>,
@@ -482,7 +498,8 @@ impl ProxyService {
                 let response = if V1_PROVIDERS.contains(&data_source.provider_type.as_str()) {
                     self.check_provider_status_v1(name.clone()).await
                 } else {
-                    self.check_provider_status_v2(name.clone()).await
+                    self.check_provider_status_v2(name.clone(), data_source.config.clone())
+                        .await
                 };
 
                 let status = match response {
@@ -606,7 +623,11 @@ impl ProxyService {
     }
 
     #[instrument(skip(self))]
-    async fn check_provider_status_v2(&self, data_source_name: Name) -> Result<(), Error> {
+    async fn check_provider_status_v2(
+        &self,
+        data_source_name: Name,
+        config: Map<String, Value>,
+    ) -> Result<(), Error> {
         debug!(
             "Using protocol v2 to check provider status: {}",
             &data_source_name
@@ -614,7 +635,13 @@ impl ProxyService {
         let message = InvokeProxyMessage {
             op_id: Base64Uuid::new(),
             data_source_name: data_source_name.clone(),
-            data: STATUS_REQUEST_V2.clone(),
+            data: try_status_request_data_v2_with_config(config).unwrap_or_else(|err| {
+                warn!(
+                    "could not serialize the configuration in a status request: {}",
+                    err
+                );
+                STATUS_REQUEST_V2.clone()
+            }),
             protocol_version: 2,
         };
 

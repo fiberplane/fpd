@@ -5,6 +5,7 @@ PROVIDERS=(
     "elasticsearch"
     "loki"
     "sentry"
+    "https"
 )
 
 REPO_ROOT=`dirname "$0"`/..
