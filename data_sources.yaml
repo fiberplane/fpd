@@ -20,6 +20,7 @@
   providerType: https
   description: JSON Placeholder API
   config:
-    url: https://jsonplaceholder.typicode.com
+    baseUrl: https://jsonplaceholder.typicode.com
     # Using posts endpoint since there is no proper healthcheck there.
     healthCheckPath: posts/1
+    showHeaders: true
