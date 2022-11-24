@@ -24,3 +24,11 @@
     # Using posts endpoint since there is no proper healthcheck there.
     healthCheckPath: posts/1
     showHeaders: true
+- name: https-mock-heroku
+  providerType: https
+  description: Mock API demo from Heroku
+  config:
+    baseUrl: https://mock-api-demo.herokuapp.com
+    # Using posts endpoint since there is no proper healthcheck there.
+    healthCheckPath: api/posts/1
+    showHeaders: false
