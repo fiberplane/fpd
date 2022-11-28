@@ -170,18 +170,6 @@ jobs:
       #     /tmp/artifact/${SERVICE} version -o verbose
       #     /tmp/artifact/${SERVICE} version -o json > /tmp/artifact/manifest.json
 
-      - name: Create SHA256 sums for the artifacts (Linux)
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          cd /tmp/artifact/
-          sha256sum * > checksum.sha256
-
-      - name: Create SHA256 sums for the artifacts (MacOS)
-        if: matrix.os == 'macos-12'
-        run: |
-          cd /tmp/artifact/
-          shasum -a 256 * > checksum.sha256
-
       - name: Upload artifact
         uses: actions/upload-artifact@v2
         with:
@@ -295,11 +283,49 @@ jobs:
       - name: Push Docker manifest
         run: docker manifest push ${IMAGE}:${TAG}
 
+  # Add SHA256 sum for the binary and create a distributable file. This
+  # distributable file include the binary for the specific architecture with all
+  # the providers from the ./providers directory.
+  prepare-artifact:
+    name: Create distributable zip file
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: Create distributable zip file
+        run: |
+          for artifact in artifacts/*; do
+            (
+              echo "Preparing release for ${artifact}"
+              cd "$artifact"
+              chmod u+x ./proxy
+              sha256sum ./* > checksum.sha256
+              cp -r ../../providers/ .
+              zip -r proxy.zip checksum.sha256 proxy providers
+              rm -r providers
+              echo "Finished release for ${artifact}"
+            )
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 1
+
   # Copy the artifacts to our Builds bucket for long term storage.
   publish-artifacts-s3:
     name: Publish artifacts to S3 GitHub builds bucket
     runs-on: ubuntu-22.04
-    needs: build
+    needs: prepare-artifact
     steps:
       - uses: actions/checkout@v3
         with:
