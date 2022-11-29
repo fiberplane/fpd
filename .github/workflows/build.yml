@@ -305,11 +305,12 @@ jobs:
             (
               echo "Preparing release for ${artifact}"
               cd "$artifact"
-              chmod u+x ./proxy
-              sha256sum ./* > checksum.sha256
+              chmod u+x ./${SERVICE}
               cp -r ../../providers/ .
-              zip -r proxy.zip checksum.sha256 proxy providers
-              rm -r providers
+              sha256sum ./* > checksum.sha256
+              zip -r ./${SERVICE}.zip checksum.sha256 ./${SERVICE} providers
+              rm -r providers checksum.sha256
+              sha256sum ./${SERVICE} > checksum.sha256
               echo "Finished release for ${artifact}"
             )
           done
