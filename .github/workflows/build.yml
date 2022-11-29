@@ -307,10 +307,8 @@ jobs:
               cd "$artifact"
               chmod u+x ./${SERVICE}
               cp -r ../../providers/ .
-              sha256sum ./* > checksum.sha256
-              zip -r ./${SERVICE}.zip checksum.sha256 ./${SERVICE} providers
-              rm -r providers checksum.sha256
-              sha256sum ./${SERVICE} > checksum.sha256
+              zip -r ./${SERVICE}.zip ./${SERVICE} providers
+              rm -r providers
               echo "Finished release for ${artifact}"
             )
           done
