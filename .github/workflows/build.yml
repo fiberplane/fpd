@@ -19,7 +19,7 @@ jobs:
   # Lint the code and run the tests on Linux
   test:
     name: Test and lint
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest-8-cores
     steps:
       - uses: actions/checkout@v3
         with:
@@ -316,6 +316,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v2
         with:
+          name: dist-artifacts
           path: artifacts/
           if-no-files-found: error
           retention-days: 1
@@ -332,6 +333,7 @@ jobs:
 
       - uses: actions/download-artifact@v2
         with:
+          name: dist-artifacts
           path: artifacts
 
       - name: Configure AWS Credentials
