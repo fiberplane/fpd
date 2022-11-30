@@ -1,9 +1,9 @@
 use crate::service::{ProxyDataSource, ProxyService, WasmModules};
-use base64uuid::Base64Uuid;
-use fiberplane::protocols::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
-use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::*};
-use fp_provider_bindings::Blob;
-use fp_provider_runtime::spec::types::ProviderRequest;
+use fiberplane::base64uuid::Base64Uuid;
+use fiberplane::models::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
+use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
+use fiberplane::provider_bindings::Blob;
+use fiberplane::provider_runtime::spec::types::ProviderRequest;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use http::{Request, Response, StatusCode};
 use httpmock::prelude::*;

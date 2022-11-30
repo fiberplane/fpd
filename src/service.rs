@@ -1,10 +1,12 @@
 use crate::metrics::{metrics_export, CONCURRENT_QUERIES, QUERIES_DURATION_SECONDS, QUERIES_TOTAL};
 use anyhow::{anyhow, Context, Result};
-use base64uuid::Base64Uuid;
-use fiberplane::protocols::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
-use fiberplane::protocols::{data_sources::DataSourceStatus, names::Name, proxies::*};
-use fp_provider_bindings::{Blob, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse};
-use fp_provider_runtime::spec::{types::ProviderRequest, Runtime};
+use fiberplane::base64uuid::Base64Uuid;
+use fiberplane::models::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
+use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
+use fiberplane::provider_bindings::{
+    Blob, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
+};
+use fiberplane::provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
