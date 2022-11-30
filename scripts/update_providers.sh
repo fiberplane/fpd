@@ -5,6 +5,7 @@ PROVIDERS=(
     "elasticsearch"
     "loki"
     "sentry"
+    "aws_cloudwatch"
 )
 
 REPO_ROOT=`dirname "$0"`/..
