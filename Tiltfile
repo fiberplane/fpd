@@ -63,6 +63,7 @@ if run_proxy_on_host:
 else:
   api_base = 'ws://api'
 env={
+  'RUST_BACKTRACE': '1',
   'RUST_LOG': 'proxy=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
   'API_BASE': api_base,
