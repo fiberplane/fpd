@@ -16,3 +16,15 @@
   description: Demo Prometheus
   config:
     url: https://prometheus.dev.fiberplane.io
+
+- name: tulips-prometheus
+  description: Tulip Prometheus
+  providerType: prometheus
+  config:
+    url: https://tulips2door.fiberplane.io:9090
+
+- name: tulips-elasticsearch
+  description: Tulip Elastic
+  providerType: elasticsearch
+  config:
+    url: https://tulips2door.fiberplane.io:9201
