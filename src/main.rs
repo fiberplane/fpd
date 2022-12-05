@@ -1,7 +1,7 @@
 use crate::service::{ProxyDataSource, ProxyService};
 use anyhow::{anyhow, Error};
 use clap::Parser;
-use fiberplane::protocols::proxies::ProxyToken;
+use fiberplane::models::proxies::ProxyToken;
 use std::{io, net::SocketAddr, path::PathBuf, process, str::FromStr, time::Duration};
 use tokio::fs;
 use tracing::{error, info, trace, warn, Level};

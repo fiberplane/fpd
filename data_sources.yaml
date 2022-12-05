@@ -16,6 +16,19 @@
   description: Demo Prometheus
   config:
     url: https://prometheus.dev.fiberplane.io
+
+- name: tulips-prometheus
+  description: Tulip Prometheus
+  providerType: prometheus
+  config:
+    url: https://tulips2door.fiberplane.io:9090
+
+- name: tulips-elasticsearch
+  description: Tulip Elastic
+  providerType: elasticsearch
+  config:
+    url: https://tulips2door.fiberplane.io:9201
+
 - name: https-demo
   providerType: https
   description: JSON Placeholder API
@@ -24,6 +37,7 @@
     # Using posts endpoint since there is no proper healthcheck there.
     healthCheckPath: posts/1
     showHeaders: true
+
 - name: https-mock-heroku
   providerType: https
   description: Mock API demo from Heroku

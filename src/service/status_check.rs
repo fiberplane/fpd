@@ -1,6 +1,5 @@
+use fiberplane::models::names::Name;
 use std::time::Duration;
-
-use fiberplane::protocols::names::Name;
 
 /// A token representing both:
 /// - a task to check the status of the data source having a given name, and
