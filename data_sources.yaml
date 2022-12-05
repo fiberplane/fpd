@@ -29,6 +29,7 @@
   config:
     url: https://tulips2door.fiberplane.io:9201
 
+## HTTPS Providers
 - name: https-demo
   providerType: https
   description: JSON Placeholder API
@@ -43,6 +44,15 @@
   description: Mock API demo from Heroku
   config:
     baseUrl: https://mock-api-demo.herokuapp.com
-    # Using posts endpoint since there is no proper healthcheck there.
+    # Using posts endpoint since there is no proper healthcheck there either
     healthCheckPath: api/posts/1
     showHeaders: false
+
+- name: https-headers-debug
+  providerType: https
+  description: An echo service for http headers
+  config:
+    baseUrl: https://headers.4tools.net
+    # Using the root for the healthcheck
+    healthCheckPath: ""
+    showHeaders: true
