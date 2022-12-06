@@ -1,5 +1,5 @@
 use crate::service::status_check::DataSourceCheckTask;
-use fiberplane::protocols::names::Name;
+use fiberplane::models::names::Name;
 use std::time::Duration;
 
 #[test]
