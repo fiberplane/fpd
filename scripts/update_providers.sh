@@ -36,7 +36,8 @@ cd $FIBERPLANE_DIR
 printf "${CYAN}Compiling providers...${NC}\n"
 for provider in "${PROVIDERS[@]}"; do
     pushd "providers/$provider"
-        cargo build --release
+        # cargo build --release
+        cargo build
     popd
 done
 
@@ -45,7 +46,8 @@ pwd
 printf "${CYAN}Optimizing providers...${NC}\n"
 for provider in "${PROVIDERS[@]}"; do
     # Optimize for performance
-    wasm-opt -Oz -c -o "../proxy/providers/${provider}.wasm" "target/wasm32-unknown-unknown/release/${provider}_provider.wasm"
+    # wasm-opt -Oz -c -o "../proxy/providers/${provider}.wasm" "target/wasm32-unknown-unknown/release/${provider}_provider.wasm"
+    wasm-opt -Oz -c -g -o "../proxy/providers/${provider}.wasm" "target/wasm32-unknown-unknown/debug/${provider}_provider.wasm"
 done
 
 echo "Done."
