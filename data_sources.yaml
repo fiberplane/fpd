@@ -28,3 +28,12 @@
   providerType: elasticsearch
   config:
     url: https://tulips2door.fiberplane.io:9201
+
+- name: https-demo
+  providerType: https
+  description: JSON Placeholder API
+  config:
+    baseUrl: https://jsonplaceholder.typicode.com
+    # Using posts endpoint since there is no proper healthcheck there.
+    healthCheckPath: posts/1
+    showHeaders: true
