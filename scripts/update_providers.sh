@@ -5,6 +5,7 @@ PROVIDERS=(
     "elasticsearch"
     "loki"
     "sentry"
+    "https"
     "aws_cloudwatch"
 )
 
