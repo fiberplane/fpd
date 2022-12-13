@@ -43,4 +43,4 @@ tokio = { version = "1.10.1", features = ["full", "test-util"] }
 tokio-tungstenite = { version = "0.16", features = ["rustls-tls-native-roots"] }
 
 [patch.'ssh://git@github.com/fiberplane/fiberplane-rs.git']
-#fiberplane = { path = "../fiberplane-rs/fiberplane" }
+fiberplane = { path = "../fiberplane-rs/fiberplane" }
