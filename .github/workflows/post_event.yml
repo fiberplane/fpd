@@ -40,37 +40,40 @@ jobs:
         name: Export variables
         continue-on-error: true
         run: |
-          echo "::set-output name=branch::${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}"
-          echo "::set-output name=short_sha::$(git rev-parse --short "$GITHUB_SHA")"
+          echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}" >> $GITHUB_OUTPUT
+          echo "short_sha=$(git rev-parse --short "$GITHUB_SHA")" >> $GITHUB_OUTPUT
 
       - name: Post deployment event to Fiberplane (Production)
         id: production
         continue-on-error: true
-        uses: fiberplane/publish-event@v1
+        uses: fiberplane/publish-event@v1.2
         with:
           api-token: ${{ secrets.FIBERPLANE_TOKEN }}
           title: "Deployment using GitHub Actions"
           labels: "service=${{ inputs.service }}|source=gh-actions|trigger=${{ inputs.trigger }}|environment=${{ inputs.environment }}|branch=${{ steps.vars.outputs.branch }}|commit=${{ steps.vars.outputs.short_sha }}|version=${{ inputs.version }}"
+          workspace-id: "0li9_5B8Sq2fPg7oLfZ5nw"
           fp-base-url: "https://studio.fiberplane.com"
 
       - name: Post deployment event to Fiberplane (Demo)
         id: demo
         continue-on-error: true
-        uses: fiberplane/publish-event@v1
+        uses: fiberplane/publish-event@v1.2
         with:
           api-token: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
           title: "Deployment using GitHub Actions"
           labels: "service=${{ inputs.service }}|source=gh-actions|trigger=${{ inputs.trigger }}|environment=${{ inputs.environment }}|branch=${{ steps.vars.outputs.branch }}|commit=${{ steps.vars.outputs.short_sha }}|version=${{ inputs.version }}"
+          workspace-id: "Y8j7sJEuS7yxFA_jFDWNlQ"
           fp-base-url: "https://demo.fiberplane.io"
 
       - name: Post deployment event to Fiberplane (Dev)
         id: dev
         continue-on-error: true
-        uses: fiberplane/publish-event@v1
+        uses: fiberplane/publish-event@v1.2
         with:
           api-token: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
           title: "Deployment using GitHub Actions"
           labels: "service=${{ inputs.service }}|source=gh-actions|trigger=${{ inputs.trigger }}|environment=${{ inputs.environment }}|branch=${{ steps.vars.outputs.branch }}|commit=${{ steps.vars.outputs.short_sha }}|version=${{ inputs.version }}"
+          workspace-id: "JwpDrHrlS-OWjxYXe9gJ2g"
           fp-base-url: "https://dev.fiberplane.io"
 
       - name: Output event IDs
