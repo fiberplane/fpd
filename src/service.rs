@@ -15,7 +15,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
-use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
+use std::{convert::Infallible, net::SocketAddr, path::Path, time::Duration};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex;
 use tokio::sync::{broadcast::Sender, watch};
@@ -57,12 +57,7 @@ static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
     .unwrap()
 });
 
-#[derive(Clone)]
 pub struct ProxyService {
-    pub(crate) inner: Arc<Inner>,
-}
-
-pub(crate) struct Inner {
     endpoint: Url,
     token: String,
     pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
@@ -127,16 +122,14 @@ impl ProxyService {
         }
 
         ProxyService {
-            inner: Arc::new(Inner {
-                endpoint,
-                token: token.token,
-                data_sources,
-                data_sources_state: Default::default(),
-                wasm_modules,
-                max_retries,
-                listen_address,
-                status_check_interval,
-            }),
+            endpoint,
+            token: token.token,
+            data_sources,
+            data_sources_state: Default::default(),
+            wasm_modules,
+            max_retries,
+            listen_address,
+            status_check_interval,
         }
     }
 
@@ -146,7 +139,6 @@ impl ProxyService {
     pub async fn to_data_sources_proxy_message(&self) -> SetDataSourcesMessage {
         SetDataSourcesMessage {
             data_sources: self
-                .inner
                 .data_sources_state
                 .lock()
                 .await
@@ -159,8 +151,7 @@ impl ProxyService {
     /// Delegate to access the current state of a single data source by name
     #[instrument(err, skip(self))]
     pub async fn data_source_state(&self, name: &Name) -> Result<UpsertProxyDataSource> {
-        self.inner
-            .data_sources_state
+        self.data_sources_state
             .lock()
             .await
             .get(name)
@@ -170,7 +161,7 @@ impl ProxyService {
 
     #[instrument(err, skip_all)]
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
-        info!("connecting to fiberplane: {}", self.inner.endpoint);
+        info!("connecting to fiberplane: {}", self.endpoint);
         let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
         conn_id_receiver.borrow_and_update();
 
@@ -200,7 +191,7 @@ impl ProxyService {
 
         // Health check endpoints
         let ws_clone = ws.clone();
-        if let Some(listen_address) = self.inner.listen_address {
+        if let Some(listen_address) = self.listen_address {
             tokio::spawn(
                 async move {
                     if let Err(err) = serve_health_check_endpoints(listen_address, ws_clone).await {
@@ -220,7 +211,7 @@ impl ProxyService {
             unbounded_channel::<DataSourceCheckTask>();
         let data_source_check_task_tx_too = data_source_check_task_sender.clone();
         tokio::spawn(async move {
-            let mut status_check_interval = interval(service.inner.status_check_interval);
+            let mut status_check_interval = interval(service.status_check_interval);
             loop {
                 select! {
                     // Note that the first tick returns immediately
@@ -258,7 +249,6 @@ impl ProxyService {
                     _ = shutdown_clone.recv().fuse() => {
                         // Let the relay know that all of these data sources are going offline
                         let data_sources = service
-                            .inner
                             .data_sources
                             .values()
                             .map(|data_source| UpsertProxyDataSource {
@@ -357,13 +347,13 @@ impl ProxyService {
         // Create a request object. If this fails there is no point in
         // retrying so just return the error object.
         let request = http::Request::builder()
-            .uri(self.inner.endpoint.as_str())
-            .header("fp-auth-token", self.inner.token.clone())
+            .uri(self.endpoint.as_str())
+            .header("fp-auth-token", self.token.clone())
             .body(())?;
 
         let (conn_id_sender, conn_id_receiver) = watch::channel(None);
         let ws = ReconnectingWebSocket::builder(request)?
-            .max_retries(self.inner.max_retries)
+            .max_retries(self.max_retries)
             .connect_response_handler(move |response| {
                 let conn_id = response
                     .headers()
@@ -409,7 +399,7 @@ impl ProxyService {
         let op_id = message.op_id;
 
         // Try to create the runtime for the given data source
-        let data_source = match self.inner.data_sources.get(&message.data_source_name) {
+        let data_source = match self.data_sources.get(&message.data_source_name) {
             Some(data_source) => data_source.clone(),
             None => {
                 error!("received relay message for unknown data source");
@@ -420,8 +410,8 @@ impl ProxyService {
             }
         };
 
-        let runtime: Runtime = match &self.inner.wasm_modules[&data_source.provider_type] {
-            Ok(runtime) => runtime.clone(),
+        let runtime = match &self.wasm_modules[&data_source.provider_type] {
+            Ok(runtime) => runtime,
             Err(error) => {
                 return ProxyMessage::Error(ErrorMessage {
                     op_id,
@@ -476,7 +466,6 @@ impl ProxyService {
         individual_check_task_queue_tx: UnboundedSender<DataSourceCheckTask>,
     ) {
         let update = self
-            .inner
             .data_sources
             .iter()
             .find(|(name, _)| *name == task.name())
@@ -516,8 +505,7 @@ impl ProxyService {
             .unwrap()
             .await;
 
-        self.inner
-            .data_sources_state
+        self.data_sources_state
             .lock()
             .await
             .insert(update.name.clone(), update);
@@ -528,14 +516,13 @@ impl ProxyService {
         to_check_task_queue: UnboundedSender<DataSourceCheckTask>,
     ) {
         join_all(
-            self.inner
-                .data_sources
+            self.data_sources
                 .iter()
                 .zip(std::iter::repeat(to_check_task_queue))
                 .map(|((name, _), to_check_task_queue)| async move {
                     let task = DataSourceCheckTask::new(
                         name.clone(),
-                        self.inner.status_check_interval,
+                        self.status_check_interval,
                         Duration::from_secs(10),
                         1.5,
                     );
