@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 use url::Url;
 
 mod metrics;
+mod providers;
 mod service;
 #[cfg(test)]
 mod tests;
@@ -130,7 +131,8 @@ async fn main() {
         args.listen_address,
         args.status_check_interval.0,
     )
-    .await;
+    .await
+        .unwrap();
 
     let (shutdown, _) = tokio::sync::broadcast::channel(3);
 

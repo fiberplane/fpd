@@ -6,7 +6,7 @@ use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*
 use fiberplane::provider_bindings::{
     Blob, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
 };
-use fiberplane::provider_runtime::spec::{types::ProviderRequest, Runtime};
+use fiberplane::provider_runtime::spec::{types::ProviderRequest};
 use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
 use hyper::service::{make_service_fn, service_fn};
@@ -16,10 +16,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, time::Duration};
+use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex;
 use tokio::sync::{broadcast::Sender, watch};
-use tokio::{fs, time::interval};
+use tokio::{time::interval};
 use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
 use tracing::{debug, error, info, info_span, instrument, trace, warn, Instrument, Span};
 use url::Url;
@@ -29,6 +30,7 @@ mod status_check;
 mod tests;
 
 use status_check::DataSourceCheckTask;
+use crate::providers::Providers;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -39,7 +41,6 @@ pub struct ProxyDataSource {
     pub description: Option<String>,
 }
 
-pub(crate) type WasmModules = HashMap<String, Result<Runtime, Error>>;
 const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 
 static STATUS_REQUEST_V1: Lazy<Vec<u8>> =
@@ -57,12 +58,18 @@ static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
     .unwrap()
 });
 
+#[derive(Clone)]
 pub struct ProxyService {
+    pub(crate) inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Inner {
     endpoint: Url,
     token: String,
     pub(crate) data_sources: HashMap<Name, ProxyDataSource>,
     data_sources_state: Mutex<HashMap<Name, UpsertProxyDataSource>>,
-    wasm_modules: WasmModules,
+    providers: Providers,
     max_retries: u32,
     listen_address: Option<SocketAddr>,
     status_check_interval: Duration,
@@ -78,7 +85,7 @@ impl ProxyService {
         max_retries: u32,
         listen_address: Option<SocketAddr>,
         status_check_interval: Duration,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let data_sources: HashMap<Name, ProxyDataSource> = data_sources
             .into_iter()
             .map(|data_source| (data_source.name.clone(), (data_source)))
@@ -87,23 +94,22 @@ impl ProxyService {
             .values()
             .map(|ds| ds.provider_type.clone())
             .collect();
-        let wasm_modules = load_wasm_modules(wasm_dir, provider_types).await;
 
-        ProxyService::new(
+        Ok(ProxyService::new(
             api_base,
             token,
-            wasm_modules,
+            Providers::from_dir(wasm_dir, provider_types).await?,
             data_sources,
             max_retries,
             listen_address,
             status_check_interval,
-        )
+        ))
     }
 
     pub(crate) fn new(
         api_base: Url,
         token: ProxyToken,
-        wasm_modules: WasmModules,
+        providers: Providers,
         data_sources: HashMap<Name, ProxyDataSource>,
         max_retries: u32,
         listen_address: Option<SocketAddr>,
@@ -122,14 +128,16 @@ impl ProxyService {
         }
 
         ProxyService {
-            endpoint,
-            token: token.token,
-            data_sources,
-            data_sources_state: Default::default(),
-            wasm_modules,
-            max_retries,
-            listen_address,
-            status_check_interval,
+            inner: Arc::new(Inner {
+                endpoint,
+                token: token.token,
+                data_sources,
+                data_sources_state: Default::default(),
+                providers,
+                max_retries,
+                listen_address,
+                status_check_interval,
+            })
         }
     }
 
@@ -139,6 +147,7 @@ impl ProxyService {
     pub async fn to_data_sources_proxy_message(&self) -> SetDataSourcesMessage {
         SetDataSourcesMessage {
             data_sources: self
+                .inner
                 .data_sources_state
                 .lock()
                 .await
@@ -151,7 +160,7 @@ impl ProxyService {
     /// Delegate to access the current state of a single data source by name
     #[instrument(err, skip(self))]
     pub async fn data_source_state(&self, name: &Name) -> Result<UpsertProxyDataSource> {
-        self.data_sources_state
+        self.inner.data_sources_state
             .lock()
             .await
             .get(name)
@@ -161,7 +170,7 @@ impl ProxyService {
 
     #[instrument(err, skip_all)]
     pub async fn connect(&self, shutdown: Sender<()>) -> Result<()> {
-        info!("connecting to fiberplane: {}", self.endpoint);
+        info!("connecting to fiberplane: {}", self.inner.endpoint);
         let (ws, mut conn_id_receiver) = self.connect_websocket().await?;
         conn_id_receiver.borrow_and_update();
 
@@ -191,7 +200,7 @@ impl ProxyService {
 
         // Health check endpoints
         let ws_clone = ws.clone();
-        if let Some(listen_address) = self.listen_address {
+        if let Some(listen_address) = self.inner.listen_address {
             tokio::spawn(
                 async move {
                     if let Err(err) = serve_health_check_endpoints(listen_address, ws_clone).await {
@@ -211,7 +220,7 @@ impl ProxyService {
             unbounded_channel::<DataSourceCheckTask>();
         let data_source_check_task_tx_too = data_source_check_task_sender.clone();
         tokio::spawn(async move {
-            let mut status_check_interval = interval(service.status_check_interval);
+            let mut status_check_interval = interval(service.inner.status_check_interval);
             loop {
                 select! {
                     // Note that the first tick returns immediately
@@ -249,6 +258,7 @@ impl ProxyService {
                     _ = shutdown_clone.recv().fuse() => {
                         // Let the relay know that all of these data sources are going offline
                         let data_sources = service
+                            .inner
                             .data_sources
                             .values()
                             .map(|data_source| UpsertProxyDataSource {
@@ -347,13 +357,13 @@ impl ProxyService {
         // Create a request object. If this fails there is no point in
         // retrying so just return the error object.
         let request = http::Request::builder()
-            .uri(self.endpoint.as_str())
-            .header("fp-auth-token", self.token.clone())
+            .uri(self.inner.endpoint.as_str())
+            .header("fp-auth-token", self.inner.token.clone())
             .body(())?;
 
         let (conn_id_sender, conn_id_receiver) = watch::channel(None);
         let ws = ReconnectingWebSocket::builder(request)?
-            .max_retries(self.max_retries)
+            .max_retries(self.inner.max_retries)
             .connect_response_handler(move |response| {
                 let conn_id = response
                     .headers()
@@ -399,7 +409,7 @@ impl ProxyService {
         let op_id = message.op_id;
 
         // Try to create the runtime for the given data source
-        let data_source = match self.data_sources.get(&message.data_source_name) {
+        let data_source = match self.inner.data_sources.get(&message.data_source_name) {
             Some(data_source) => data_source.clone(),
             None => {
                 error!("received relay message for unknown data source");
@@ -410,7 +420,7 @@ impl ProxyService {
             }
         };
 
-        let runtime = match &self.wasm_modules[&data_source.provider_type] {
+        /*let runtime = match &self.wasm_modules[&data_source.provider_type] {
             Ok(runtime) => runtime,
             Err(error) => {
                 return ProxyMessage::Error(ErrorMessage {
@@ -418,7 +428,7 @@ impl ProxyService {
                     error: error.clone(),
                 });
             }
-        };
+        };*/
 
         // Track metrics
         let protocol_version = message.protocol_version.to_string();
@@ -435,8 +445,8 @@ impl ProxyService {
 
         debug!(%protocol_version, %data_source.provider_type, "Invoking provider");
         let result = match message.protocol_version {
-            1 => invoke_provider_v1(runtime, message.data, data_source.config.clone()).await,
-            2 => invoke_provider_v2(runtime, message.data, data_source.config.clone()).await,
+            1 => invoke_provider_v1(&self.inner.providers, &data_source.provider_type, message.data, data_source.config.clone()).await,
+            2 => invoke_provider_v2(&self.inner.providers, &data_source.provider_type, message.data, data_source.config.clone()).await,
             _ => Err(Error::Invocation {
                 message: format!("unsupported protocol version: {}", message.protocol_version),
             }),
@@ -466,6 +476,7 @@ impl ProxyService {
         individual_check_task_queue_tx: UnboundedSender<DataSourceCheckTask>,
     ) {
         let update = self
+            .inner
             .data_sources
             .iter()
             .find(|(name, _)| *name == task.name())
@@ -505,7 +516,8 @@ impl ProxyService {
             .unwrap()
             .await;
 
-        self.data_sources_state
+        self.inner
+            .data_sources_state
             .lock()
             .await
             .insert(update.name.clone(), update);
@@ -516,13 +528,15 @@ impl ProxyService {
         to_check_task_queue: UnboundedSender<DataSourceCheckTask>,
     ) {
         join_all(
-            self.data_sources
+            self
+                .inner
+                .data_sources
                 .iter()
                 .zip(std::iter::repeat(to_check_task_queue))
                 .map(|((name, _), to_check_task_queue)| async move {
                     let task = DataSourceCheckTask::new(
                         name.clone(),
-                        self.status_check_interval,
+                        self.inner.status_check_interval,
                         Duration::from_secs(10),
                         1.5,
                     );
@@ -626,38 +640,18 @@ impl ProxyService {
     }
 }
 
-async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> WasmModules {
-    let runtimes = join_all(provider_types.iter().map(|data_source_type| async move {
-        // Each provider's wasm module is found in the wasm_dir as data_source_type.wasm
-        let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
-        let wasm_module = fs::read(wasm_path).await.map_err(|err| {
-            error!("Error reading wasm file: {} {}", wasm_path.display(), err);
-            Error::Invocation {
-                message: format!("Error reading wasm file: {}", err),
-            }
-        })?;
-        Runtime::new(wasm_module).map_err(|err| {
-            error!("Error compiling wasm module: {}", err);
-            Error::Invocation {
-                message: format!("Error compiling wasm module: {}", err),
-            }
-        })
-    }))
-    .await;
-
-    provider_types.into_iter().zip(runtimes).collect()
-}
-
 async fn invoke_provider_v1(
-    runtime: Runtime,
+    providers: &Providers,
+    provider_type: &str,
     request: Vec<u8>,
     config: Map<String, Value>,
 ) -> Result<Vec<u8>, Error> {
     let config = rmp_serde::to_vec_named(&config).map_err(|err| Error::Config {
         message: format!("Error serializing config as JSON: {:?}", err),
     })?;
-    runtime
-        .invoke_raw(request, config)
+
+    providers
+        .invoke_raw(provider_type, request, config)
         .await
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
@@ -665,7 +659,8 @@ async fn invoke_provider_v1(
 }
 
 async fn invoke_provider_v2(
-    runtime: Runtime,
+    providers: &Providers,
+    provider_type: &str,
     request: Vec<u8>,
     config: Map<String, Value>,
 ) -> Result<Vec<u8>, Error> {
@@ -679,8 +674,9 @@ async fn invoke_provider_v2(
     let request = rmp_serde::to_vec_named(&request).map_err(|err| Error::Deserialization {
         message: format!("Error serializing request: {:?}", err),
     })?;
-    runtime
-        .invoke2_raw(request)
+
+    providers
+        .invoke2_raw(provider_type, request)
         .await
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),

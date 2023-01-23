@@ -1,4 +1,4 @@
-use crate::service::{ProxyDataSource, ProxyService, WasmModules};
+use crate::service::{ProxyDataSource, ProxyService};
 use fiberplane::base64uuid::Base64Uuid;
 use fiberplane::models::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
@@ -177,7 +177,8 @@ async fn sends_data_sources_on_connect() {
         None,
         Duration::from_secs(300),
     )
-    .await;
+    .await
+        .unwrap();
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
@@ -280,7 +281,8 @@ async fn checks_data_source_status_on_interval() {
         None,
         Duration::from_millis(200),
     )
-    .await;
+    .await
+        .unwrap();
 
     let handle_connection = async move {
         let (stream, _) = listener.accept().await.unwrap();
@@ -347,7 +349,7 @@ async fn sends_pings() {
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        WasmModules::new(),
+        Default::default(),
         Default::default(),
         5,
         None,
@@ -400,7 +402,7 @@ async fn health_check_endpoints() {
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        HashMap::new(),
+        Default::default(),
         HashMap::new(),
         5,
         Some(service_addr),
@@ -453,7 +455,7 @@ async fn returns_error_for_query_to_unknown_provider() {
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        WasmModules::new(),
+        Default::default(),
         Default::default(),
         5,
         None,
@@ -539,7 +541,8 @@ async fn calls_provider_with_query_and_sends_result() {
         None,
         Duration::from_secs(300),
     )
-    .await;
+    .await
+        .unwrap();
 
     // After the proxy connects, send it a query
     let handle_connection = async move {
@@ -631,7 +634,8 @@ async fn handles_multiple_concurrent_messages() {
         None,
         Duration::from_secs(300),
     )
-    .await;
+    .await
+    .unwrap();
 
     // After the proxy connects, send it a query
     let handle_connection = async move {
@@ -736,7 +740,8 @@ async fn calls_provider_with_query_and_sends_error() {
         None,
         Duration::from_secs(300),
     )
-    .await;
+    .await
+    .unwrap();
 
     // After the proxy connects, send it a query
     let handle_connection = async move {
@@ -801,7 +806,7 @@ async fn reconnects_if_websocket_closes() {
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        WasmModules::new(),
+        Default::default(),
         Default::default(),
         1,
         None,
@@ -855,7 +860,7 @@ async fn service_shutdown() {
     let service = ProxyService::new(
         format!("ws://{}", addr).parse().unwrap(),
         TOKEN.clone(),
-        WasmModules::new(),
+        Default::default(),
         Default::default(),
         1,
         None,
