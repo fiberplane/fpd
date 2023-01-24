@@ -54,14 +54,24 @@ pub fn create_cells(
     runtime: &Runtime,
     query_type: &String,
     response: Vec<u8>,
-) -> Result<Vec<Cell>, Error> {
+) -> Result<Vec<u8>, Error> {
     // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
-    runtime
+    let result = runtime
         .create_cells_raw(serialize_to_vec(query_type), response)
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
-        })
-        .and_then(|ref result| deserialize_from_slice(result))
+        })?;
+
+    #[cfg(debug_assertions)]
+    {
+        // Testing that result is indeed deserializable to a Vec<Cell> despite
+        // using loosely typed API to reduce ser-de cost
+        //
+        // This will panic in debug builds
+        deserialize_from_slice::<Vec<Cell>>(&result);
+    }
+
+    Ok(result)
 }
 
 pub fn extract_data(
@@ -82,27 +92,47 @@ pub fn extract_data(
         })
 }
 
-pub fn get_config_schema(runtime: &Runtime) -> Result<ConfigSchema, Error> {
+pub fn get_config_schema(runtime: &Runtime) -> Result<Vec<u8>, Error> {
     // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
-    runtime
+    let result = runtime
         .get_config_schema_raw()
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
-        })
-        .and_then(|ref result| deserialize_from_slice(result))
+        })?;
+
+    #[cfg(debug_assertions)]
+    {
+        // Testing that result is indeed deserializable to a ConfigSchema despite
+        // using loosely typed API to reduce ser-de cost
+        //
+        // This will panic in debug builds
+        deserialize_from_slice::<ConfigSchema>(&result);
+    }
+
+    Ok(result)
 }
 
 pub async fn get_supported_query_types(
     runtime: &Runtime,
     config: &Map<String, Value>,
-) -> Result<Vec<SupportedQueryType>, Error> {
+) -> Result<Vec<u8>, Error> {
     let config = Value::Object(config.clone());
     // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
-    runtime
+    let result = runtime
         .get_supported_query_types_raw(serialize_to_vec(&config))
         .await
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
-        })
-        .and_then(|ref result| deserialize_from_slice(result))
+        })?;
+
+    #[cfg(debug_assertions)]
+    {
+        // Testing that result is indeed deserializable to a Vec<SupportedQueryType> despite
+        // using loosely typed API to reduce ser-de cost
+        //
+        // This will panic in debug builds
+        deserialize_from_slice::<Vec<SupportedQueryType>>(&result);
+    }
+
+    Ok(result)
 }
