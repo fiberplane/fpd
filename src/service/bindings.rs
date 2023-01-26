@@ -1,15 +1,16 @@
 //! Library of fiberplane-provider-protocol binding wrappers
 
 use fiberplane::{
-    models::providers::ConfigSchema,
-    provider_bindings::{
-        host::mem::{deserialize_from_slice, serialize_to_vec},
-        Blob, Cell, Error, ProviderRequest, SupportedQueryType,
-    },
+    // models::providers::ConfigSchema,
+    provider_bindings::host::mem::{deserialize_from_slice, serialize_to_vec},
+    provider_bindings::{Blob, Cell, ConfigSchema, Error, ProviderRequest, SupportedQueryType},
     provider_runtime::spec::Runtime,
 };
 use serde_json::{Map, Value};
 use tracing::trace;
+
+mod converters;
+use converters::SpecToBinding as _;
 
 pub async fn invoke_provider_v1(
     runtime: &Runtime,
@@ -53,44 +54,38 @@ pub async fn invoke_provider_v2(
 pub fn create_cells(
     runtime: &Runtime,
     query_type: &String,
-    response: Vec<u8>,
+    response: Blob,
 ) -> Result<Result<Vec<Cell>, Error>, Error> {
-    // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
     runtime
-        .create_cells_raw(serialize_to_vec(query_type), response)
+        .create_cells(query_type.to_string(), response)
+        .map(|res| res.map_err(|inner_err| inner_err.convert()))
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
         })
-        .and_then(|ref result| deserialize_from_slice(result))
 }
 
 pub fn extract_data(
     runtime: &Runtime,
-    response: Vec<u8>,
+    response: Blob,
     mime_type: &String,
     query: &Option<String>,
 ) -> Result<Result<Blob, Error>, Error> {
-    // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
     runtime
-        .extract_data_raw(
-            response,
-            serialize_to_vec(mime_type),
-            serialize_to_vec(query),
-        )
+        .extract_data(response, mime_type.to_string(), query.clone())
+        .map(|res| res.map_err(|inner_err| inner_err.convert()))
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
         })
-        .and_then(|ref result| deserialize_from_slice(result))
 }
 
 pub fn get_config_schema(runtime: &Runtime) -> Result<ConfigSchema, Error> {
     // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
     runtime
-        .get_config_schema_raw()
+        .get_config_schema()
+        .map(|val| val.convert())
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {:?}", err),
         })
-        .and_then(|ref result| deserialize_from_slice(result))
 }
 
 pub async fn get_supported_query_types(

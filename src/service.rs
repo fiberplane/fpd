@@ -144,17 +144,16 @@ impl ProxyService {
     /// Return a suitable ProxyMessage payload informing of the current
     /// state of all data sources.
     #[instrument(skip_all)]
-    pub async fn to_data_sources_proxy_message(&self) -> SetDataSourcesMessage {
-        SetDataSourcesMessage {
-            data_sources: self
-                .inner
+    pub async fn to_data_sources_proxy_message(&self) -> ProxyMessage {
+        ProxyMessage::new_set_data_sources_notification(
+            self.inner
                 .data_sources_state
                 .lock()
                 .await
                 .values()
                 .cloned()
                 .collect(),
-        }
+        )
     }
 
     /// Delegate to access the current state of a single data source by name
@@ -229,9 +228,8 @@ impl ProxyService {
                         service.update_all_data_sources(data_source_check_task_sender.clone()).await;
                         // Update data sources will both try to connect and automatically queue individual retries to the
                         // `data_source_check_task_receiver` queue with the correct delay if necessary
-                        let data_sources = service.to_data_sources_proxy_message().await;
-                        debug!("sending data sources to relay: {:?}", data_sources);
-                        let message = ProxyMessage::set_data_sources(data_sources);
+                        let message = service.to_data_sources_proxy_message().await;
+                        debug!("sending data sources to relay: {:?}", message);
                         data_sources_sender.send(message).ok();
                     }
                     // A status check for a data source failed, and
@@ -250,9 +248,8 @@ impl ProxyService {
                                 Err(err) => warn!("retried connecting to {}: {err}", source_name),
                             }
 
-                            let data_sources = service.to_data_sources_proxy_message().await;
-                            debug!("sending data sources to relay: {:?}", data_sources);
-                            let message = ProxyMessage::set_data_sources(data_sources);
+                            let message = service.to_data_sources_proxy_message().await;
+                            debug!("sending data sources to relay: {:?}", message);
                             data_sources_sender.send(message).ok();
                         }
                     }
@@ -270,7 +267,7 @@ impl ProxyService {
                                 status: DataSourceStatus::Error(Error::ProxyDisconnected),
                             })
                             .collect();
-                        let message = ProxyMessage::set_data_sources(SetDataSourcesMessage{ data_sources });
+                        let message = ProxyMessage::new_set_data_sources_notification(data_sources);
                         data_sources_sender.send(message).ok();
 
                         break;
@@ -418,24 +415,14 @@ impl ProxyService {
             None => {
                 error!("received relay message for unknown data source");
 
-                return Ok(ProxyMessage::error(
-                    ErrorMessage {
-                        error: Error::NotFound,
-                    },
-                    op_id,
-                ));
+                return Ok(ProxyMessage::new_error_response(Error::NotFound, op_id));
             }
         };
 
         let runtime: Runtime = match &self.inner.wasm_modules[&data_source.provider_type] {
             Ok(runtime) => runtime.clone(),
             Err(error) => {
-                return Ok(ProxyMessage::error(
-                    ErrorMessage {
-                        error: error.clone(),
-                    },
-                    op_id,
-                ));
+                return Ok(ProxyMessage::new_error_response(error.clone(), op_id));
             }
         };
 
@@ -454,11 +441,11 @@ impl ProxyService {
 
         debug!(%protocol_version, %data_source.provider_type, "Invoking provider");
         let response = match (message.protocol_version, message.payload) {
-            (1, ServerMessagePayload::InvokeProxy(message)) => {
+            (1, ServerMessagePayload::Invoke(message)) => {
                 self.handle_invoke_proxy_message_v1(message, runtime, &data_source, op_id)
                     .await
             }
-            (2, ServerMessagePayload::InvokeProxy(message)) => {
+            (2, ServerMessagePayload::Invoke(message)) => {
                 self.handle_invoke_proxy_message_v2(message, runtime, &data_source, op_id)
                     .await
             }
@@ -468,21 +455,19 @@ impl ProxyService {
             (2, ServerMessagePayload::ExtractData(message)) => {
                 self.handle_extract_data_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::ConfigSchema(message)) => {
+            (2, ServerMessagePayload::GetConfigSchema(message)) => {
                 self.handle_config_schema_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::SupportedQueryTypes(message)) => {
+            (2, ServerMessagePayload::GetSupportedQueryTypes(message)) => {
                 self.handle_supported_query_types(message, runtime, &data_source, op_id)
                     .await
             }
-            (_, payload) => ProxyMessage::error(
-                ErrorMessage {
-                    error: Error::Invocation {
-                        message: format!(
-                            "unsupported (protocol version, payload) pair: ({}, {:?})",
-                            message.protocol_version, payload
-                        ),
-                    },
+            (_, payload) => ProxyMessage::new_error_response(
+                Error::Invocation {
+                    message: format!(
+                        "unsupported (protocol version, payload) pair: ({}, {:?})",
+                        message.protocol_version, payload
+                    ),
                 },
                 op_id,
             ),
@@ -500,7 +485,7 @@ impl ProxyService {
     ))]
     async fn handle_invoke_proxy_message_v1(
         &self,
-        message: InvokeProxyMessage,
+        message: InvokeRequest,
         runtime: Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
@@ -508,10 +493,8 @@ impl ProxyService {
         let result =
             bindings::invoke_provider_v1(&runtime, message.data, data_source.config.clone()).await;
         match result {
-            Ok(response) => {
-                ProxyMessage::invoke_proxy(InvokeProxyResponseMessage { data: response }, op_id)
-            }
-            Err(error) => ProxyMessage::error(ErrorMessage { error }, op_id),
+            Ok(response) => ProxyMessage::new_invoke_proxy_response(response, op_id),
+            Err(error) => ProxyMessage::new_error_response(error, op_id),
         }
     }
 
@@ -521,7 +504,7 @@ impl ProxyService {
     ))]
     async fn handle_invoke_proxy_message_v2(
         &self,
-        message: InvokeProxyMessage,
+        message: InvokeRequest,
         runtime: Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
@@ -529,10 +512,8 @@ impl ProxyService {
         let result =
             bindings::invoke_provider_v2(&runtime, message.data, data_source.config.clone()).await;
         match result {
-            Ok(response) => {
-                ProxyMessage::invoke_proxy(InvokeProxyResponseMessage { data: response }, op_id)
-            }
-            Err(error) => ProxyMessage::error(ErrorMessage { error }, op_id),
+            Ok(response) => ProxyMessage::new_invoke_proxy_response(response, op_id),
+            Err(error) => ProxyMessage::new_error_response(error, op_id),
         }
     }
 
@@ -542,15 +523,15 @@ impl ProxyService {
     ))]
     fn handle_create_cells_proxy_message(
         &self,
-        message: CreateCellsMessage,
+        message: CreateCellsRequest,
         runtime: Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
         let result = bindings::create_cells(&runtime, &message.query_type, message.response);
         match result {
-            Ok(cells) => ProxyMessage::create_cells(CreateCellsResponseMessage { cells }, op_id),
-            Err(error) => ProxyMessage::error(ErrorMessage { error }, op_id),
+            Ok(cells) => ProxyMessage::new_create_cells_response(cells, op_id),
+            Err(error) => ProxyMessage::new_error_response(error, op_id),
         }
     }
 
@@ -560,7 +541,7 @@ impl ProxyService {
     ))]
     fn handle_extract_data_proxy_message(
         &self,
-        message: ExtractDataMessage,
+        message: ExtractDataRequest,
         runtime: Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
@@ -572,8 +553,8 @@ impl ProxyService {
             &message.query,
         );
         match result {
-            Ok(data) => ProxyMessage::extract_data(ExtractDataResponseMessage { data }, op_id),
-            Err(error) => ProxyMessage::error(ErrorMessage { error }, op_id),
+            Ok(data) => ProxyMessage::new_extract_data_response(data, op_id),
+            Err(error) => ProxyMessage::new_error_response(error, op_id),
         }
     }
 
@@ -583,17 +564,15 @@ impl ProxyService {
     ))]
     fn handle_config_schema_proxy_message(
         &self,
-        _message: ConfigSchemaMessage,
+        _message: GetConfigSchemaRequest,
         runtime: Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
         let result = bindings::get_config_schema(&runtime);
         match result {
-            Ok(schema) => {
-                ProxyMessage::config_schema(ConfigSchemaResponseMessage { schema }, op_id)
-            }
-            Err(error) => ProxyMessage::error(ErrorMessage { error }, op_id),
+            Ok(schema) => ProxyMessage::new_config_schema_response(schema, op_id),
+            Err(error) => ProxyMessage::new_error_response(error, op_id),
         }
     }
 
@@ -603,18 +582,15 @@ impl ProxyService {
     ))]
     async fn handle_supported_query_types(
         &self,
-        _message: SupportedQueryTypesMessage,
+        _message: GetSupportedQueryTypesRequest,
         runtime: Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
         let result = bindings::get_supported_query_types(&runtime, &data_source.config).await;
         match result {
-            Ok(queries) => ProxyMessage::supported_query_types(
-                SupportedQueryTypesResponseMessage { queries },
-                op_id,
-            ),
-            Err(error) => ProxyMessage::error(ErrorMessage { error }, op_id),
+            Ok(queries) => ProxyMessage::new_supported_query_types_response(queries, op_id),
+            Err(error) => ProxyMessage::new_error_response(error, op_id),
         }
     }
 
@@ -706,10 +682,8 @@ impl ProxyService {
             "Using protocol v1 to check provider status: {}",
             &data_source_name
         );
-        let message = ServerMessage::invoke_proxy(
-            InvokeProxyMessage {
-                data: STATUS_REQUEST_V1.clone(),
-            },
+        let message = ServerMessage::new_invoke_proxy_request(
+            STATUS_REQUEST_V1.clone(),
             data_source_name,
             1,
             Base64Uuid::new(),
@@ -772,10 +746,8 @@ impl ProxyService {
             "Using protocol v2 to check provider status: {}",
             &data_source_name
         );
-        let message = ServerMessage::invoke_proxy(
-            InvokeProxyMessage {
-                data: STATUS_REQUEST_V2.clone(),
-            },
+        let message = ServerMessage::new_invoke_proxy_request(
+            STATUS_REQUEST_V2.clone(),
             data_source_name.clone(),
             2,
             Base64Uuid::new(),

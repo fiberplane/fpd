@@ -477,10 +477,8 @@ async fn returns_error_for_query_to_unknown_provider() {
         ws.next().await.unwrap().unwrap();
 
         let op_id = Base64Uuid::new();
-        let message = ServerMessage::invoke_proxy(
-            InvokeProxyMessage {
-                data: b"fake payload".to_vec(),
-            },
+        let message = ServerMessage::new_invoke_proxy_request(
+            b"fake payload".to_vec(),
             Name::from_static("data-source-1"),
             1,
             op_id,
@@ -570,10 +568,8 @@ async fn calls_provider_with_query_and_sends_result() {
             config: Value::Null,
             previous_response: None,
         };
-        let message = ServerMessage::invoke_proxy(
-            InvokeProxyMessage {
-                data: rmp_serde::to_vec(&request).unwrap(),
-            },
+        let message = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&request).unwrap(),
             Name::from_static("prometheus-dev"),
             2,
             op_id,
@@ -656,19 +652,17 @@ async fn handles_multiple_concurrent_messages() {
 
         // Send two queries
         let op_1 = Base64Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
-        let message_1 = ServerMessage::invoke_proxy(
-            InvokeProxyMessage {
-                data: rmp_serde::to_vec(&ProviderRequest {
-                    query_type: "x-instants".to_string(),
-                    query_data: Blob {
-                        data: b"q=query1".to_vec().into(),
-                        mime_type: "application/x-www-form-urlencoded".to_string(),
-                    },
-                    config: Value::Null,
-                    previous_response: None,
-                })
-                .unwrap(),
-            },
+        let message_1 = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&ProviderRequest {
+                query_type: "x-instants".to_string(),
+                query_data: Blob {
+                    data: b"q=query1".to_vec().into(),
+                    mime_type: "application/x-www-form-urlencoded".to_string(),
+                },
+                config: Value::Null,
+                previous_response: None,
+            })
+            .unwrap(),
             Name::from_static("prometheus-dev"),
             2,
             op_1,
@@ -677,19 +671,17 @@ async fn handles_multiple_concurrent_messages() {
         ws.send(Message::Binary(message_1)).await.unwrap();
 
         let op_2 = Base64Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
-        let message_2 = ServerMessage::invoke_proxy(
-            InvokeProxyMessage {
-                data: rmp_serde::to_vec(&ProviderRequest {
-                    query_type: TIMESERIES_QUERY_TYPE.to_string(),
-                    query_data: Blob {
-                        data: b"q=query2".to_vec().into(),
-                        mime_type: "application/x-www-form-urlencoded".to_string(),
-                    },
-                    config: Value::Null,
-                    previous_response: None,
-                })
-                .unwrap(),
-            },
+        let message_2 = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&ProviderRequest {
+                query_type: TIMESERIES_QUERY_TYPE.to_string(),
+                query_data: Blob {
+                    data: b"q=query2".to_vec().into(),
+                    mime_type: "application/x-www-form-urlencoded".to_string(),
+                },
+                config: Value::Null,
+                previous_response: None,
+            })
+            .unwrap(),
             Name::from_static("prometheus-dev"),
             2,
             op_2,
@@ -775,10 +767,8 @@ async fn calls_provider_with_query_and_sends_error() {
             config: Value::Null,
             previous_response: None,
         };
-        let message = ServerMessage::invoke_proxy(
-            InvokeProxyMessage {
-                data: rmp_serde::to_vec(&request).unwrap(),
-            },
+        let message = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&request).unwrap(),
             Name::from_static("prometheus-dev"),
             2,
             op_id,
