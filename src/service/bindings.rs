@@ -1,7 +1,6 @@
 //! Library of fiberplane-provider-protocol binding wrappers
 
 use fiberplane::{
-    // models::providers::ConfigSchema,
     provider_bindings::host::mem::{deserialize_from_slice, serialize_to_vec},
     provider_bindings::{Blob, Cell, ConfigSchema, Error, ProviderRequest, SupportedQueryType},
     provider_runtime::spec::Runtime,
@@ -13,7 +12,7 @@ mod converters;
 use converters::SpecToBinding as _;
 
 pub async fn invoke_provider_v1(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     request: Vec<u8>,
     config: Map<String, Value>,
 ) -> Result<Vec<u8>, Error> {
@@ -29,7 +28,7 @@ pub async fn invoke_provider_v1(
 }
 
 pub async fn invoke_provider_v2(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     request: Vec<u8>,
     config: Map<String, Value>,
 ) -> Result<Vec<u8>, Error> {
@@ -52,7 +51,7 @@ pub async fn invoke_provider_v2(
 }
 
 pub fn create_cells(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     query_type: &String,
     response: Blob,
 ) -> Result<Result<Vec<Cell>, Error>, Error> {
@@ -65,7 +64,7 @@ pub fn create_cells(
 }
 
 pub fn extract_data(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     response: Blob,
     mime_type: &String,
     query: &Option<String>,
@@ -78,7 +77,7 @@ pub fn extract_data(
         })
 }
 
-pub fn get_config_schema(runtime: &Runtime) -> Result<ConfigSchema, Error> {
+pub fn get_config_schema(runtime: &mut Runtime) -> Result<ConfigSchema, Error> {
     // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
     runtime
         .get_config_schema()
@@ -89,7 +88,7 @@ pub fn get_config_schema(runtime: &Runtime) -> Result<ConfigSchema, Error> {
 }
 
 pub async fn get_supported_query_types(
-    runtime: &Runtime,
+    runtime: &mut Runtime,
     config: &Map<String, Value>,
 ) -> Result<Vec<SupportedQueryType>, Error> {
     let config = Value::Object(config.clone());
