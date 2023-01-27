@@ -9,7 +9,7 @@ authors = ["Fiberplane <info@fiberplane.com>"]
 anyhow = "1.0.44"
 clap = { version = "3.0.0", features = ["derive", "env"] }
 ctrlc = "3.2.1"
-fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "main", features = [
+fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "revert-to-wasmer-2", features = [
   "base64uuid-creation",
   "models",
   "provider-bindings",
