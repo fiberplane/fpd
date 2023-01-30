@@ -267,6 +267,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "0.1.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-2619-cloudwatch-provider#569e1fa7f228d5671457642b3e356e23b241c89c"
 dependencies = [
  "base64",
  "serde",
@@ -827,6 +828,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "0.1.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-2619-cloudwatch-provider#569e1fa7f228d5671457642b3e356e23b241c89c"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -837,6 +839,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-models"
 version = "0.1.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-2619-cloudwatch-provider#569e1fa7f228d5671457642b3e356e23b241c89c"
 dependencies = [
  "base64",
  "base64uuid",
@@ -857,6 +860,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-bindings"
 version = "2.0.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-2619-cloudwatch-provider#569e1fa7f228d5671457642b3e356e23b241c89c"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -872,6 +876,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-runtime"
 version = "2.0.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fp-2619-cloudwatch-provider#569e1fa7f228d5671457642b3e356e23b241c89c"
 dependencies = [
  "bytes",
  "fiberplane-models",
