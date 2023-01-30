@@ -726,7 +726,7 @@ impl ProxyService {
             }
             _ => {
                 return Err(Error::Other {
-                    message: format!("Unexpected response from provider: {:?}", response),
+                    message: format!("Unexpected response from provider: {response:?}"),
                 });
             }
         };
@@ -759,10 +759,10 @@ impl ProxyService {
             }),
             Ok(LegacyProviderResponse::Error { error }) => Err(error),
             Err(err) => Err(Error::Deserialization {
-                message: format!("Error deserializing provider response: {:?}", err),
+                message: format!("Error deserializing provider response: {err:?}"),
             }),
             _ => Err(Error::Other {
-                message: format!("Unexpected provider response: {:?}", response),
+                message: format!("Unexpected provider response: {response:?}"),
             }),
         }
     }
@@ -790,7 +790,7 @@ impl ProxyService {
                 let result: Result<Blob, Error> =
                     rmp_serde::from_slice(&response.data).map_err(|err| {
                         Error::Deserialization {
-                            message: format!("Error deserializing provider response: {}", err),
+                            message: format!("Error deserializing provider response: {err}"),
                         }
                     })?;
                 result?;
@@ -798,7 +798,7 @@ impl ProxyService {
             }
             ProxyMessagePayload::Error(err) => Err(err.error),
             message => Err(Error::Invocation {
-                message: format!("Unexpected provider response: {:?}", message),
+                message: format!("Unexpected provider response: {message:?}"),
             }),
         }
     }
@@ -807,17 +807,17 @@ impl ProxyService {
 async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> WasmModules {
     let runtimes = join_all(provider_types.iter().map(|data_source_type| async move {
         // Each provider's wasm module is found in the wasm_dir as data_source_type.wasm
-        let wasm_path = &wasm_dir.join(&format!("{}.wasm", &data_source_type));
+        let wasm_path = &wasm_dir.join(format!("{}.wasm", &data_source_type));
         let wasm_module = fs::read(wasm_path).await.map_err(|err| {
             error!("Error reading wasm file: {} {}", wasm_path.display(), err);
             Error::Invocation {
-                message: format!("Error reading wasm file: {}", err),
+                message: format!("Error reading wasm file: {err}"),
             }
         })?;
         Runtime::new(wasm_module).map_err(|err| {
             error!("Error compiling wasm module: {}", err);
             Error::Invocation {
-                message: format!("Error compiling wasm module: {}", err),
+                message: format!("Error compiling wasm module: {err}"),
             }
         })
     }))
@@ -865,7 +865,7 @@ async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocke
                             Ok(metrics) => (StatusCode::OK, Body::from(metrics)),
                             Err(err) => (
                                 StatusCode::INTERNAL_SERVER_ERROR,
-                                Body::from(format!("Error exporting metrics: {}", err)),
+                                Body::from(format!("Error exporting metrics: {err}")),
                             ),
                         },
                         (_, _) => (StatusCode::NOT_FOUND, Body::empty()),
