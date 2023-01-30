@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use tracing::trace;
 
 pub async fn invoke_provider_v1(
-    runtime: &mut Runtime,
+    runtime: &Runtime,
     request: Vec<u8>,
     config: Map<String, Value>,
 ) -> Result<Vec<u8>, Error> {
@@ -25,7 +25,7 @@ pub async fn invoke_provider_v1(
 }
 
 pub async fn invoke_provider_v2(
-    runtime: &mut Runtime,
+    runtime: &Runtime,
     request: Vec<u8>,
     config: Map<String, Value>,
 ) -> Result<Vec<u8>, Error> {
@@ -48,7 +48,7 @@ pub async fn invoke_provider_v2(
 }
 
 pub fn create_cells(
-    runtime: &mut Runtime,
+    runtime: &Runtime,
     query_type: &String,
     response: Blob,
 ) -> Result<Result<Vec<Cell>, Error>, Error> {
@@ -60,7 +60,7 @@ pub fn create_cells(
 }
 
 pub fn extract_data(
-    runtime: &mut Runtime,
+    runtime: &Runtime,
     response: Blob,
     mime_type: &String,
     query: &Option<String>,
@@ -72,7 +72,7 @@ pub fn extract_data(
         })
 }
 
-pub fn get_config_schema(runtime: &mut Runtime) -> Result<ConfigSchema, Error> {
+pub fn get_config_schema(runtime: &Runtime) -> Result<ConfigSchema, Error> {
     // Using the raw wrapper here to avoid deserialing response to Blob, before re-serializing it to Vec<u8> for the call
     runtime
         .get_config_schema()
@@ -82,7 +82,7 @@ pub fn get_config_schema(runtime: &mut Runtime) -> Result<ConfigSchema, Error> {
 }
 
 pub async fn get_supported_query_types(
-    runtime: &mut Runtime,
+    runtime: &Runtime,
     config: &Map<String, Value>,
 ) -> Result<Vec<SupportedQueryType>, Error> {
     let config = Value::Object(config.clone());

@@ -40,7 +40,7 @@ pub struct ProxyDataSource {
     pub description: Option<String>,
 }
 
-pub(crate) type WasmModules = HashMap<String, Result<Arc<Mutex<Runtime>>, Error>>;
+pub(crate) type WasmModules = HashMap<String, Result<Runtime, Error>>;
 const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 
 static STATUS_REQUEST_V1: Lazy<Vec<u8>> =
@@ -419,13 +419,13 @@ impl ProxyService {
             }
         };
 
-        let mut locked_runtime = match self
+        let runtime = match self
             .inner
             .wasm_modules
             .get(&data_source.provider_type)
             .unwrap()
         {
-            Ok(runtime) => runtime.lock().await,
+            Ok(runtime) => runtime,
             Err(error) => {
                 return Ok(ProxyMessage::new_error_response(error.clone(), op_id));
             }
@@ -447,46 +447,24 @@ impl ProxyService {
         debug!(%protocol_version, %data_source.provider_type, "Invoking provider");
         let response = match (message.protocol_version, message.payload) {
             (1, ServerMessagePayload::Invoke(message)) => {
-                self.handle_invoke_proxy_message_v1(
-                    message,
-                    &mut locked_runtime,
-                    &data_source,
-                    op_id,
-                )
-                .await
+                self.handle_invoke_proxy_message_v1(message, runtime, &data_source, op_id)
+                    .await
             }
             (2, ServerMessagePayload::Invoke(message)) => {
-                self.handle_invoke_proxy_message_v2(
-                    message,
-                    &mut locked_runtime,
-                    &data_source,
-                    op_id,
-                )
-                .await
+                self.handle_invoke_proxy_message_v2(message, runtime, &data_source, op_id)
+                    .await
             }
-            (2, ServerMessagePayload::CreateCells(message)) => self
-                .handle_create_cells_proxy_message(
-                    message,
-                    &mut locked_runtime,
-                    &data_source,
-                    op_id,
-                ),
-            (2, ServerMessagePayload::ExtractData(message)) => self
-                .handle_extract_data_proxy_message(
-                    message,
-                    &mut locked_runtime,
-                    &data_source,
-                    op_id,
-                ),
-            (2, ServerMessagePayload::GetConfigSchema(message)) => self
-                .handle_config_schema_proxy_message(
-                    message,
-                    &mut locked_runtime,
-                    &data_source,
-                    op_id,
-                ),
+            (2, ServerMessagePayload::CreateCells(message)) => {
+                self.handle_create_cells_proxy_message(message, runtime, &data_source, op_id)
+            }
+            (2, ServerMessagePayload::ExtractData(message)) => {
+                self.handle_extract_data_proxy_message(message, runtime, &data_source, op_id)
+            }
+            (2, ServerMessagePayload::GetConfigSchema(message)) => {
+                self.handle_config_schema_proxy_message(message, runtime, &data_source, op_id)
+            }
             (2, ServerMessagePayload::GetSupportedQueryTypes(message)) => {
-                self.handle_supported_query_types(message, &mut locked_runtime, &data_source, op_id)
+                self.handle_supported_query_types(message, runtime, &data_source, op_id)
                     .await
             }
             (_, payload) => ProxyMessage::new_error_response(
@@ -513,7 +491,7 @@ impl ProxyService {
     async fn handle_invoke_proxy_message_v1(
         &self,
         message: InvokeRequest,
-        runtime: &mut Runtime,
+        runtime: &Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
@@ -532,7 +510,7 @@ impl ProxyService {
     async fn handle_invoke_proxy_message_v2(
         &self,
         message: InvokeRequest,
-        runtime: &mut Runtime,
+        runtime: &Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
@@ -551,7 +529,7 @@ impl ProxyService {
     fn handle_create_cells_proxy_message(
         &self,
         message: CreateCellsRequest,
-        runtime: &mut Runtime,
+        runtime: &Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
@@ -569,7 +547,7 @@ impl ProxyService {
     fn handle_extract_data_proxy_message(
         &self,
         message: ExtractDataRequest,
-        runtime: &mut Runtime,
+        runtime: &Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
@@ -592,7 +570,7 @@ impl ProxyService {
     fn handle_config_schema_proxy_message(
         &self,
         _message: GetConfigSchemaRequest,
-        runtime: &mut Runtime,
+        runtime: &Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
@@ -610,7 +588,7 @@ impl ProxyService {
     async fn handle_supported_query_types(
         &self,
         _message: GetSupportedQueryTypesRequest,
-        runtime: &mut Runtime,
+        runtime: &Runtime,
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
@@ -823,11 +801,7 @@ async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> Wasm
     }))
     .await;
 
-    provider_types
-        .into_iter()
-        .zip(runtimes)
-        .map(|(prov, runtime)| (prov, runtime.map(|val| Arc::new(Mutex::new(val)))))
-        .collect()
+    provider_types.into_iter().zip(runtimes).collect()
 }
 fn get_protocol_version(provider_type: &str) -> u8 {
     if V1_PROVIDERS.contains(&provider_type) {
