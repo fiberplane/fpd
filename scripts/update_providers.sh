@@ -6,7 +6,7 @@ PROVIDERS=(
     "loki"
     "sentry"
     "https"
-    "aws_cloudwatch"
+    "cloudwatch"
 )
 
 REPO_ROOT=`dirname "$0"`/..
