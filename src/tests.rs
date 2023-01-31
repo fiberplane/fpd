@@ -1,8 +1,6 @@
 use crate::service::{ProxyDataSource, ProxyService, WasmModules};
 use fiberplane::base64uuid::Base64Uuid;
-use fiberplane::models::providers::{
-    Error, HttpRequestError, EVENTS_QUERY_TYPE, TIMESERIES_QUERY_TYPE,
-};
+use fiberplane::models::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
 use fiberplane::provider_bindings::Blob;
 use fiberplane::provider_runtime::spec::types::ProviderRequest;
@@ -656,8 +654,14 @@ async fn handles_multiple_concurrent_messages() {
      }"#;
 
     prometheus.mock(|when, then| {
-        when.path("/api/v1/query_range");
+        when.path("/api/v1/query_range").body_contains("query1");
         then.delay(Duration::from_secs(2))
+            .status(200)
+            .body(query_response);
+    });
+    prometheus.mock(|when, then| {
+        when.path("/api/v1/query_range").body_contains("query2");
+        then.delay(Duration::from_secs(1))
             .status(200)
             .body(query_response);
     });
@@ -717,7 +721,7 @@ async fn handles_multiple_concurrent_messages() {
             op_id: op_2,
             data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&ProviderRequest {
-                query_type: EVENTS_QUERY_TYPE.to_string(),
+                query_type: TIMESERIES_QUERY_TYPE.to_string(),
                 query_data: Blob {
                     data:
                         b"query=query2&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
