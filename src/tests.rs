@@ -1,6 +1,8 @@
 use crate::service::{ProxyDataSource, ProxyService, WasmModules};
 use fiberplane::base64uuid::Base64Uuid;
-use fiberplane::models::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
+use fiberplane::models::providers::{
+    Error, HttpRequestError, EVENTS_QUERY_TYPE, TIMESERIES_QUERY_TYPE,
+};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
 use fiberplane::provider_bindings::Blob;
 use fiberplane::provider_runtime::spec::types::ProviderRequest;
@@ -34,6 +36,22 @@ async fn mock_prometheus() -> (MockServer, Vec<ProxyDataSource>) {
 
     (prometheus, data_sources)
 }
+
+// async fn mock_elasticsearch() -> (MockServer, Vec<ProxyDataSource>) {
+//     let elasticsearch = MockServer::start_async().await;
+
+//     let data_sources = vec![ProxyDataSource {
+//         name: Name::from_static("elasticsearch-dev"),
+//         description: None,
+//         provider_type: "elasticsearch".to_string(),
+//         config: Map::from_iter(vec![(
+//             "url".to_string(),
+//             Value::String(elasticsearch.url("")),
+//         )]),
+//     }];
+
+//     (elasticsearch, data_sources)
+// }
 
 #[test]
 fn parses_data_sources_from_yaml() {
@@ -506,7 +524,7 @@ async fn returns_error_for_query_to_unknown_provider() {
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_result() {
     let (prometheus, data_sources) = mock_prometheus().await;
-    let prometheus_response = r#"{
+    let status_response = r#"{
        "status" : "success",
        "data" : {
           "resultType" : "vector",
@@ -522,9 +540,32 @@ async fn calls_provider_with_query_and_sends_result() {
           ]
        }
     }"#;
-    let query_mock = prometheus.mock(|when, then| {
+    let status_mock = prometheus.mock(|when, then| {
         when.path("/api/v1/query");
-        then.status(200).body(prometheus_response);
+        then.status(200).body(status_response);
+    });
+
+    let query_response = r#"{
+        "status" : "success",
+        "data" : {
+           "resultType" : "matrix",
+           "result" : [
+              {
+                 "metric" : {
+                    "__name__" : "up",
+                    "job" : "prometheus",
+                    "instance" : "localhost:9090"
+                 },
+                 "values": [[ 1435781451.781, "1" ]]
+              }
+           ]
+        }
+     }"#;
+
+    let query_mock = prometheus.mock(|when, then| {
+        when.path("/api/v1/query_range");
+        // when.path("/api/v1/query_range$");
+        then.status(200).body(query_response);
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -556,9 +597,9 @@ async fn calls_provider_with_query_and_sends_result() {
         // Send query
         let op_id = Base64Uuid::new();
         let request = ProviderRequest {
-            query_type: "x-instants".to_string(),
+            query_type: "timeseries".to_string(),
             query_data: Blob {
-                data: b"test".to_vec().into(),
+                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
                 mime_type: "application/x-www-form-urlencoded".to_string(),
             },
             config: Value::Null,
@@ -594,7 +635,8 @@ async fn calls_provider_with_query_and_sends_result() {
       _ = handle_connection.fuse() => {}
     }
 
-    query_mock.assert_hits(2);
+    status_mock.assert_hits(1);
+    query_mock.assert_hits(1);
 }
 
 #[test(tokio::test)]
@@ -610,13 +652,31 @@ async fn handles_multiple_concurrent_messages() {
     }"#;
     prometheus.mock(|when, then| {
         when.path("/api/v1/query");
-        then.delay(Duration::from_secs(2))
-            .status(200)
-            .body(prometheus_response);
+        then.status(200).body(prometheus_response);
     });
+
+    let query_response = r#"{
+        "status" : "success",
+        "data" : {
+           "resultType" : "matrix",
+           "result" : [
+              {
+                 "metric" : {
+                    "__name__" : "up",
+                    "job" : "prometheus",
+                    "instance" : "localhost:9090"
+                 },
+                 "values": [[ 1435781451.781, "1" ]]
+              }
+           ]
+        }
+     }"#;
+
     prometheus.mock(|when, then| {
         when.path("/api/v1/query_range");
-        then.status(200).body(prometheus_response);
+        then.delay(Duration::from_secs(2))
+            .status(200)
+            .body(query_response);
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -652,9 +712,12 @@ async fn handles_multiple_concurrent_messages() {
             op_id: op_1,
             data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&ProviderRequest {
-                query_type: "x-instants".to_string(),
+                query_type: TIMESERIES_QUERY_TYPE.to_string(),
                 query_data: Blob {
-                    data: b"q=query1".to_vec().into(),
+                    data:
+                        b"query=query1&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
+                            .to_vec()
+                            .into(),
                     mime_type: "application/x-www-form-urlencoded".to_string(),
                 },
                 config: Value::Null,
@@ -671,9 +734,12 @@ async fn handles_multiple_concurrent_messages() {
             op_id: op_2,
             data_source_name: Name::from_static("prometheus-dev"),
             data: rmp_serde::to_vec(&ProviderRequest {
-                query_type: TIMESERIES_QUERY_TYPE.to_string(),
+                query_type: EVENTS_QUERY_TYPE.to_string(),
                 query_data: Blob {
-                    data: b"q=query2".to_vec().into(),
+                    data:
+                        b"query=query2&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
+                            .to_vec()
+                            .into(),
                     mime_type: "application/x-www-form-urlencoded".to_string(),
                 },
                 config: Value::Null,
@@ -718,9 +784,22 @@ async fn handles_multiple_concurrent_messages() {
 
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_error() {
+    // let (elasticsearch, data_sources) = mock_elasticsearch().await;
     let (prometheus, data_sources) = mock_prometheus().await;
-    let query_mock = prometheus.mock(|when, then| {
+    let prometheus_response = r#"{
+        "status" : "success",
+        "data" : {
+        "resultType" : "vector",
+        "result" : []
+        }
+    }"#;
+    let status_mock = prometheus.mock(|when, then| {
         when.path("/api/v1/query");
+        then.status(200).body(prometheus_response);
+    });
+    let query_mock = prometheus.mock(|when, then| {
+        when.path("/api/v1/query_range");
+        // when.path("/api/v1/query_range$");
         then.status(418).body("Some error");
     });
 
@@ -740,6 +819,9 @@ async fn calls_provider_with_query_and_sends_error() {
 
     // After the proxy connects, send it a query
     let handle_connection = async move {
+        // status_mock.assert_hits(1);
+        // status_mock.delete();
+
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
@@ -753,9 +835,9 @@ async fn calls_provider_with_query_and_sends_error() {
         // Send query
         let op_id = Base64Uuid::new();
         let request = ProviderRequest {
-            query_type: "x-instants".to_string(),
+            query_type: "timeseries".to_string(),
             query_data: Blob {
-                data: b"test query".to_vec().into(),
+                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
                 mime_type: "application/x-www-form-urlencoded".to_string(),
             },
             config: Value::Null,
@@ -774,7 +856,7 @@ async fn calls_provider_with_query_and_sends_error() {
         let response = ws.next().await.unwrap().unwrap();
         let response = match response {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
-            _ => panic!("wrong message type"),
+            _ => panic!("wrong response message type"),
         };
         let result = match response {
             ProxyMessage::InvokeProxyResponse(message) => message,
@@ -782,6 +864,9 @@ async fn calls_provider_with_query_and_sends_error() {
         };
         assert_eq!(result.op_id, op_id);
         let result: Result<Blob, Error> = rmp_serde::from_slice(&result.data).unwrap();
+        status_mock.assert_hits(1);
+        query_mock.assert_hits(1);
+        println!("{:?}", result);
         assert!(matches!(result, Err(Error::Http { .. })));
     };
 
@@ -790,8 +875,6 @@ async fn calls_provider_with_query_and_sends_error() {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
-
-    query_mock.assert_hits(2);
 }
 
 #[test(tokio::test)]
