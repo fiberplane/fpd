@@ -37,22 +37,6 @@ async fn mock_prometheus() -> (MockServer, Vec<ProxyDataSource>) {
     (prometheus, data_sources)
 }
 
-// async fn mock_elasticsearch() -> (MockServer, Vec<ProxyDataSource>) {
-//     let elasticsearch = MockServer::start_async().await;
-
-//     let data_sources = vec![ProxyDataSource {
-//         name: Name::from_static("elasticsearch-dev"),
-//         description: None,
-//         provider_type: "elasticsearch".to_string(),
-//         config: Map::from_iter(vec![(
-//             "url".to_string(),
-//             Value::String(elasticsearch.url("")),
-//         )]),
-//     }];
-
-//     (elasticsearch, data_sources)
-// }
-
 #[test]
 fn parses_data_sources_from_yaml() {
     let yaml = "
@@ -564,7 +548,6 @@ async fn calls_provider_with_query_and_sends_result() {
 
     let query_mock = prometheus.mock(|when, then| {
         when.path("/api/v1/query_range");
-        // when.path("/api/v1/query_range$");
         then.status(200).body(query_response);
     });
 
@@ -597,7 +580,7 @@ async fn calls_provider_with_query_and_sends_result() {
         // Send query
         let op_id = Base64Uuid::new();
         let request = ProviderRequest {
-            query_type: "timeseries".to_string(),
+            query_type: TIMESERIES_QUERY_TYPE.to_string(),
             query_data: Blob {
                 data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
                 mime_type: "application/x-www-form-urlencoded".to_string(),
@@ -784,7 +767,6 @@ async fn handles_multiple_concurrent_messages() {
 
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_error() {
-    // let (elasticsearch, data_sources) = mock_elasticsearch().await;
     let (prometheus, data_sources) = mock_prometheus().await;
     let prometheus_response = r#"{
         "status" : "success",
@@ -799,7 +781,6 @@ async fn calls_provider_with_query_and_sends_error() {
     });
     let query_mock = prometheus.mock(|when, then| {
         when.path("/api/v1/query_range");
-        // when.path("/api/v1/query_range$");
         then.status(418).body("Some error");
     });
 
@@ -835,7 +816,7 @@ async fn calls_provider_with_query_and_sends_error() {
         // Send query
         let op_id = Base64Uuid::new();
         let request = ProviderRequest {
-            query_type: "timeseries".to_string(),
+            query_type: TIMESERIES_QUERY_TYPE.to_string(),
             query_data: Blob {
                 data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
                 mime_type: "application/x-www-form-urlencoded".to_string(),
@@ -866,7 +847,6 @@ async fn calls_provider_with_query_and_sends_error() {
         let result: Result<Blob, Error> = rmp_serde::from_slice(&result.data).unwrap();
         status_mock.assert_hits(1);
         query_mock.assert_hits(1);
-        println!("{:?}", result);
         assert!(matches!(result, Err(Error::Http { .. })));
     };
 
