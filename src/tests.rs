@@ -811,9 +811,6 @@ async fn calls_provider_with_query_and_sends_error() {
 
     // After the proxy connects, send it a query
     let handle_connection = async move {
-        // status_mock.assert_hits(1);
-        // status_mock.delete();
-
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_hdr_async(stream, |_req: &Request<()>, mut res: Response<()>| {
             res.headers_mut()
