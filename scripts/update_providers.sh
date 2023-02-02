@@ -9,7 +9,7 @@ PROVIDERS=(
 )
 
 REPO_ROOT=`dirname "$0"`/..
-FIBERPLANE_DIR="${REPO_ROOT}/../fiberplane-rs"
+FIBERPLANE_DIR="${REPO_ROOT}/../providers"
 
 CYAN='\033[0;36m'
 WHITE='\033[0;37;1m'
@@ -35,7 +35,7 @@ cd $FIBERPLANE_DIR
 
 printf "${CYAN}Compiling providers...${NC}\n"
 for provider in "${PROVIDERS[@]}"; do
-    pushd "providers/$provider"
+    pushd "providers/${provider}"
         cargo build --release
     popd
 done
