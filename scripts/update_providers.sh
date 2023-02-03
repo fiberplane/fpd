@@ -26,7 +26,7 @@ fi
 set -e
 
 if [ ! -d $FIBERPLANE_DIR ]; then
-    echo "Please make sure you have the fiberplane repository checked out next"
+    echo "Please make sure you have the providers repository checked out next"
     echo "to your proxy project."
     exit 1
 fi
