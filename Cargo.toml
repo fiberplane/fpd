@@ -7,8 +7,9 @@ authors = ["Fiberplane <info@fiberplane.com>"]
 
 [dependencies]
 anyhow = "1.0.44"
-clap = { version = "3.0.0", features = ["derive", "env"] }
+clap = { version = "4.1.4", features = ["derive", "env"] }
 ctrlc = "3.2.1"
+directories = "4.0.1"
 fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "main", features = [
   "base64uuid-creation",
   "models",

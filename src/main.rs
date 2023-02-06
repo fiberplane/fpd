@@ -1,6 +1,6 @@
 use crate::service::{ProxyDataSource, ProxyService};
-use anyhow::{anyhow, Error};
-use clap::Parser;
+use anyhow::{anyhow, bail, Error};
+use clap::{Parser, Subcommand, ValueEnum};
 use fiberplane::models::proxies::ProxyToken;
 use std::{io, net::SocketAddr, path::PathBuf, process, str::FromStr, time::Duration};
 use tokio::fs;
@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 use url::Url;
 
 mod metrics;
+mod runtime;
 mod service;
 #[cfg(test)]
 mod tests;
@@ -17,8 +18,8 @@ mod tests;
 #[clap(author, about, version)]
 pub struct Arguments {
     /// Path to directory containing provider WASM files
-    #[clap(long, env, default_value = "./providers")]
-    wasm_dir: PathBuf,
+    #[clap(long, env)]
+    wasm_dir: Option<PathBuf>,
 
     /// Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
     #[clap(long, short, env, default_value = "wss://studio.fiberplane.com", aliases = &["FIBERPLANE_ENDPOINT", "fiberplane-endpoint"])]
@@ -26,11 +27,11 @@ pub struct Arguments {
 
     /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
     #[clap(long, short, env)]
-    token: ProxyToken,
+    token: Option<ProxyToken>,
 
     /// Path to data sources YAML file
-    #[clap(long, short, env, default_value = "data_sources.yaml")]
-    data_sources_path: PathBuf,
+    #[clap(long, short, env)]
+    data_sources_path: Option<PathBuf>,
 
     /// Max retries to connect to the fiberplane server before giving up on failed connections
     #[clap(long, short, env, default_value = "10")]
@@ -54,6 +55,32 @@ pub struct Arguments {
     /// Output logs as JSON
     #[clap(long, env)]
     log_json: bool,
+
+    #[clap(subcommand)]
+    subcommand: Option<Action>,
+}
+
+#[derive(Subcommand)]
+pub enum Action {
+    /// Print the canonical configuration directories for data_sources.yaml and providers
+    PrintConfigDirs,
+    /// Pull Fiberplane providers
+    Pull {
+        /// Names of the providers to fetch
+        #[arg(value_enum)]
+        names: Vec<BuiltinProvider>,
+        /// Pull all known providers
+        #[clap(long, short)]
+        all: bool,
+    },
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum BuiltinProvider {
+    /// Prometheus provider
+    Prometheus,
+    /// Loki provider
+    Loki,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,54 +104,99 @@ impl FromStr for IntervalDuration {
 }
 
 #[tokio::main]
-async fn main() {
-    let args = Arguments::parse();
+async fn main() -> Result<(), anyhow::Error> {
+    let args = Arguments::try_parse()?;
 
     initialize_logger(&args);
 
-    if !args.wasm_dir.is_dir() {
-        panic!("wasm_dir must be a directory");
+    if let Some(subcommand) = args.subcommand {
+        match subcommand {
+            Action::PrintConfigDirs => {
+                println!(
+                    "data_sources.yml expected location: {:?}",
+                    runtime::data_sources_path()?
+                );
+                println!(
+                    "providers expected directory: {:?}",
+                    runtime::providers_wasm_dir()?
+                );
+                return Ok(());
+            }
+            Action::Pull { names, all } => {
+                bail!("unimplemented");
+            }
+        }
     }
+
+    let wasm_dir = {
+        if args.wasm_dir.is_some() {
+            args.wasm_dir.clone().unwrap()
+        } else if PathBuf::from_str("./providers")
+            .map_or(false, |path| path.exists() && path.is_dir())
+        {
+            PathBuf::from_str("./providers").unwrap()
+        } else {
+            runtime::providers_wasm_dir()?
+        }
+    };
+
+    if !wasm_dir.is_dir() {
+        bail!("wasm_dir ({wasm_dir:?}) must be a directory");
+    }
+
+    let data_sources_path = {
+        if args.data_sources_path.is_some() {
+            args.data_sources_path.clone().unwrap()
+        } else if PathBuf::from_str("./data_sources.yaml")
+            .map_or(false, |path| path.exists() && path.is_file())
+        {
+            PathBuf::from_str("./data_sources.yaml").unwrap()
+        } else {
+            runtime::data_sources_path()?
+        }
+    };
 
     // Load data sources config file
     let data_sources = {
-        match fs::read_to_string(&args.data_sources_path).await {
+        match fs::read_to_string(&data_sources_path).await {
             Ok(data_sources) => data_sources,
             Err(err) => {
                 match err.kind() {
                     io::ErrorKind::NotFound => {
-                        error!(
+                        bail!(
                             "Data sources file not found at {} ({})",
-                            args.data_sources_path.display(),
+                            data_sources_path.display(),
                             err
                         );
                     }
                     io::ErrorKind::PermissionDenied => {
-                        error!(
+                        bail!(
                             "Insufficient permissions to read data sources file {} ({})",
-                            args.data_sources_path.display(),
+                            data_sources_path.display(),
                             err
                         );
                     }
                     _ => {
-                        error!(
+                        bail!(
                             "Unable to read data sources file at {}: {}",
-                            args.data_sources_path.display(),
+                            data_sources_path.display(),
                             err
                         );
                     }
                 };
-                process::exit(1);
             }
         }
     };
+
     let data_sources: Vec<ProxyDataSource> =
         serde_yaml::from_str(&data_sources).expect("Invalid data sources YAML file");
 
     let proxy = ProxyService::init(
         args.api_base,
-        args.token,
-        args.wasm_dir.as_path(),
+        args.token.ok_or_else(|| {
+            anyhow!("TOKEN is mandatory to run Fiberplane Daemon. See fpd --help")
+        })?,
+        wasm_dir.as_path(),
         data_sources,
         args.max_retries,
         args.listen_address,
@@ -147,12 +219,13 @@ async fn main() {
     match proxy.connect(shutdown).await {
         Ok(_) => {
             info!("proxy shutdown successfully");
+            Ok(())
         }
         Err(err) => {
             error!(?err, "proxy encountered a error");
-            process::exit(1);
+            bail!("proxy encountered an error: {err:?}");
         }
-    };
+    }
 }
 
 fn initialize_logger(args: &Arguments) {
