@@ -116,7 +116,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let proxy = ProxyService::init(
         args.api_base,
         args.token.ok_or_else(|| {
-            anyhow!("TOKEN is mandatory to run Fiberplane Daemon. See fpd --help")
+            anyhow!(
+                "TOKEN is mandatory to run Fiberplane Daemon. See {} --help",
+                clap::crate_name!()
+            )
         })?,
         wasm_dir.as_path(),
         data_sources,

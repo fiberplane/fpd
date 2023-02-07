@@ -14,7 +14,7 @@ pub enum Error {
 
 pub const QUALIFIER: &str = "dev";
 pub const ORGANIZATION_NAME: &str = "fiberplane";
-pub const APP_NAME: &str = "fpd";
+pub const APP_NAME: &str = clap::crate_name!();
 
 /// Return the canonical path to put the sources configuration file
 pub fn data_sources_path() -> Result<PathBuf, Error> {

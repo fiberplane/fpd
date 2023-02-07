@@ -1,5 +1,5 @@
 [package]
-name = "fpd"
+name = "proxy"
 version = "0.1.0"
 edition = "2018"
 description = "The Fiberplane Daemon enables secure communication between Fiberplane and your data sources using WebAssembly-based providers."
@@ -8,7 +8,7 @@ authors = ["Fiberplane <info@fiberplane.com>"]
 [dependencies]
 anyhow = "1.0.44"
 async-channel = "1.8.0"
-clap = { version = "4.1.4", features = ["derive", "env"] }
+clap = { version = "4.1.4", features = ["derive", "env", "cargo"] }
 ctrlc = "3.2.1"
 directories = "4.0.1"
 fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "main", features = [
