@@ -15,7 +15,7 @@ jobs:
   deploy:
     uses: fiberplane/proxy/.github/workflows/reusable_deploy_development.yml@main
     with:
-      service_name: "proxy"
+      service_name: "fpd"
       environment: ${{ github.event.inputs.environment }}
       trigger: manual
     secrets:
@@ -30,7 +30,7 @@ jobs:
     uses: fiberplane/proxy/.github/workflows/post_event.yml@main
     needs: deploy
     with:
-      service: proxy
+      service: fpd
       trigger: manual
       environment: ${{ inputs.environment }}
       version: "pre-release"
