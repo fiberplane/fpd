@@ -55,8 +55,11 @@ pub struct Arguments {
 
 #[derive(Subcommand)]
 pub enum Action {
-    /// Print the canonical configuration directories for data_sources.yaml and providers
-    PrintConfigDirs,
+    /// Configuration discovery when no environement variable or development setup is detected
+    Config {
+        #[clap(subcommand)]
+        action: ConfigAction,
+    },
     /// Pull Fiberplane providers
     Pull {
         /// Names of the providers to fetch
@@ -66,6 +69,26 @@ pub enum Action {
         #[clap(long, short)]
         all: bool,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigAction {
+    /// Print the canonical configuration paths, used when no environment variable
+    /// or local development setup is detected.
+    ///
+    /// Call without argument to print all paths
+    Paths {
+        /// Configuration item to ask for
+        #[arg(value_enum)]
+        query: Option<ConfigPathQuery>,
+    },
+}
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum ConfigPathQuery {
+    /// Path to the data_sources.yaml file to use to configure the proxy
+    DataSources,
+    /// Path to the directory containing the WebAssembly providers
+    WasmDir,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

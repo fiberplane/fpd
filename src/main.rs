@@ -18,17 +18,31 @@ async fn main() -> Result<(), anyhow::Error> {
 
     if let Some(subcommand) = args.subcommand {
         match subcommand {
-            cli::Action::PrintConfigDirs => {
-                println!(
-                    "data_sources.yml expected location: {:?}",
-                    runtime::data_sources_path()?
-                );
-                println!(
-                    "providers expected directory: {:?}",
-                    runtime::providers_wasm_dir()?
-                );
-                return Ok(());
-            }
+            cli::Action::Config { action } => match action {
+                cli::ConfigAction::Paths { query } => {
+                    if query.is_none() {
+                        println!(
+                            "data_sources.yml expected location: {:?}",
+                            runtime::data_sources_path()?
+                        );
+                        println!(
+                            "providers expected directory: {:?}",
+                            runtime::providers_wasm_dir()?
+                        );
+                        return Ok(());
+                    }
+
+                    match query.unwrap() {
+                        cli::ConfigPathQuery::DataSources => {
+                            print!("{}", runtime::data_sources_path()?.display().to_string())
+                        }
+                        cli::ConfigPathQuery::WasmDir => {
+                            print!("{}", runtime::providers_wasm_dir()?.display().to_string())
+                        }
+                    }
+                    return Ok(());
+                }
+            },
             cli::Action::Pull { names, all } => {
                 tasks::provider_manager::pull(names.as_slice(), all).await?;
                 return Ok(());

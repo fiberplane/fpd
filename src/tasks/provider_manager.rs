@@ -26,15 +26,15 @@ pub enum Error {
                             .join("\n\t")
 
     )]
-    Multiple{errors: Vec<Error>}
+    Multiple { errors: Vec<Error> },
 }
 
 pub async fn pull(providers: &[BuiltinProvider], all: bool) -> Result<(), Error> {
     let wasm_dir = providers_wasm_dir()?;
     if wasm_dir.exists() && !wasm_dir.is_dir() {
-        return Err(Error::Runtime(
-            crate::runtime::Error::ProvidersDirUnavailable(wasm_dir),
-        ).into());
+        return Err(
+            Error::Runtime(crate::runtime::Error::ProvidersDirUnavailable(wasm_dir)).into(),
+        );
     }
 
     if !wasm_dir.exists() {
@@ -53,7 +53,7 @@ pub async fn pull(providers: &[BuiltinProvider], all: bool) -> Result<(), Error>
         }
     }
     if !errors.is_empty() {
-        return Err(Error::Multiple{ errors });
+        return Err(Error::Multiple { errors });
     }
     Ok(())
 }
