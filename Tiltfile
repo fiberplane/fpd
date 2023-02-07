@@ -77,7 +77,7 @@ if run_proxy_on_host:
 
   local_resource('proxy',
     serve_env=env,
-    serve_cmd='cargo run',
+    serve_cmd='cargo run --wasm-dir providers -d deployment/local/data_sources.yaml',
     deps=['proxy', 'providers', 'deployment/local/data_sources.yaml'],
     resource_deps=providers,
     # Note: this endpoint is called "/health" rather than "healthz"
