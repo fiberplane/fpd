@@ -12,7 +12,7 @@ on:
 
 name: Release
 env:
-  SERVICE: fpd
+  SERVICE: proxy
   ARCHS: "amd64 arm64v8"
 jobs:
   release:

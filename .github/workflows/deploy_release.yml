@@ -36,7 +36,7 @@ jobs:
       - id: vars
         name: Export variables
         env:
-          SERVICE: fpd
+          SERVICE: proxy
         run: |
           if [ "${{ github.event.inputs.environment }}" == "production" ]; then
             echo "ingress_root_domain=studio.fiberplane.com" >> $GITHUB_OUTPUT

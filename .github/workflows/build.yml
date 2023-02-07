@@ -14,7 +14,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  SERVICE: fpd
+  SERVICE: proxy
 jobs:
   # Lint the code and run the tests on Linux
   test:
