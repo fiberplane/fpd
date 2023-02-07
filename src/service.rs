@@ -444,7 +444,7 @@ impl ProxyService {
             .with_label_values(&labels)
             .start_timer();
 
-        debug!(%protocol_version, %data_source.provider_type, "Invoking provider");
+        debug!(%protocol_version, %data_source.provider_type, %message.op_id, "Calling provider with {:?}", message.payload);
         let response = match (message.protocol_version, message.payload) {
             (1, ServerMessagePayload::Invoke(message)) => {
                 self.handle_invoke_proxy_message_v1(message, runtime, &data_source, op_id)
@@ -533,6 +533,7 @@ impl ProxyService {
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
+        info!("Calling create_cells on {}", data_source.name);
         let result = bindings::create_cells(runtime, &message.query_type, message.response);
         match result {
             Ok(cells) => ProxyMessage::new_create_cells_response(cells, op_id),
@@ -551,6 +552,7 @@ impl ProxyService {
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
+        info!("Calling extract_data on {}", data_source.name);
         let result = bindings::extract_data(
             runtime,
             message.response,
@@ -574,6 +576,7 @@ impl ProxyService {
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
+        info!("Calling get_config_schema on {}", data_source.name);
         let result = bindings::get_config_schema(runtime);
         match result {
             Ok(schema) => ProxyMessage::new_config_schema_response(schema, op_id),
@@ -592,6 +595,7 @@ impl ProxyService {
         data_source: &ProxyDataSource,
         op_id: Base64Uuid,
     ) -> ProxyMessage {
+        info!("Calling supported_query_types on {}", data_source.name);
         let result = bindings::get_supported_query_types(runtime, &data_source.config).await;
         match result {
             Ok(queries) => ProxyMessage::new_supported_query_types_response(queries, op_id),

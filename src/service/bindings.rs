@@ -93,5 +93,5 @@ pub async fn get_supported_query_types(
         .map_err(|err| Error::Invocation {
             message: format!("Error invoking provider: {err:?}"),
         })
-        .and_then(|ref result| deserialize_from_slice(result))
+        .map(|ref result| deserialize_from_slice(result))
 }
