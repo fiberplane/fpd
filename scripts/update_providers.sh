@@ -10,7 +10,7 @@ PROVIDERS=(
 )
 
 REPO_ROOT=`dirname "$0"`/..
-FIBERPLANE_DIR="${REPO_ROOT}/../fiberplane-rs"
+FIBERPLANE_DIR="${REPO_ROOT}/../providers"
 
 CYAN='\033[0;36m'
 WHITE='\033[0;37;1m'
@@ -27,7 +27,7 @@ fi
 set -e
 
 if [ ! -d $FIBERPLANE_DIR ]; then
-    echo "Please make sure you have the fiberplane repository checked out next"
+    echo "Please make sure you have the providers repository checked out next"
     echo "to your proxy project."
     exit 1
 fi
@@ -36,7 +36,7 @@ cd $FIBERPLANE_DIR
 
 printf "${CYAN}Compiling providers...${NC}\n"
 for provider in "${PROVIDERS[@]}"; do
-    pushd "providers/$provider"
+    pushd "providers/${provider}"
         cargo build --release
         # cargo build
     popd

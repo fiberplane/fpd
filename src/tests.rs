@@ -195,7 +195,9 @@ async fn sends_data_sources_on_connect() {
             _ => panic!("wrong type"),
         };
         let data_sources =
-            if let ProxyMessage::SetDataSources(SetDataSourcesMessage { data_sources }) = message {
+            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { data_sources }) =
+                message.payload
+            {
                 data_sources
             } else {
                 panic!("wrong type");
@@ -297,8 +299,8 @@ async fn checks_data_source_status_on_interval() {
                 Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
                 _ => panic!("wrong type"),
             };
-            if let ProxyMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
-                message
+            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
+                message.payload
             {
                 assert_eq!(
                     data_sources.pop().unwrap().status,
@@ -316,7 +318,9 @@ async fn checks_data_source_status_on_interval() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        if let ProxyMessage::SetDataSources(SetDataSourcesMessage { mut data_sources }) = message {
+        if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
+            message.payload
+        {
             assert_eq!(
                 data_sources.pop().unwrap().status,
                 DataSourceStatus::Error(Error::Http {
@@ -473,12 +477,12 @@ async fn returns_error_for_query_to_unknown_provider() {
         ws.next().await.unwrap().unwrap();
 
         let op_id = Base64Uuid::new();
-        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
+        let message = ServerMessage::new_invoke_proxy_request(
+            b"fake payload".to_vec(),
+            Name::from_static("data-source-1"),
+            1,
             op_id,
-            data_source_name: Name::from_static("data-source-1"),
-            data: b"fake payload".to_vec(),
-            protocol_version: 1,
-        });
+        );
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
 
@@ -488,11 +492,11 @@ async fn returns_error_for_query_to_unknown_provider() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong message type"),
         };
-        let error = match response {
-            ProxyMessage::Error(error) => error,
+        let error = match response.payload {
+            ProxyMessagePayload::Error(error) => error,
             other => panic!("wrong message type {:?}", other),
         };
-        assert_eq!(error.op_id, op_id);
+        assert_eq!(response.op_id.unwrap(), op_id);
         assert!(matches!(error.error, Error::NotFound));
     };
 
@@ -506,7 +510,7 @@ async fn returns_error_for_query_to_unknown_provider() {
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_result() {
     let (prometheus, data_sources) = mock_prometheus().await;
-    let prometheus_response = r#"{
+    let status_response = r#"{
        "status" : "success",
        "data" : {
           "resultType" : "vector",
@@ -522,9 +526,31 @@ async fn calls_provider_with_query_and_sends_result() {
           ]
        }
     }"#;
-    let query_mock = prometheus.mock(|when, then| {
+    let status_mock = prometheus.mock(|when, then| {
         when.path("/api/v1/query");
-        then.status(200).body(prometheus_response);
+        then.status(200).body(status_response);
+    });
+
+    let query_response = r#"{
+        "status" : "success",
+        "data" : {
+           "resultType" : "matrix",
+           "result" : [
+              {
+                 "metric" : {
+                    "__name__" : "up",
+                    "job" : "prometheus",
+                    "instance" : "localhost:9090"
+                 },
+                 "values": [[ 1435781451.781, "1" ]]
+              }
+           ]
+        }
+     }"#;
+
+    let query_mock = prometheus.mock(|when, then| {
+        when.path("/api/v1/query_range");
+        then.status(200).body(query_response);
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -556,20 +582,20 @@ async fn calls_provider_with_query_and_sends_result() {
         // Send query
         let op_id = Base64Uuid::new();
         let request = ProviderRequest {
-            query_type: "x-instants".to_string(),
+            query_type: TIMESERIES_QUERY_TYPE.to_string(),
             query_data: Blob {
-                data: b"test".to_vec().into(),
+                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
                 mime_type: "application/x-www-form-urlencoded".to_string(),
             },
             config: Value::Null,
             previous_response: None,
         };
-        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
+        let message = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&request).unwrap(),
+            Name::from_static("prometheus-dev"),
+            2,
             op_id,
-            data_source_name: Name::from_static("prometheus-dev"),
-            data: rmp_serde::to_vec(&request).unwrap(),
-            protocol_version: 2,
-        });
+        );
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
 
@@ -579,11 +605,11 @@ async fn calls_provider_with_query_and_sends_result() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong message type"),
         };
-        let result = match response {
-            ProxyMessage::InvokeProxyResponse(message) => message,
+        let result = match response.payload {
+            ProxyMessagePayload::InvokeProxyResponse(message) => message,
             other => panic!("wrong message type: {:?}", other),
         };
-        assert_eq!(result.op_id, op_id);
+        assert_eq!(response.op_id.unwrap(), op_id);
         let result: Result<Blob, Error> = rmp_serde::from_slice(&result.data).unwrap();
         assert!(result.is_ok());
     };
@@ -594,7 +620,8 @@ async fn calls_provider_with_query_and_sends_result() {
       _ = handle_connection.fuse() => {}
     }
 
-    query_mock.assert_hits(2);
+    status_mock.assert_hits(1);
+    query_mock.assert_hits(1);
 }
 
 #[test(tokio::test)]
@@ -610,13 +637,37 @@ async fn handles_multiple_concurrent_messages() {
     }"#;
     prometheus.mock(|when, then| {
         when.path("/api/v1/query");
+        then.status(200).body(prometheus_response);
+    });
+
+    let query_response = r#"{
+        "status" : "success",
+        "data" : {
+           "resultType" : "matrix",
+           "result" : [
+              {
+                 "metric" : {
+                    "__name__" : "up",
+                    "job" : "prometheus",
+                    "instance" : "localhost:9090"
+                 },
+                 "values": [[ 1435781451.781, "1" ]]
+              }
+           ]
+        }
+     }"#;
+
+    prometheus.mock(|when, then| {
+        when.path("/api/v1/query_range").body_contains("query1");
         then.delay(Duration::from_secs(2))
             .status(200)
-            .body(prometheus_response);
+            .body(query_response);
     });
     prometheus.mock(|when, then| {
-        when.path("/api/v1/query_range");
-        then.status(200).body(prometheus_response);
+        when.path("/api/v1/query_range").body_contains("query2");
+        then.delay(Duration::from_secs(1))
+            .status(200)
+            .body(query_response);
     });
 
     // Create a websocket listener for the proxy to connect to
@@ -648,61 +699,70 @@ async fn handles_multiple_concurrent_messages() {
 
         // Send two queries
         let op_1 = Base64Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
-        let message_1 = ServerMessage::InvokeProxy(InvokeProxyMessage {
-            op_id: op_1,
-            data_source_name: Name::from_static("prometheus-dev"),
-            data: rmp_serde::to_vec(&ProviderRequest {
-                query_type: "x-instants".to_string(),
+        let message_1 = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&ProviderRequest {
+                query_type: TIMESERIES_QUERY_TYPE.to_string(),
                 query_data: Blob {
-                    data: b"q=query1".to_vec().into(),
+                    data:
+                        b"query=query1&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
+                            .to_vec()
+                            .into(),
                     mime_type: "application/x-www-form-urlencoded".to_string(),
                 },
                 config: Value::Null,
                 previous_response: None,
             })
             .unwrap(),
-            protocol_version: 2,
-        })
+            Name::from_static("prometheus-dev"),
+            2,
+            op_1,
+        )
         .serialize_msgpack();
+
         ws.send(Message::Binary(message_1)).await.unwrap();
 
         let op_2 = Base64Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
-        let message_2 = ServerMessage::InvokeProxy(InvokeProxyMessage {
-            op_id: op_2,
-            data_source_name: Name::from_static("prometheus-dev"),
-            data: rmp_serde::to_vec(&ProviderRequest {
+        let message_2 = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&ProviderRequest {
                 query_type: TIMESERIES_QUERY_TYPE.to_string(),
                 query_data: Blob {
-                    data: b"q=query2".to_vec().into(),
+                    data:
+                        b"query=query2&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
+                            .to_vec()
+                            .into(),
                     mime_type: "application/x-www-form-urlencoded".to_string(),
                 },
                 config: Value::Null,
                 previous_response: None,
             })
             .unwrap(),
-            protocol_version: 2,
-        })
+            Name::from_static("prometheus-dev"),
+            2,
+            op_2,
+        )
         .serialize_msgpack();
         ws.send(Message::Binary(message_2)).await.unwrap();
 
         // Parse the query result
         if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
-            if let ProxyMessage::InvokeProxyResponse(message) =
-                ProxyMessage::deserialize_msgpack(message).unwrap()
-            {
-                // Check that the second query comes back first
-                assert_eq!(message.op_id, op_2);
+            let message = ProxyMessage::deserialize_msgpack(message).unwrap();
+            // Check that the second query comes back first
+            assert_eq!(message.op_id.unwrap(), op_2);
+            assert!(matches!(
+                message.payload,
+                ProxyMessagePayload::InvokeProxyResponse(_)
+            ));
 
-                // Now we will wait for the first query
-                if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
-                    if let ProxyMessage::InvokeProxyResponse(message) =
-                        ProxyMessage::deserialize_msgpack(message).unwrap()
-                    {
-                        assert_eq!(message.op_id, op_1);
-                        return;
-                        // Everything is fine so just stop handle_connection
-                    }
-                }
+            // Now we will wait for the first query
+            if let Message::Binary(message) = ws.next().await.unwrap().unwrap() {
+                let message = ProxyMessage::deserialize_msgpack(message).unwrap();
+                assert_eq!(message.op_id.unwrap(), op_1);
+                assert!(matches!(
+                    message.payload,
+                    ProxyMessagePayload::InvokeProxyResponse(_)
+                ));
+                return;
+                // Everything is fine so just stop handle_connection
             }
         }
 
@@ -719,8 +779,19 @@ async fn handles_multiple_concurrent_messages() {
 #[test(tokio::test)]
 async fn calls_provider_with_query_and_sends_error() {
     let (prometheus, data_sources) = mock_prometheus().await;
-    let query_mock = prometheus.mock(|when, then| {
+    let prometheus_response = r#"{
+        "status" : "success",
+        "data" : {
+        "resultType" : "vector",
+        "result" : []
+        }
+    }"#;
+    let status_mock = prometheus.mock(|when, then| {
         when.path("/api/v1/query");
+        then.status(200).body(prometheus_response);
+    });
+    let query_mock = prometheus.mock(|when, then| {
+        when.path("/api/v1/query_range");
         then.status(418).body("Some error");
     });
 
@@ -753,20 +824,20 @@ async fn calls_provider_with_query_and_sends_error() {
         // Send query
         let op_id = Base64Uuid::new();
         let request = ProviderRequest {
-            query_type: "x-instants".to_string(),
+            query_type: TIMESERIES_QUERY_TYPE.to_string(),
             query_data: Blob {
-                data: b"test query".to_vec().into(),
+                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
                 mime_type: "application/x-www-form-urlencoded".to_string(),
             },
             config: Value::Null,
             previous_response: None,
         };
-        let message = ServerMessage::InvokeProxy(InvokeProxyMessage {
+        let message = ServerMessage::new_invoke_proxy_request(
+            rmp_serde::to_vec(&request).unwrap(),
+            Name::from_static("prometheus-dev"),
+            2,
             op_id,
-            data_source_name: Name::from_static("prometheus-dev"),
-            data: rmp_serde::to_vec(&request).unwrap(),
-            protocol_version: 2,
-        });
+        );
         let message = message.serialize_msgpack();
         ws.send(Message::Binary(message)).await.unwrap();
 
@@ -774,14 +845,16 @@ async fn calls_provider_with_query_and_sends_error() {
         let response = ws.next().await.unwrap().unwrap();
         let response = match response {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
-            _ => panic!("wrong message type"),
+            _ => panic!("wrong response message type"),
         };
-        let result = match response {
-            ProxyMessage::InvokeProxyResponse(message) => message,
+        let result = match response.payload {
+            ProxyMessagePayload::InvokeProxyResponse(message) => message,
             other => panic!("wrong message type: {:?}", other),
         };
-        assert_eq!(result.op_id, op_id);
+        assert_eq!(response.op_id.unwrap(), op_id);
         let result: Result<Blob, Error> = rmp_serde::from_slice(&result.data).unwrap();
+        status_mock.assert_hits(1);
+        query_mock.assert_hits(1);
         assert!(matches!(result, Err(Error::Http { .. })));
     };
 
@@ -790,8 +863,6 @@ async fn calls_provider_with_query_and_sends_error() {
       result = service.connect(tx).fuse() => result.unwrap(),
       _ = handle_connection.fuse() => {}
     }
-
-    query_mock.assert_hits(2);
 }
 
 #[test(tokio::test)]
