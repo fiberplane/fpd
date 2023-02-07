@@ -1,117 +1,24 @@
-use crate::service::{ProxyDataSource, ProxyService};
-use anyhow::{anyhow, bail, Error};
-use clap::{Parser, Subcommand, ValueEnum};
-use fiberplane::models::proxies::ProxyToken;
-use std::{io, net::SocketAddr, path::PathBuf, process, str::FromStr, time::Duration};
+pub mod cli;
+pub mod runtime;
+pub mod tasks;
+
+use anyhow::{anyhow, bail};
+use clap::Parser;
+use std::{io, path::PathBuf, process, str::FromStr};
+use tasks::service::{ProxyDataSource, ProxyService};
 use tokio::fs;
-use tracing::{error, info, trace, warn, Level};
+use tracing::{error, info, trace, warn};
 use tracing_subscriber::EnvFilter;
-use url::Url;
-
-mod metrics;
-mod runtime;
-mod service;
-#[cfg(test)]
-mod tests;
-
-#[derive(Parser)]
-#[clap(author, about, version)]
-pub struct Arguments {
-    /// Path to directory containing provider WASM files
-    #[clap(long, env)]
-    wasm_dir: Option<PathBuf>,
-
-    /// Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
-    #[clap(long, short, env, default_value = "wss://studio.fiberplane.com", aliases = &["FIBERPLANE_ENDPOINT", "fiberplane-endpoint"])]
-    api_base: Url,
-
-    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
-    #[clap(long, short, env)]
-    token: Option<ProxyToken>,
-
-    /// Path to data sources YAML file
-    #[clap(long, short, env)]
-    data_sources_path: Option<PathBuf>,
-
-    /// Max retries to connect to the fiberplane server before giving up on failed connections
-    #[clap(long, short, env, default_value = "10")]
-    max_retries: u32,
-
-    /// Address to bind HTTP server to (used for health check endpoints)
-    #[clap(long, short, env)]
-    listen_address: Option<SocketAddr>,
-
-    /// Interval to check the status of each data source ("30s" = 30 seconds, "5m" = 5 minutes, "1h" = 1 hour)
-    #[clap(long, short, env, default_value = "5m")]
-    status_check_interval: IntervalDuration,
-
-    /// Set the logging level for the proxy (trace, debug, info, warn, error)
-    #[clap(long, env)]
-    log_level: Option<Level>,
-
-    #[clap(env, hide = true)]
-    rust_log: Option<String>,
-
-    /// Output logs as JSON
-    #[clap(long, env)]
-    log_json: bool,
-
-    #[clap(subcommand)]
-    subcommand: Option<Action>,
-}
-
-#[derive(Subcommand)]
-pub enum Action {
-    /// Print the canonical configuration directories for data_sources.yaml and providers
-    PrintConfigDirs,
-    /// Pull Fiberplane providers
-    Pull {
-        /// Names of the providers to fetch
-        #[arg(value_enum)]
-        names: Vec<BuiltinProvider>,
-        /// Pull all known providers
-        #[clap(long, short)]
-        all: bool,
-    },
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-pub enum BuiltinProvider {
-    /// Prometheus provider
-    Prometheus,
-    /// Loki provider
-    Loki,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct IntervalDuration(Duration);
-
-impl FromStr for IntervalDuration {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.split_at(s.len() - 1) {
-            (s, "s") => Ok(IntervalDuration(Duration::from_secs(u64::from_str(s)?))),
-            (s, "m") => Ok(IntervalDuration(Duration::from_secs(
-                u64::from_str(s)? * 60,
-            ))),
-            (s, "h") => Ok(IntervalDuration(Duration::from_secs(
-                u64::from_str(s)? * 60 * 60,
-            ))),
-            _ => Err(anyhow!("invalid interval")),
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let args = Arguments::try_parse()?;
+    let args = cli::Arguments::try_parse()?;
 
     initialize_logger(&args);
 
     if let Some(subcommand) = args.subcommand {
         match subcommand {
-            Action::PrintConfigDirs => {
+            cli::Action::PrintConfigDirs => {
                 println!(
                     "data_sources.yml expected location: {:?}",
                     runtime::data_sources_path()?
@@ -122,8 +29,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 );
                 return Ok(());
             }
-            Action::Pull { names, all } => {
-                bail!("unimplemented");
+            cli::Action::Pull { names, all } => {
+                tasks::provider_manager::pull(names.as_slice(), all).await?;
+                return Ok(());
             }
         }
     }
@@ -228,7 +136,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-fn initialize_logger(args: &Arguments) {
+fn initialize_logger(args: &cli::Arguments) {
     let env_filter = if let Some(rust_log) = &args.rust_log {
         EnvFilter::from_str(rust_log).expect("Invalid RUST_LOG value")
     } else if let Some(log_level) = args.log_level {
@@ -260,21 +168,4 @@ fn initialize_logger(args: &Arguments) {
     if args.rust_log.is_some() && args.log_level.is_some() {
         warn!("Both RUST_LOG and LOG_LEVEL are set, RUST_LOG will be used and LOG_LEVEL will be ignored");
     }
-}
-
-#[test]
-fn interval_parsing() {
-    assert_eq!(
-        IntervalDuration(Duration::from_secs(30)),
-        "30s".parse().unwrap()
-    );
-    assert_eq!(
-        IntervalDuration(Duration::from_secs(60)),
-        "1m".parse().unwrap()
-    );
-    assert_eq!(
-        IntervalDuration(Duration::from_secs(3600)),
-        "1h".parse().unwrap()
-    );
-    IntervalDuration::from_str("3d").expect_err("invalid interval");
 }

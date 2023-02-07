@@ -1,0 +1,123 @@
+//! Command Line Interface types and Argument parsing
+
+use anyhow::{anyhow, Error};
+use clap::{Parser, Subcommand, ValueEnum};
+use fiberplane::models::proxies::ProxyToken;
+use std::{net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
+use tracing::Level;
+use url::Url;
+
+#[derive(Parser)]
+#[clap(author, about, version)]
+pub struct Arguments {
+    /// Path to directory containing provider WASM files
+    #[clap(long, env)]
+    pub wasm_dir: Option<PathBuf>,
+
+    /// Web-socket endpoint of the Fiberplane API (leave path empty to use the default path)
+    #[clap(long, short, env, default_value = "wss://studio.fiberplane.com", aliases = &["FIBERPLANE_ENDPOINT", "fiberplane-endpoint"])]
+    pub api_base: Url,
+
+    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
+    #[clap(long, short, env)]
+    pub token: Option<ProxyToken>,
+
+    /// Path to data sources YAML file
+    #[clap(long, short, env)]
+    pub data_sources_path: Option<PathBuf>,
+
+    /// Max retries to connect to the fiberplane server before giving up on failed connections
+    #[clap(long, short, env, default_value = "10")]
+    pub max_retries: u32,
+
+    /// Address to bind HTTP server to (used for health check endpoints)
+    #[clap(long, short, env)]
+    pub listen_address: Option<SocketAddr>,
+
+    /// Interval to check the status of each data source ("30s" = 30 seconds, "5m" = 5 minutes, "1h" = 1 hour)
+    #[clap(long, short, env, default_value = "5m")]
+    pub status_check_interval: IntervalDuration,
+
+    /// Set the logging level for the proxy (trace, debug, info, warn, error)
+    #[clap(long, env)]
+    pub log_level: Option<Level>,
+
+    #[clap(env, hide = true)]
+    pub rust_log: Option<String>,
+
+    /// Output logs as JSON
+    #[clap(long, env)]
+    pub log_json: bool,
+
+    #[clap(subcommand)]
+    pub subcommand: Option<Action>,
+}
+
+#[derive(Subcommand)]
+pub enum Action {
+    /// Print the canonical configuration directories for data_sources.yaml and providers
+    PrintConfigDirs,
+    /// Pull Fiberplane providers
+    Pull {
+        /// Names of the providers to fetch
+        #[arg(value_enum)]
+        names: Vec<BuiltinProvider>,
+        /// Pull all known providers
+        #[clap(long, short)]
+        all: bool,
+    },
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum BuiltinProvider {
+    /// Prometheus provider
+    Prometheus,
+    /// Loki provider
+    Loki,
+}
+
+impl BuiltinProvider {
+    pub fn name(&self) -> String {
+        match self {
+            BuiltinProvider::Prometheus => "prometheus".to_string(),
+            BuiltinProvider::Loki => "loki".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntervalDuration(pub Duration);
+
+impl FromStr for IntervalDuration {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split_at(s.len() - 1) {
+            (s, "s") => Ok(IntervalDuration(Duration::from_secs(u64::from_str(s)?))),
+            (s, "m") => Ok(IntervalDuration(Duration::from_secs(
+                u64::from_str(s)? * 60,
+            ))),
+            (s, "h") => Ok(IntervalDuration(Duration::from_secs(
+                u64::from_str(s)? * 60 * 60,
+            ))),
+            _ => Err(anyhow!("invalid interval")),
+        }
+    }
+}
+
+#[test]
+fn interval_parsing() {
+    assert_eq!(
+        IntervalDuration(Duration::from_secs(30)),
+        "30s".parse().unwrap()
+    );
+    assert_eq!(
+        IntervalDuration(Duration::from_secs(60)),
+        "1m".parse().unwrap()
+    );
+    assert_eq!(
+        IntervalDuration(Duration::from_secs(3600)),
+        "1h".parse().unwrap()
+    );
+    IntervalDuration::from_str("3d").expect_err("invalid interval");
+}
