@@ -97,6 +97,12 @@ pub enum BuiltinProvider {
     Prometheus,
     /// Loki provider
     Loki,
+    /// Sentry provider
+    Sentry,
+    /// HTTPS provider
+    Https,
+    /// Elasticsearch provider
+    Elasticsearch,
 }
 
 impl BuiltinProvider {
@@ -104,6 +110,9 @@ impl BuiltinProvider {
         match self {
             BuiltinProvider::Prometheus => "prometheus".to_string(),
             BuiltinProvider::Loki => "loki".to_string(),
+            BuiltinProvider::Sentry => "sentry".to_string(),
+            BuiltinProvider::Elasticsearch => "elasticsearch".to_string(),
+            BuiltinProvider::Https => "https".to_string(),
         }
     }
 }

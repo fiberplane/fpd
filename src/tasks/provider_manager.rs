@@ -3,6 +3,15 @@
 use crate::{cli::BuiltinProvider, runtime::providers_wasm_dir};
 use std::path::PathBuf;
 use thiserror::Error;
+use tracing::info;
+
+pub const ALL_PROVIDERS: &[BuiltinProvider] = &[
+    BuiltinProvider::Sentry,
+    BuiltinProvider::Loki,
+    BuiltinProvider::Elasticsearch,
+    BuiltinProvider::Https,
+    BuiltinProvider::Prometheus,
+];
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -42,7 +51,7 @@ pub async fn pull(providers: &[BuiltinProvider], all: bool) -> Result<(), Error>
     }
 
     let providers: &[BuiltinProvider] = if all || providers.is_empty() {
-        &[BuiltinProvider::Prometheus, BuiltinProvider::Loki]
+        ALL_PROVIDERS
     } else {
         providers
     };
@@ -63,6 +72,8 @@ async fn fetch_provider(provider: BuiltinProvider) -> Result<(), Error> {
     let provider_name = provider.name();
     let location_url =
         format!("https://github.com/fiberplane/proxy/raw/main/providers/{provider_name}.wasm");
+
+    info!("Fetching {provider_name} provider at {location_url}");
 
     let bytes = reqwest::get(location_url).await?.bytes().await?;
 
