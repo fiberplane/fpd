@@ -34,10 +34,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
                     match query.unwrap() {
                         cli::ConfigPathQuery::DataSources => {
-                            print!("{}", runtime::data_sources_path()?.display().to_string())
+                            print!("{}", runtime::data_sources_path()?.display())
                         }
                         cli::ConfigPathQuery::WasmDir => {
-                            print!("{}", runtime::providers_wasm_dir()?.display().to_string())
+                            print!("{}", runtime::providers_wasm_dir()?.display())
                         }
                     }
                     return Ok(());

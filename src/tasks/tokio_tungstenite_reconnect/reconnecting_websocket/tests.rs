@@ -5,7 +5,7 @@ use http::{HeaderValue, Request, Response};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use test_env_log::test;
+use test_log::test;
 use tokio::net::TcpListener;
 use tokio::time::sleep;
 use tokio_tungstenite::{accept_async, accept_hdr_async};
@@ -19,7 +19,7 @@ async fn connects() {
         accept_async(stream).await.unwrap();
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
         assert!(ws.is_connected());
     };
     join(accept_connection, connect).await;
@@ -47,7 +47,7 @@ async fn connect_response_handler() {
     let handler_called = Arc::new(AtomicBool::from(false));
     let handler_called_clone = handler_called.clone();
     let connect = async {
-        let ws = ReconnectingWebSocket::builder(format!("ws://{}", addr))
+        let ws = ReconnectingWebSocket::builder(format!("ws://{addr}"))
             .unwrap()
             .connect_response_handler(move |response| {
                 assert_eq!(
@@ -60,7 +60,7 @@ async fn connect_response_handler() {
         ws.connect().await.unwrap();
     };
     join(accept_connection, connect).await;
-    assert_eq!(handler_called.load(Ordering::SeqCst), true);
+    assert!(handler_called.load(Ordering::SeqCst));
 }
 
 #[test(tokio::test)]
@@ -82,7 +82,7 @@ async fn sends_custom_http_headers() {
     let connect = async {
         let request = Request::builder()
             .method("GET")
-            .uri(format!("ws://{}", addr))
+            .uri(format!("ws://{addr}"))
             .header("my-header", "hello")
             .body(())
             .unwrap();
@@ -104,7 +104,7 @@ async fn sends_messages() {
         assert_eq!(message, Message::Text("hello".to_string()));
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
 
         // We can also send from other tasks
         let ws_clone = ws.clone();
@@ -132,7 +132,7 @@ async fn receives_messages() {
         ws.send(Message::Text("hello".to_string())).await.unwrap();
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
         let message = ws.recv().await.unwrap().unwrap();
         assert_eq!(message, Message::Text("hello".to_string()));
     };
@@ -153,7 +153,7 @@ async fn close() {
         }
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
 
         // Clone the websocket and pass it to another task to ensure that it also exits
         let ws_clone = ws.clone();
@@ -181,7 +181,7 @@ async fn send_after_close_returns_error() {
         ws.next().await;
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
         let ws_clone = ws.clone();
 
         ws.close().await;
@@ -213,7 +213,7 @@ async fn closes_connection_when_all_instances_dropped() {
         }
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
         drop(ws);
     };
     join(accept_connection, connect).await;
@@ -243,7 +243,7 @@ async fn reconnects_if_initial_connection_fails() {
         }
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
         ws.send(Message::Text("hello".to_string())).await.unwrap();
     };
     join(accept_connection, connect).await;
@@ -268,7 +268,7 @@ async fn stops_reconnecting_after_the_specified_number_of_times() {
         panic!("shouldn't connect again");
     };
     let connect = async {
-        let ws = ReconnectingWebSocket::builder(format!("ws://{}", addr))
+        let ws = ReconnectingWebSocket::builder(format!("ws://{addr}"))
             .unwrap()
             .max_retries(2)
             .build();
@@ -301,7 +301,7 @@ async fn does_not_reconnect_on_client_http_errors() {
         panic!("should not reconnect");
     };
     let connect = async {
-        let result = connect_async(format!("ws://{}", addr)).await;
+        let result = connect_async(format!("ws://{addr}")).await;
         if let Err(Error::Http(response)) = result {
             assert_eq!(response.status(), 404);
         } else {
@@ -323,7 +323,7 @@ async fn reconnects_if_connection_drops() {
             let (stream, _) = server.accept().await.unwrap();
             accept_async(stream).await.unwrap()
         },
-        async { connect_async(format!("ws://{}", addr)).await.unwrap() },
+        async { connect_async(format!("ws://{addr}")).await.unwrap() },
     )
     .await;
     let accept_connection = async {
@@ -373,7 +373,7 @@ async fn does_not_lose_outgoing_messages_if_connection_drops() {
             let (stream, _) = server.accept().await.unwrap();
             accept_async(stream).await.unwrap()
         },
-        async { connect_async(format!("ws://{}", addr)).await.unwrap() },
+        async { connect_async(format!("ws://{addr}")).await.unwrap() },
     )
     .await;
 
@@ -416,7 +416,7 @@ async fn reconnects_while_waiting_to_receive_message() {
         ws.send(Message::Text("hello".to_string())).await.unwrap();
     };
     let connect = async {
-        let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let ws = connect_async(format!("ws://{addr}")).await.unwrap();
         let message = ws.recv().await.unwrap().unwrap();
         assert_eq!(message, Message::Text("hello".to_string()));
     };
@@ -437,7 +437,7 @@ async fn does_not_reconnect_on_close_frame() {
         panic!("should not reconnect");
     });
 
-    let ws = connect_async(format!("ws://{}", addr)).await.unwrap();
+    let ws = connect_async(format!("ws://{addr}")).await.unwrap();
     ws.send(Message::Text("hello".to_string())).await.unwrap();
 }
 
@@ -455,7 +455,7 @@ async fn sends_pings() {
         }
     };
     let connect = async {
-        let ws = ReconnectingWebSocket::builder(format!("ws://{}", addr))
+        let ws = ReconnectingWebSocket::builder(format!("ws://{addr}"))
             .unwrap()
             .ping_timeout(Duration::from_millis(200))
             .build();

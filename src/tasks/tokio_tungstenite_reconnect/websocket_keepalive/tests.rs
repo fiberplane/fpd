@@ -1,7 +1,7 @@
 use super::{Error, Message, WebSocketKeepAlive};
 use futures::{future::join, SinkExt, StreamExt};
 use std::time::Duration;
-use test_env_log::test;
+use test_log::test;
 use tokio::net::TcpListener;
 use tokio::time::sleep;
 use tokio_tungstenite::{accept_async, connect_async};
@@ -20,7 +20,7 @@ async fn client_sends_messages() {
         assert_eq!(message, Message::Text("hello".to_string()));
     };
     let connect = async {
-        let (ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let ws = WebSocketKeepAlive::new(ws);
 
         // We can also send a message from another task
@@ -60,7 +60,7 @@ async fn server_sends_messages() {
         task.await.unwrap();
     };
     let connect = async {
-        let (mut ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (mut ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let message = ws.next().await.unwrap().unwrap();
         assert_eq!(message, Message::Text("hello".to_string()));
         let message = ws.next().await.unwrap().unwrap();
@@ -84,7 +84,7 @@ async fn client_receives_messages() {
             .unwrap();
     };
     let connect = async {
-        let (ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let ws = WebSocketKeepAlive::new(ws);
         assert_eq!(
             ws.recv().await.unwrap().unwrap(),
@@ -121,7 +121,7 @@ async fn server_receives_messages() {
         );
     };
     let connect = async {
-        let (mut ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (mut ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         ws.send(Message::Text("request 1".to_string()))
             .await
             .unwrap();
@@ -152,7 +152,7 @@ async fn client_close() {
         }
     };
     let connect = async {
-        let (ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let ws = WebSocketKeepAlive::new(ws);
 
         // Clone the websocket and pass it to another task to ensure that it also exits
@@ -195,7 +195,7 @@ async fn server_close() {
         handle.await.unwrap();
     };
     let connect = async {
-        let (mut ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (mut ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let result = ws.next().await;
         if let Some(Ok(Message::Close(None))) = result {
         } else {
@@ -216,7 +216,7 @@ async fn send_after_close_returns_error() {
         ws.next().await;
     };
     let connect = async {
-        let (ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let ws = WebSocketKeepAlive::new(ws);
         let ws_clone = ws.clone();
 
@@ -249,7 +249,7 @@ async fn client_closes_connection_when_all_instances_dropped() {
         }
     };
     let connect = async {
-        let (ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let ws = WebSocketKeepAlive::new(ws);
 
         drop(ws);
@@ -269,7 +269,7 @@ async fn server_closes_connection_when_all_instances_dropped() {
         drop(ws);
     };
     let connect = async {
-        let (mut ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (mut ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
 
         let result = ws.next().await;
         if let Some(Ok(Message::Close(None))) = result {
@@ -294,7 +294,7 @@ async fn client_sends_pings() {
         }
     };
     let connect = async {
-        let (ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
         let ws = WebSocketKeepAlive::new_with_ping_timeout(ws, Duration::from_millis(100));
         sleep(Duration::from_millis(150)).await;
         let _ws = ws;
@@ -314,7 +314,7 @@ async fn server_sends_pings() {
         let _ws = ws;
     };
     let connect = async {
-        let (mut ws, _) = connect_async(format!("ws://{}", addr)).await.unwrap();
+        let (mut ws, _) = connect_async(format!("ws://{addr}")).await.unwrap();
 
         let message = ws.next().await.unwrap().unwrap();
         if let Message::Ping(_) = message {

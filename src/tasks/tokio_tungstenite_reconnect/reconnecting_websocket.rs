@@ -237,7 +237,7 @@ impl ReconnectingWebSocket {
                 Ok(result) => result,
                 Err(err) => {
                     debug!(?err, "Error connecting to websocket server");
-                    return Err(err.into());
+                    return Err(err);
                 }
             };
         trace!("websocket connection established");

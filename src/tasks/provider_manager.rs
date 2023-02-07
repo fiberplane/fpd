@@ -29,7 +29,7 @@ pub enum Error {
 
                         "Errors while fetching providers:\n\t{}",
                         errors
-                            .into_iter()
+                            .iter()
                             .map(|err| err.to_string())
                             .collect::<Vec<String>>()
                             .join("\n\t")
@@ -41,9 +41,9 @@ pub enum Error {
 pub async fn pull(providers: &[BuiltinProvider], all: bool) -> Result<(), Error> {
     let wasm_dir = providers_wasm_dir()?;
     if wasm_dir.exists() && !wasm_dir.is_dir() {
-        return Err(
-            Error::Runtime(crate::runtime::Error::ProvidersDirUnavailable(wasm_dir)).into(),
-        );
+        return Err(Error::Runtime(
+            crate::runtime::Error::ProvidersDirUnavailable(wasm_dir),
+        ));
     }
 
     if !wasm_dir.exists() {
