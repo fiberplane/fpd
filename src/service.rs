@@ -46,14 +46,18 @@ const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 static STATUS_REQUEST_V1: Lazy<Vec<u8>> =
     Lazy::new(|| rmp_serde::to_vec_named(&LegacyProviderRequest::Status).unwrap());
 static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
-    rmp_serde::to_vec_named(&ProviderRequest::builder()
-        .query_type(STATUS_QUERY_TYPE)
-        .query_data(Blob::builder()
-                        .data(Vec::new())
-                        .mime_type(STATUS_MIME_TYPE)
-                        .build())
-        .config(Value::Null)
-        .build())
+    rmp_serde::to_vec_named(
+        &ProviderRequest::builder()
+            .query_type(STATUS_QUERY_TYPE)
+            .query_data(
+                Blob::builder()
+                    .data(Vec::new())
+                    .mime_type(STATUS_MIME_TYPE)
+                    .build(),
+            )
+            .config(Value::Null)
+            .build(),
+    )
     .unwrap()
 });
 
@@ -644,7 +648,7 @@ impl ProxyService {
                 }
 
                 UpsertProxyDataSource::builder()
-                    .                    name(name.clone())
+                    .name(name.clone())
                     .description(data_source.description.clone())
                     .provider_type(data_source.provider_type.clone())
                     .protocol_version(get_protocol_version(&data_source.provider_type))

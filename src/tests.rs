@@ -16,11 +16,13 @@ use test_log::test;
 use tokio::{join, net::TcpListener, sync::broadcast};
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
-static TOKEN: Lazy<ProxyToken> = Lazy::new(|| ProxyToken::builder()
-    .workspace_id(Base64Uuid::new())
-    .proxy_name(Name::from_static("test-proxy"))
-    .token("MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk")
-    .build());
+static TOKEN: Lazy<ProxyToken> = Lazy::new(|| {
+    ProxyToken::builder()
+        .workspace_id(Base64Uuid::new())
+        .proxy_name(Name::from_static("test-proxy"))
+        .token("MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk")
+        .build()
+});
 
 async fn mock_prometheus() -> (MockServer, Vec<ProxyDataSource>) {
     let prometheus = MockServer::start_async().await;
@@ -194,14 +196,15 @@ async fn sends_data_sources_on_connect() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        let data_sources =
-            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { data_sources, .. }) =
-                message.payload
-            {
-                data_sources
-            } else {
-                panic!("wrong type");
-            };
+        let data_sources = if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage {
+            data_sources,
+            ..
+        }) = message.payload
+        {
+            data_sources
+        } else {
+            panic!("wrong type");
+        };
 
         assert_eq!(data_sources.len(), 4);
         let data_sources: HashMap<_, _> = data_sources
@@ -299,8 +302,10 @@ async fn checks_data_source_status_on_interval() {
                 Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
                 _ => panic!("wrong type"),
             };
-            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources, .. }) =
-                message.payload
+            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage {
+                mut data_sources,
+                ..
+            }) = message.payload
             {
                 assert_eq!(
                     data_sources.pop().unwrap().status,
@@ -318,8 +323,9 @@ async fn checks_data_source_status_on_interval() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources, .. }) =
-            message.payload
+        if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage {
+            mut data_sources, ..
+        }) = message.payload
         {
             assert_eq!(
                 data_sources.pop().unwrap().status,
