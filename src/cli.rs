@@ -8,7 +8,14 @@ use tracing::Level;
 use url::Url;
 
 #[derive(Parser)]
-#[clap(author, about, version)]
+#[clap(author, about, version, verbatim_doc_comment)]
+/// The Fiberplane Daemon connects Fiberplane Studio to your data sources.
+///
+/// It enables secure communication between Fiberplane and your data
+/// using WebAssembly-based providers and token-based authentication.
+/// Set up a token either:
+/// - using `fp` command line tool with `fp proxies create --help`, or
+/// - using online in Studio web user interface.
 pub struct Arguments {
     /// Path to directory containing provider WASM files
     #[clap(long, env)]

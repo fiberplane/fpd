@@ -12,7 +12,7 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let args = cli::Arguments::try_parse()?;
+    let args = cli::Arguments::parse();
 
     initialize_logger(&args);
 

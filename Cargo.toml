@@ -8,7 +8,7 @@ authors = ["Fiberplane <info@fiberplane.com>"]
 [dependencies]
 anyhow = "1.0.44"
 async-channel = "1.8.0"
-clap = { version = "4.1.4", features = ["derive", "env", "cargo"] }
+clap = { version = "4.1.4", features = ["derive", "env", "cargo", "help"] }
 ctrlc = "3.2.1"
 directories = "4.0.1"
 fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "main", features = [
