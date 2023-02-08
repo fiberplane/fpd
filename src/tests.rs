@@ -16,11 +16,11 @@ use test_log::test;
 use tokio::{join, net::TcpListener, sync::broadcast};
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
-static TOKEN: Lazy<ProxyToken> = Lazy::new(|| ProxyToken {
-    workspace_id: Base64Uuid::new(),
-    proxy_name: Name::from_static("test-proxy"),
-    token: "MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk".to_string(),
-});
+static TOKEN: Lazy<ProxyToken> = Lazy::new(|| ProxyToken::builder()
+    .workspace_id(Base64Uuid::new())
+    .proxy_name(Name::from_static("test-proxy"))
+    .token("MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk")
+    .build());
 
 async fn mock_prometheus() -> (MockServer, Vec<ProxyDataSource>) {
     let prometheus = MockServer::start_async().await;
@@ -195,7 +195,7 @@ async fn sends_data_sources_on_connect() {
             _ => panic!("wrong type"),
         };
         let data_sources =
-            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { data_sources }) =
+            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { data_sources, .. }) =
                 message.payload
             {
                 data_sources
@@ -299,7 +299,7 @@ async fn checks_data_source_status_on_interval() {
                 Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
                 _ => panic!("wrong type"),
             };
-            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
+            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources, .. }) =
                 message.payload
             {
                 assert_eq!(
@@ -318,7 +318,7 @@ async fn checks_data_source_status_on_interval() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
+        if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources, .. }) =
             message.payload
         {
             assert_eq!(
@@ -581,15 +581,14 @@ async fn calls_provider_with_query_and_sends_result() {
 
         // Send query
         let op_id = Base64Uuid::new();
-        let request = ProviderRequest {
-            query_type: TIMESERIES_QUERY_TYPE.to_string(),
-            query_data: Blob {
-                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
-                mime_type: "application/x-www-form-urlencoded".to_string(),
-            },
-            config: Value::Null,
-            previous_response: None,
-        };
+        let request = ProviderRequest::builder()
+            .query_type(TIMESERIES_QUERY_TYPE)
+            .query_data(Blob::builder()
+                            .data(b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec())
+                            .mime_type("application/x-www-form-urlencoded")
+                .build())
+            .config(Value::Null)
+            .build();
         let message = ServerMessage::new_invoke_proxy_request(
             rmp_serde::to_vec(&request).unwrap(),
             Name::from_static("prometheus-dev"),
@@ -700,18 +699,17 @@ async fn handles_multiple_concurrent_messages() {
         // Send two queries
         let op_1 = Base64Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
         let message_1 = ServerMessage::new_invoke_proxy_request(
-            rmp_serde::to_vec(&ProviderRequest {
-                query_type: TIMESERIES_QUERY_TYPE.to_string(),
-                query_data: Blob {
-                    data:
+            rmp_serde::to_vec(&ProviderRequest::builder()
+                .query_type(TIMESERIES_QUERY_TYPE)
+                .query_data(Blob::builder()
+                                .data(
                         b"query=query1&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
                             .to_vec()
-                            .into(),
-                    mime_type: "application/x-www-form-urlencoded".to_string(),
-                },
-                config: Value::Null,
-                previous_response: None,
-            })
+                                )
+                                .mime_type("application/x-www-form-urlencoded").build()
+                )
+                .config(Value::Null)
+                .build())
             .unwrap(),
             Name::from_static("prometheus-dev"),
             2,
@@ -723,18 +721,17 @@ async fn handles_multiple_concurrent_messages() {
 
         let op_2 = Base64Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
         let message_2 = ServerMessage::new_invoke_proxy_request(
-            rmp_serde::to_vec(&ProviderRequest {
-                query_type: TIMESERIES_QUERY_TYPE.to_string(),
-                query_data: Blob {
-                    data:
+            rmp_serde::to_vec(&ProviderRequest::builder()
+                .query_type(TIMESERIES_QUERY_TYPE)
+                .query_data(Blob::builder()
+                                .data(
                         b"query=query2&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
                             .to_vec()
-                            .into(),
-                    mime_type: "application/x-www-form-urlencoded".to_string(),
-                },
-                config: Value::Null,
-                previous_response: None,
-            })
+                                ).
+                    mime_type("application/x-www-form-urlencoded")
+                    .build())
+                .config(Value::Null)
+                .build())
             .unwrap(),
             Name::from_static("prometheus-dev"),
             2,
@@ -823,15 +820,14 @@ async fn calls_provider_with_query_and_sends_error() {
 
         // Send query
         let op_id = Base64Uuid::new();
-        let request = ProviderRequest {
-            query_type: TIMESERIES_QUERY_TYPE.to_string(),
-            query_data: Blob {
-                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
-                mime_type: "application/x-www-form-urlencoded".to_string(),
-            },
-            config: Value::Null,
-            previous_response: None,
-        };
+        let request = ProviderRequest::builder()
+            .query_type(TIMESERIES_QUERY_TYPE)
+            .query_data(Blob::builder()
+                            .data(b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec())
+                            .mime_type("application/x-www-form-urlencoded")
+                .build())
+            .config(Value::Null)
+            .build();
         let message = ServerMessage::new_invoke_proxy_request(
             rmp_serde::to_vec(&request).unwrap(),
             Name::from_static("prometheus-dev"),

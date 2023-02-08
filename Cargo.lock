@@ -267,7 +267,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "1.0.0-alpha.2"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#a5357d4eed300bab4260d80d7d393ab5ad96de7e"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fun-with-non-exhaustive#ebcf26d0765ea775b77a2fbff1a390a7a1c68806"
 dependencies = [
  "base64",
  "serde",
@@ -828,7 +828,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "1.0.0-alpha.2"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#a5357d4eed300bab4260d80d7d393ab5ad96de7e"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fun-with-non-exhaustive#ebcf26d0765ea775b77a2fbff1a390a7a1c68806"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -839,7 +839,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-models"
 version = "1.0.0-alpha.2"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#a5357d4eed300bab4260d80d7d393ab5ad96de7e"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fun-with-non-exhaustive#ebcf26d0765ea775b77a2fbff1a390a7a1c68806"
 dependencies = [
  "base64",
  "base64uuid",
@@ -853,13 +853,14 @@ dependencies = [
  "strum_macros",
  "thiserror",
  "time",
+ "typed-builder",
  "url",
 ]
 
 [[package]]
 name = "fiberplane-provider-bindings"
-version = "2.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#a5357d4eed300bab4260d80d7d393ab5ad96de7e"
+version = "2.0.0-alpha.1"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fun-with-non-exhaustive#ebcf26d0765ea775b77a2fbff1a390a7a1c68806"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -875,7 +876,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-runtime"
 version = "2.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=main#a5357d4eed300bab4260d80d7d393ab5ad96de7e"
+source = "git+ssh://git@github.com/fiberplane/fiberplane-rs.git?branch=fun-with-non-exhaustive#ebcf26d0765ea775b77a2fbff1a390a7a1c68806"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -2865,6 +2866,17 @@ dependencies = [
  "url",
  "utf-8",
  "webpki",
+]
+
+[[package]]
+name = "typed-builder"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6179333b981641242a768f30f371c9baccbfcc03749627000c500ab88bf4528b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
