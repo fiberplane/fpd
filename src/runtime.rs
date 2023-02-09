@@ -8,7 +8,7 @@ use thiserror::Error;
 pub enum Error {
     #[error("No Project Directory is found on this OS.")]
     ProjDir,
-    #[error("The expected Providers directory {0} exists but is not a directory.")]
+    #[error("The expected Providers directory '{0}' exists but is not a directory.")]
     ProvidersDirUnavailable(PathBuf),
 }
 
