@@ -29,6 +29,8 @@ spec:
               value: ${API_BASE-https://studio.fiberplane.com/}
             - name: DATA_SOURCES_PATH
               value: /app/config/data_sources.yaml
+            - name: WASM_DIR
+              value: /app/providers
           ports:
             - containerPort: 3002
           volumeMounts:

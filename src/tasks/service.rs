@@ -1,4 +1,5 @@
-use crate::metrics::{metrics_export, CONCURRENT_QUERIES, QUERIES_DURATION_SECONDS, QUERIES_TOTAL};
+use super::metrics::{metrics_export, CONCURRENT_QUERIES, QUERIES_DURATION_SECONDS, QUERIES_TOTAL};
+use super::tokio_tungstenite_reconnect::ReconnectingWebSocket;
 use anyhow::{anyhow, Context, Result};
 use fiberplane::base64uuid::Base64Uuid;
 use fiberplane::models::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
@@ -20,7 +21,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex;
 use tokio::sync::{broadcast::Sender, watch};
 use tokio::{fs, time::interval};
-use tokio_tungstenite_reconnect::{Message, ReconnectingWebSocket};
+use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, error, info, info_span, instrument, trace, warn, Instrument, Span};
 use url::Url;
 
@@ -381,6 +382,7 @@ impl ProxyService {
             Err(anyhow!("no connection id was returned"))
         }
     }
+
     #[instrument(skip_all, fields(
         trace_id = ?message.op_id,
         data_source_name = ?message.data_source_name,

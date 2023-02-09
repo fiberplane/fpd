@@ -1,5 +1,10 @@
 # Proxy
 
+> *Disclaimer* The program will soon be renamed from "Proxy" to "Fiberplane Daemon", with
+  a command-line binary called `fpd`. Hence the documentation in the readme uses
+  `fpd` everytime this crate is mentioned. If the commands do not work, just use
+  the program with the cloned repository, using `cargo run --` instead of `fpd`.
+
 The proxy application allows executing Providers outside of the Studio. This
 can be useful in situation where direct access from the Studio to a resource is
 not available. It does require that the Proxy has access to the resource in
@@ -8,15 +13,61 @@ question.
 Unlike a HTTP proxy, this Proxy server won't simply forward requests. Rather, it
 will invoke a Provider, that will fetch the actual data.
 
+## Quickstart
+
+```shell
+cargo install --locked fpd
+fpd pull --all
+${EDITOR} "$(fpd config paths data-sources)"
+```
+
 ## Installation
 
-TODO: Insert section on how to build the proxy server.
+### With cargo
+
+Once the crate is published on crates.io, you will be able to do
+
+```shell
+cargo install --locked fpd
+```
+
+Otherwise, with a cloned version of the repository
+
+```shell
+cargo install --path .
+```
 
 ### Kubernetes
 
 TODO: Insert section on how to run the proxy server on Kubernetes.
 
-## Usage with Tilt
+## Setup
+
+### Finding configuration directories
+
+To know where the Fiberplane Daemon is looking for its configuration
+file (`data_sources.yaml`) and its providers, you can use
+
+```shell
+fpd config paths
+```
+
+This is where you should put your providers and `data_sources.yaml`
+(the exact value depends on the platform).
+
+### Download pre-built providers
+
+To download all first-party (Fiberplane) providers, you can use
+```shell
+fpd pull --all
+```
+
+Check `fpd pull --help` to see the supported providers if you want to pull only
+some of them.
+
+## Run
+
+### Usage with Tilt
 
 When running the Proxy with Tilt, you can use the `PROVIDERS` environment
 variable to control which Providers will be configured by Tilt.
