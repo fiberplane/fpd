@@ -1,8 +1,8 @@
 [package]
-name = "proxy"
+name = "fpd"
 version = "0.1.0"
 edition = "2018"
-description = "The Fiberplane Proxy enables secure communication between Fiberplane and your data sources using WebAssembly-based providers."
+description = "The Fiberplane Daemon enables secure communication between Fiberplane and your data sources using WebAssembly-based providers."
 authors = ["Fiberplane <info@fiberplane.com>"]
 
 [dependencies]

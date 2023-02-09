@@ -15,13 +15,13 @@ RUN apt-get update \
 ARG PROVIDERS_PATH=providers
 COPY ${PROVIDERS_PATH} /app/providers
 
-# This needs to be the path to the proxy binary
-ARG BIN_PATH=target/debug/proxy
-COPY ${BIN_PATH} /app/proxy
+# This needs to be the path to the daemon binary
+ARG BIN_PATH=target/debug/fpd
+COPY ${BIN_PATH} /app/fpd
 
 ENV WASM_DIR=/app/providers
-ENV RUST_LOG=proxy=info
+ENV RUST_LOG=fpd=info
 ENV LISTEN_ADDRESS=127.0.0.1:3000
 
 WORKDIR /app
-ENTRYPOINT ["/app/proxy"]
+ENTRYPOINT ["/app/fpd"]

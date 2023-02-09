@@ -1,6 +1,6 @@
 # This image should be built with the --ssh=default option to use the host's ssh credentials
 
-FROM rust:1.58
+FROM rust:1.67
 WORKDIR /app
 
 # Build a dummy project to download and build all dependencies first
@@ -18,4 +18,4 @@ COPY src src
 RUN touch src/main.rs
 RUN --mount=type=ssh cargo build
 
-ENTRYPOINT ["/app/target/debug/proxy"]
+ENTRYPOINT ["/app/target/debug/fpd"]

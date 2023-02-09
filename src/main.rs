@@ -24,7 +24,7 @@ pub struct Arguments {
     #[clap(long, short, env, default_value = "wss://studio.fiberplane.com", aliases = &["FIBERPLANE_ENDPOINT", "fiberplane-endpoint"])]
     api_base: Url,
 
-    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
+    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxies create`
     #[clap(long, short, env)]
     token: ProxyToken,
 
@@ -44,7 +44,7 @@ pub struct Arguments {
     #[clap(long, short, env, default_value = "5m")]
     status_check_interval: IntervalDuration,
 
-    /// Set the logging level for the proxy (trace, debug, info, warn, error)
+    /// Set the logging level for the daemon (trace, debug, info, warn, error)
     #[clap(long, env)]
     log_level: Option<Level>,
 
@@ -146,10 +146,10 @@ async fn main() {
 
     match proxy.connect(shutdown).await {
         Ok(_) => {
-            info!("proxy shutdown successfully");
+            info!("daemon shutdown successfully");
         }
         Err(err) => {
-            error!(?err, "proxy encountered a error");
+            error!(?err, "daemon encountered a error");
             process::exit(1);
         }
     };
@@ -159,7 +159,7 @@ fn initialize_logger(args: &Arguments) {
     let env_filter = if let Some(rust_log) = &args.rust_log {
         EnvFilter::from_str(rust_log).expect("Invalid RUST_LOG value")
     } else if let Some(log_level) = args.log_level {
-        // Enable logs from both the proxy and the provider runtime
+        // Enable logs from both the daemon and the provider runtime
         EnvFilter::new(format!(
             "{}={log_level},fp_provider_runtime={log_level}",
             env!("CARGO_PKG_NAME"),

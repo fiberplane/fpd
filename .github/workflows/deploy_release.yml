@@ -36,7 +36,7 @@ jobs:
       - id: vars
         name: Export variables
         env:
-          SERVICE: proxy
+          SERVICE: fpd
         run: |
           if [ "${{ github.event.inputs.environment }}" == "production" ]; then
             echo "ingress_root_domain=studio.fiberplane.com" >> $GITHUB_OUTPUT
@@ -95,7 +95,7 @@ jobs:
         run: kubectl apply -f result.yaml
 
       - name: Wait for Kubernetes deployment
-        run: kubectl rollout status deployment proxy
+        run: kubectl rollout status deployment fpd
 
       - name: Send "deploy finished" to Slack
         uses: slackapi/slack-github-action@v1.18.0
@@ -128,10 +128,10 @@ jobs:
 
   post-event:
     name: Post deployment to all Fiberplane environments
-    uses: fiberplane/proxy/.github/workflows/post_event.yml@main
+    uses: fiberplane/fpd/.github/workflows/post_event.yml@main
     needs: deploy
     with:
-      service: proxy
+      service: fpd
       trigger: manual
       environment: ${{ inputs.environment }}
       version: ${{ inputs.version }}
