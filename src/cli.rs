@@ -15,7 +15,7 @@ use url::Url;
 /// using WebAssembly-based providers and token-based authentication.
 /// Set up a token either:
 /// - using `fp` command line tool with `fp proxies create --help`, or
-/// - using online in Studio web user interface.
+/// - online in Studio web user interface.
 pub struct Arguments {
     /// Path to directory containing provider WASM files
     #[clap(long, env)]
