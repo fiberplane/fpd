@@ -148,7 +148,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Err(err) => {
             error!(?err, "proxy encountered a error");
-            bail!("proxy encountered an error: {err:?}");
+            bail!("Proxy encountered an error: {err:?}");
         }
     }
 }
