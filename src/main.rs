@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
                             runtime::data_sources_path()?
                         );
                         println!(
-                            "providers expected directory: {:?}",
+                            "Expected directory for providers: {:?}",
                             runtime::providers_wasm_dir()?
                         );
                         return Ok(());
