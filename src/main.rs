@@ -143,7 +143,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     match proxy.connect(shutdown).await {
         Ok(_) => {
-            info!("proxy shutdown successfully");
+            info!("Proxy shutdown successfully");
             Ok(())
         }
         Err(err) => {
