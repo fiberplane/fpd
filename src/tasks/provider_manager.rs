@@ -21,7 +21,7 @@ pub enum Error {
     Network(#[from] reqwest::Error),
     #[error("IO error: {0}")]
     IO(#[from] std::io::Error),
-    #[error("Provider {provider} not found")]
+    #[error("Provider '{provider}' not found")]
     NotFound { provider: String },
     #[error("Provider '{provider}' already exists at '{}', delete it manually if you want to replace it", path.display())]
     NoOverwrite { provider: String, path: PathBuf },
