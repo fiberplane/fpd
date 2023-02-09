@@ -22,7 +22,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 cli::ConfigAction::Paths { query } => {
                     if query.is_none() {
                         println!(
-                            "data_sources.yml expected location: {:?}",
+                            "Expected location for 'data_sources.yaml': {:?}",
                             runtime::data_sources_path()?
                         );
                         println!(
