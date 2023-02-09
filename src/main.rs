@@ -111,7 +111,7 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     let data_sources: Vec<ProxyDataSource> =
-        serde_yaml::from_str(&data_sources).expect("Invalid data sources YAML file");
+        serde_yaml::from_str(&data_sources).expect("Invalid 'data_sources.yaml' file");
 
     let proxy = ProxyService::init(
         args.api_base,
