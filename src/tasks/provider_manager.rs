@@ -23,7 +23,7 @@ pub enum Error {
     IO(#[from] std::io::Error),
     #[error("Provider {provider} not found")]
     NotFound { provider: String },
-    #[error("Provider {provider} exists at {}, delete it manually if you want to replace this", path.display())]
+    #[error("Provider '{provider}' already exists at '{}', delete it manually if you want to replace it", path.display())]
     NoOverwrite { provider: String, path: PathBuf },
     #[error(
 
