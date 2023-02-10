@@ -11,7 +11,7 @@ async-channel = "1.8.0"
 clap = { version = "4.1.4", features = ["derive", "env", "cargo", "help"] }
 ctrlc = "3.2.1"
 directories = "4.0.1"
-fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane-rs.git", branch = "main", features = [
+fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane.git", branch = "main", features = [
   "base64uuid-creation",
   "models",
   "provider-bindings",
@@ -48,8 +48,8 @@ tokio-tungstenite = { version = "*", features = ["rustls-tls-native-roots"] }
 test-env-log = { version = "0.2", default-features = false, features = ["trace"] }
 tracing-subscriber = { version = "*", features = ["env-filter", "fmt"] }
 
-[patch.'ssh://git@github.com/fiberplane/fiberplane-rs.git']
-# fiberplane = { path = "../fiberplane-rs/fiberplane" }
+[patch.'ssh://git@github.com/fiberplane/fiberplane.git']
+# fiberplane = { path = "../fiberplane/fiberplane" }
 
 [patch.crates-io]
 #fp-bindgen-macros = { path = "../fp-bindgen/macros"}
