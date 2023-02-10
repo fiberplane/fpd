@@ -47,15 +47,18 @@ const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 static STATUS_REQUEST_V1: Lazy<Vec<u8>> =
     Lazy::new(|| rmp_serde::to_vec_named(&LegacyProviderRequest::Status).unwrap());
 static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
-    rmp_serde::to_vec_named(&ProviderRequest {
-        query_type: STATUS_QUERY_TYPE.to_string(),
-        query_data: Blob {
-            data: Vec::new().into(),
-            mime_type: STATUS_MIME_TYPE.to_string(),
-        },
-        config: Value::Null,
-        previous_response: None,
-    })
+    rmp_serde::to_vec_named(
+        &ProviderRequest::builder()
+            .query_type(STATUS_QUERY_TYPE)
+            .query_data(
+                Blob::builder()
+                    .data(Vec::new())
+                    .mime_type(STATUS_MIME_TYPE)
+                    .build(),
+            )
+            .config(Value::Null)
+            .build(),
+    )
     .unwrap()
 });
 
@@ -260,13 +263,13 @@ impl ProxyService {
                             .inner
                             .data_sources
                             .values()
-                            .map(|data_source| UpsertProxyDataSource {
-                                name: data_source.name.clone(),
-                                description: data_source.description.clone(),
-                                provider_type: data_source.provider_type.clone(),
-                                protocol_version: get_protocol_version(&data_source.provider_type),
-                                status: DataSourceStatus::Error(Error::ProxyDisconnected),
-                            })
+                            .map(|data_source| UpsertProxyDataSource::builder()
+                                .name(data_source.name.clone())
+                                .description(data_source.description.clone())
+                                .provider_type(data_source.provider_type.clone())
+                                .protocol_version(get_protocol_version(&data_source.provider_type))
+                                .status(DataSourceStatus::Error(Error::ProxyDisconnected))
+                            .build())
                             .collect();
                         let message = ProxyMessage::new_set_data_sources_notification(data_sources);
                         data_sources_sender.send(message).ok();
@@ -646,13 +649,13 @@ impl ProxyService {
                     }
                 }
 
-                UpsertProxyDataSource {
-                    name: name.clone(),
-                    description: data_source.description.clone(),
-                    provider_type: data_source.provider_type.clone(),
-                    protocol_version: get_protocol_version(&data_source.provider_type),
-                    status,
-                }
+                UpsertProxyDataSource::builder()
+                    .name(name.clone())
+                    .description(data_source.description.clone())
+                    .provider_type(data_source.provider_type.clone())
+                    .protocol_version(get_protocol_version(&data_source.provider_type))
+                    .status(status)
+                    .build()
             })
             .unwrap()
             .await;
