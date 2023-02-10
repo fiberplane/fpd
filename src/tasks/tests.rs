@@ -1,4 +1,4 @@
-use crate::service::{ProxyDataSource, ProxyService, WasmModules};
+use super::service::{ProxyDataSource, ProxyService, WasmModules};
 use fiberplane::base64uuid::Base64Uuid;
 use fiberplane::models::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
@@ -87,7 +87,7 @@ async fn sends_auth_token_header() {
     let addr = listener.local_addr().unwrap();
 
     let service = ProxyService::new(
-        format!("http://{}", addr).parse().unwrap(),
+        format!("http://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Default::default(),
         Default::default(),
@@ -171,7 +171,7 @@ async fn sends_data_sources_on_connect() {
         },
     ];
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -277,7 +277,7 @@ async fn checks_data_source_status_on_interval() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -355,7 +355,7 @@ async fn sends_pings() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
@@ -408,7 +408,7 @@ async fn health_check_endpoints() {
         .unwrap();
 
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         HashMap::new(),
         HashMap::new(),
@@ -429,7 +429,7 @@ async fn health_check_endpoints() {
         ws.next().await.unwrap().unwrap();
 
         let check_endpoint = |path: &'static str| async move {
-            reqwest::get(format!("http://{}{}", service_addr, path))
+            reqwest::get(format!("http://{service_addr}{path}"))
                 .await
                 .unwrap()
                 .status()
@@ -461,7 +461,7 @@ async fn returns_error_for_query_to_unknown_provider() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
@@ -563,7 +563,7 @@ async fn calls_provider_with_query_and_sends_result() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -679,7 +679,7 @@ async fn handles_multiple_concurrent_messages() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -802,7 +802,7 @@ async fn calls_provider_with_query_and_sends_error() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -872,7 +872,7 @@ async fn reconnects_if_websocket_closes() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
@@ -926,7 +926,7 @@ async fn service_shutdown() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
