@@ -27,7 +27,7 @@ set -e
 
 if [ ! -d $FIBERPLANE_DIR ]; then
     echo "Please make sure you have the providers repository checked out next"
-    echo "to your daemon project."
+    echo "to your fpd project."
     exit 1
 fi
 
