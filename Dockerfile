@@ -15,7 +15,7 @@ RUN apt-get update \
 ARG PROVIDERS_PATH=providers
 COPY ${PROVIDERS_PATH} /app/providers
 
-# This needs to be the path to the daemon binary
+# This needs to be the path to the fpd binary
 ARG BIN_PATH=target/debug/fpd
 COPY ${BIN_PATH} /app/fpd
 
