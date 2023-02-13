@@ -1,4 +1,4 @@
-# Releases a new version of daemon.
+# Releases a new version of fpd.
 # It will do the following:
 # - Download the dev Docker image, tag it as an release image and push it to our
 #   internal repository.
