@@ -1,4 +1,4 @@
-use crate::service::{ProxyDataSource, ProxyService, WasmModules};
+use super::service::{ProxyDataSource, ProxyService, WasmModules};
 use fiberplane::base64uuid::Base64Uuid;
 use fiberplane::models::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
@@ -16,10 +16,12 @@ use test_log::test;
 use tokio::{join, net::TcpListener, sync::broadcast};
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
 
-static TOKEN: Lazy<ProxyToken> = Lazy::new(|| ProxyToken {
-    workspace_id: Base64Uuid::new(),
-    proxy_name: Name::from_static("test-proxy"),
-    token: "MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk".to_string(),
+static TOKEN: Lazy<ProxyToken> = Lazy::new(|| {
+    ProxyToken::builder()
+        .workspace_id(Base64Uuid::new())
+        .proxy_name(Name::from_static("test-proxy"))
+        .token("MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk")
+        .build()
 });
 
 async fn mock_prometheus() -> (MockServer, Vec<ProxyDataSource>) {
@@ -85,7 +87,7 @@ async fn sends_auth_token_header() {
     let addr = listener.local_addr().unwrap();
 
     let service = ProxyService::new(
-        format!("http://{}", addr).parse().unwrap(),
+        format!("http://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Default::default(),
         Default::default(),
@@ -169,7 +171,7 @@ async fn sends_data_sources_on_connect() {
         },
     ];
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -194,14 +196,15 @@ async fn sends_data_sources_on_connect() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        let data_sources =
-            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { data_sources }) =
-                message.payload
-            {
-                data_sources
-            } else {
-                panic!("wrong type");
-            };
+        let data_sources = if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage {
+            data_sources,
+            ..
+        }) = message.payload
+        {
+            data_sources
+        } else {
+            panic!("wrong type");
+        };
 
         assert_eq!(data_sources.len(), 4);
         let data_sources: HashMap<_, _> = data_sources
@@ -274,7 +277,7 @@ async fn checks_data_source_status_on_interval() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -299,8 +302,10 @@ async fn checks_data_source_status_on_interval() {
                 Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
                 _ => panic!("wrong type"),
             };
-            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
-                message.payload
+            if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage {
+                mut data_sources,
+                ..
+            }) = message.payload
             {
                 assert_eq!(
                     data_sources.pop().unwrap().status,
@@ -318,8 +323,9 @@ async fn checks_data_source_status_on_interval() {
             Message::Binary(message) => ProxyMessage::deserialize_msgpack(message).unwrap(),
             _ => panic!("wrong type"),
         };
-        if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage { mut data_sources }) =
-            message.payload
+        if let ProxyMessagePayload::SetDataSources(SetDataSourcesMessage {
+            mut data_sources, ..
+        }) = message.payload
         {
             assert_eq!(
                 data_sources.pop().unwrap().status,
@@ -349,7 +355,7 @@ async fn sends_pings() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
@@ -402,7 +408,7 @@ async fn health_check_endpoints() {
         .unwrap();
 
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         HashMap::new(),
         HashMap::new(),
@@ -423,7 +429,7 @@ async fn health_check_endpoints() {
         ws.next().await.unwrap().unwrap();
 
         let check_endpoint = |path: &'static str| async move {
-            reqwest::get(format!("http://{}{}", service_addr, path))
+            reqwest::get(format!("http://{service_addr}{path}"))
                 .await
                 .unwrap()
                 .status()
@@ -455,7 +461,7 @@ async fn returns_error_for_query_to_unknown_provider() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
@@ -557,7 +563,7 @@ async fn calls_provider_with_query_and_sends_result() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -581,15 +587,14 @@ async fn calls_provider_with_query_and_sends_result() {
 
         // Send query
         let op_id = Base64Uuid::new();
-        let request = ProviderRequest {
-            query_type: TIMESERIES_QUERY_TYPE.to_string(),
-            query_data: Blob {
-                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
-                mime_type: "application/x-www-form-urlencoded".to_string(),
-            },
-            config: Value::Null,
-            previous_response: None,
-        };
+        let request = ProviderRequest::builder()
+            .query_type(TIMESERIES_QUERY_TYPE)
+            .query_data(Blob::builder()
+                            .data(b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec())
+                            .mime_type("application/x-www-form-urlencoded")
+                .build())
+            .config(Value::Null)
+            .build();
         let message = ServerMessage::new_invoke_proxy_request(
             rmp_serde::to_vec(&request).unwrap(),
             Name::from_static("prometheus-dev"),
@@ -674,7 +679,7 @@ async fn handles_multiple_concurrent_messages() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -700,18 +705,17 @@ async fn handles_multiple_concurrent_messages() {
         // Send two queries
         let op_1 = Base64Uuid::parse_str("10000000-0000-0000-0000-000000000000").unwrap();
         let message_1 = ServerMessage::new_invoke_proxy_request(
-            rmp_serde::to_vec(&ProviderRequest {
-                query_type: TIMESERIES_QUERY_TYPE.to_string(),
-                query_data: Blob {
-                    data:
+            rmp_serde::to_vec(&ProviderRequest::builder()
+                .query_type(TIMESERIES_QUERY_TYPE)
+                .query_data(Blob::builder()
+                                .data(
                         b"query=query1&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
                             .to_vec()
-                            .into(),
-                    mime_type: "application/x-www-form-urlencoded".to_string(),
-                },
-                config: Value::Null,
-                previous_response: None,
-            })
+                                )
+                                .mime_type("application/x-www-form-urlencoded").build()
+                )
+                .config(Value::Null)
+                .build())
             .unwrap(),
             Name::from_static("prometheus-dev"),
             2,
@@ -723,18 +727,17 @@ async fn handles_multiple_concurrent_messages() {
 
         let op_2 = Base64Uuid::parse_str("20000000-0000-0000-0000-000000000000").unwrap();
         let message_2 = ServerMessage::new_invoke_proxy_request(
-            rmp_serde::to_vec(&ProviderRequest {
-                query_type: TIMESERIES_QUERY_TYPE.to_string(),
-                query_data: Blob {
-                    data:
+            rmp_serde::to_vec(&ProviderRequest::builder()
+                .query_type(TIMESERIES_QUERY_TYPE)
+                .query_data(Blob::builder()
+                                .data(
                         b"query=query2&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z"
                             .to_vec()
-                            .into(),
-                    mime_type: "application/x-www-form-urlencoded".to_string(),
-                },
-                config: Value::Null,
-                previous_response: None,
-            })
+                                ).
+                    mime_type("application/x-www-form-urlencoded")
+                    .build())
+                .config(Value::Null)
+                .build())
             .unwrap(),
             Name::from_static("prometheus-dev"),
             2,
@@ -799,7 +802,7 @@ async fn calls_provider_with_query_and_sends_error() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::init(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         Path::new("./providers"),
         data_sources,
@@ -823,15 +826,14 @@ async fn calls_provider_with_query_and_sends_error() {
 
         // Send query
         let op_id = Base64Uuid::new();
-        let request = ProviderRequest {
-            query_type: TIMESERIES_QUERY_TYPE.to_string(),
-            query_data: Blob {
-                data: b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec().into(),
-                mime_type: "application/x-www-form-urlencoded".to_string(),
-            },
-            config: Value::Null,
-            previous_response: None,
-        };
+        let request = ProviderRequest::builder()
+            .query_type(TIMESERIES_QUERY_TYPE)
+            .query_data(Blob::builder()
+                            .data(b"query=test%20query&time_range=2022-08-31T11:00:00.000Z+2022-08-31T12:00:00.000Z".to_vec())
+                            .mime_type("application/x-www-form-urlencoded")
+                .build())
+            .config(Value::Null)
+            .build();
         let message = ServerMessage::new_invoke_proxy_request(
             rmp_serde::to_vec(&request).unwrap(),
             Name::from_static("prometheus-dev"),
@@ -870,7 +872,7 @@ async fn reconnects_if_websocket_closes() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),
@@ -924,7 +926,7 @@ async fn service_shutdown() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let service = ProxyService::new(
-        format!("ws://{}", addr).parse().unwrap(),
+        format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
         WasmModules::new(),
         Default::default(),

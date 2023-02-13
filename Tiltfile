@@ -78,7 +78,7 @@ if run_fpd_on_host:
 
   local_resource('fpd',
     serve_env=env,
-    serve_cmd='cargo run',
+    serve_cmd='cargo run -- --wasm-dir providers',
     deps=['fpd', 'providers', 'deployment/local/data_sources.yaml'],
     resource_deps=providers,
     # Note: this endpoint is called "/health" rather than "healthz"

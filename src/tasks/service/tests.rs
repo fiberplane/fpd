@@ -1,4 +1,4 @@
-use crate::service::status_check::DataSourceCheckTask;
+use super::status_check::DataSourceCheckTask;
 use fiberplane::models::names::Name;
 use std::time::Duration;
 
