@@ -14,7 +14,7 @@ use url::Url;
 /// It enables secure communication between Fiberplane and your data
 /// using WebAssembly-based providers and token-based authentication.
 /// Set up a token either:
-/// - using `fp` command line tool with `fp proxies create --help`, or
+/// - using `fp` command line tool with `fp daemon create --help`, or
 /// - online in Studio web user interface.
 pub struct Arguments {
     /// Path to directory containing provider WASM files
@@ -25,7 +25,7 @@ pub struct Arguments {
     #[clap(long, short, env, default_value = "wss://studio.fiberplane.com", aliases = &["FIBERPLANE_ENDPOINT", "fiberplane-endpoint"])]
     pub api_base: Url,
 
-    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
+    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp daemon add`
     #[clap(long, short, env)]
     pub token: Option<ProxyToken>,
 
