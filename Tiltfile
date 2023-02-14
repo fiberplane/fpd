@@ -67,6 +67,8 @@ env={
   'LISTEN_ADDRESS': '127.0.0.1:3002',
   'API_BASE': api_base,
   # The Token still contains "proxy" as it's the legacy name of fpd
+  # To change this, a synchronized change in fiberplane/api/src/fixtures/mod.rs::PROXY_NAME
+  # is necessary
   'TOKEN':'8Z3flBLMQ7O7-b2uS85QLw:proxy:MVPpfxAYRxcQ4rFZUB7RRzirzwhR7htlkU3zcDm-pZk',
 }
 

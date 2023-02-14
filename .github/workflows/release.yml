@@ -44,6 +44,7 @@ jobs:
           echo "RELEASE_IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
           echo "RELEASE_TAG=release-${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "DOCKER_HUB_IMAGE=fiberplane/${SERVICE}" >> $GITHUB_ENV
+          echo "DOCKER_HUB_LEGACY_IMAGE=fiberplane/proxy" >> $GITHUB_ENV
           echo "DOCKER_HUB_TAG="${{ github.event.release.tag_name }}"" >> $GITHUB_ENV
           echo "DOCKER_HUB_MAJOR_TAG="$MAJOR_VERSION"" >> $GITHUB_ENV
 
@@ -58,6 +59,7 @@ jobs:
           echo "- \`RELEASE_IMAGE\`: $RELEASE_IMAGE" >> $GITHUB_STEP_SUMMARY
           echo "- \`RELEASE_TAG\`: $RELEASE_TAG" >> $GITHUB_STEP_SUMMARY
           echo "- \`DOCKER_HUB_IMAGE\`: $DOCKER_HUB_IMAGE" >> $GITHUB_STEP_SUMMARY
+          echo "- \`DOCKER_HUB_LEGACY_IMAGE\`: $DOCKER_HUB_LEGACY_IMAGE" >> $GITHUB_STEP_SUMMARY
           echo "- \`DOCKER_HUB_TAG\`: $DOCKER_HUB_TAG" >> $GITHUB_STEP_SUMMARY
           echo "- \`DOCKER_HUB_MAJOR_TAG\`: $DOCKER_HUB_MAJOR_TAG" >> $GITHUB_STEP_SUMMARY
 
@@ -140,4 +142,17 @@ jobs:
             done
 
             docker manifest push "${DOCKER_HUB_IMAGE}:${TAG}"
+          done
+
+      - name: Tag and push release Docker legacy images (Docker Hub)
+        run: |
+          DOCKER_TAGS="${DOCKER_HUB_TAG} ${DOCKER_HUB_MAJOR_TAG}"
+          for TAG in $DOCKER_TAGS; do
+            for ARCH in $ARCHS; do
+              docker tag "${DEV_IMAGE}:${DEV_TAG}-${ARCH}" "${DOCKER_HUB_LEGACY_IMAGE}:${TAG}-${ARCH}"
+              docker push "${DOCKER_HUB_LEGACY_IMAGE}:${TAG}-${ARCH}"
+              docker manifest create "${DOCKER_HUB_LEGACY_IMAGE}:${TAG}" -a "${DOCKER_HUB_LEGACY_IMAGE}:${TAG}-${ARCH}"
+            done
+
+            docker manifest push "${DOCKER_HUB_LEGACY_IMAGE}:${TAG}"
           done
