@@ -46,9 +46,9 @@ test-log = { version = "0.2.11", default-features = false, features = [
     "trace",
 ] }
 tokio = { version = "1.10.1", features = ["full", "test-util"] }
-tokio-tungstenite = { version = "*", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.16", features = ["rustls-tls-native-roots"] }
 test-env-log = { version = "0.2", default-features = false, features = ["trace"] }
-tracing-subscriber = { version = "*", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [patch.crates-io]
 # fiberplane = { path = "../fiberplane/fiberplane" }
