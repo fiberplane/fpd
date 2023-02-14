@@ -62,19 +62,14 @@ some of them.
 
 ## Run
 
-### Usage with Tilt
+Once you the configuration is ready (including the token from `fp` or from Studio
+when adding a daemon), you can run it with
 
-When running the Daemon with Tilt, you can use the `PROVIDERS` environment
-variable to control which Providers will be configured by Tilt.
+```shell
+fpd --token $TOKEN
+```
 
-For example: `$ PROVIDERS=prometheus,sentry tilt up`
-
-For some Providers, Tilt may also configure and start additional services to
-fetch data from.
-
-**Warning:** If you do not specify which Providers to run, *all* Providers will
-run. This may be convenient, but especially the Elasticsearch provider will use
-a *lot* of memory on your system.
+You can always check `fpd --help` if you need more guidance
 
 ## Overview
 
