@@ -1,16 +1,11 @@
-# Proxy
+# Fiberplane Daemon
 
-> *Disclaimer* The program will soon be renamed from "Proxy" to "Fiberplane Daemon", with
-  a command-line binary called `fpd`. Hence the documentation in the readme uses
-  `fpd` everytime this crate is mentioned. If the commands do not work, just use
-  the program with the cloned repository, using `cargo run --` instead of `fpd`.
-
-The proxy application allows executing Providers outside of the Studio. This
+The Fiberplane Daemon allows executing Providers outside of the Studio. This
 can be useful in situation where direct access from the Studio to a resource is
-not available. It does require that the Proxy has access to the resource in
+not available. It does require that the Daemon has access to the resource in
 question.
 
-Unlike a HTTP proxy, this Proxy server won't simply forward requests. Rather, it
+Unlike a HTTP proxy, this Daemon won't simply forward requests. Rather, it
 will invoke a Provider, that will fetch the actual data.
 
 ## Quickstart
