@@ -1,6 +1,6 @@
 [package]
 name = "fpd"
-version = "2.7.1"
+version = "2.7.2"
 edition = "2018"
 description = "The Fiberplane Daemon enables secure communication between Fiberplane and your data sources using WebAssembly-based providers."
 authors = ["Fiberplane <info@fiberplane.com>"]
@@ -32,7 +32,7 @@ serde_yaml = "0.8.21"
 thiserror = "1.0.38"
 time = "0.3.14"
 tokio = { version = "1.10.1", features = ["full"] }
-tokio-tungstenite = "0.16"
+tokio-tungstenite = { version = "0.16", features = ["rustls-tls-native-roots"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
 url = "2.2.2"
@@ -46,7 +46,6 @@ test-log = { version = "0.2.11", default-features = false, features = [
     "trace",
 ] }
 tokio = { version = "1.10.1", features = ["full", "test-util"] }
-tokio-tungstenite = { version = "0.16", features = ["rustls-tls-native-roots"] }
 test-env-log = { version = "0.2", default-features = false, features = ["trace"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
