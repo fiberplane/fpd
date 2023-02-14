@@ -14,7 +14,7 @@ use url::Url;
 /// It enables secure communication between Fiberplane and your data
 /// using WebAssembly-based providers and token-based authentication.
 /// Set up a token either:
-/// - using `fp` command line tool with `fp proxies create --help`, or
+/// - using `fp` command line tool with `fp daemon create --help`, or
 /// - online in Studio web user interface.
 pub struct Arguments {
     /// Path to directory containing provider WASM files
@@ -25,7 +25,7 @@ pub struct Arguments {
     #[clap(long, short, env, default_value = "wss://studio.fiberplane.com", aliases = &["FIBERPLANE_ENDPOINT", "fiberplane-endpoint"])]
     pub api_base: Url,
 
-    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp proxy add`
+    /// Token used to authenticate against the Fiberplane API. This is created through the CLI by running the command: `fp daemon add`
     #[clap(long, short, env)]
     pub token: Option<ProxyToken>,
 
@@ -45,7 +45,7 @@ pub struct Arguments {
     #[clap(long, short, env, default_value = "5m")]
     pub status_check_interval: IntervalDuration,
 
-    /// Set the logging level for the proxy (trace, debug, info, warn, error)
+    /// Set the logging level for the daemon (trace, debug, info, warn, error)
     #[clap(long, env)]
     pub log_level: Option<Level>,
 
@@ -92,7 +92,7 @@ pub enum ConfigAction {
 }
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum ConfigPathQuery {
-    /// Path to the data_sources.yaml file to use to configure the proxy
+    /// Path to the data_sources.yaml file to use to configure the daemon
     DataSources,
     /// Path to the directory containing the WebAssembly providers
     WasmDir,

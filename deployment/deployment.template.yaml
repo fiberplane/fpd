@@ -2,32 +2,32 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: proxy
+  name: fpd
   labels:
-    app: proxy
+    app: fpd
 spec:
   selector:
     matchLabels:
-      app: proxy
+      app: fpd
   template:
     metadata:
       labels:
-        app: proxy
+        app: fpd
     spec:
       containers:
-        - name: proxy
-          image: "${IMAGE-proxy}:${TAG-latest}"
+        - name: fpd
+          image: "${IMAGE-fpd}:${TAG-latest}"
           imagePullPolicy: Always
           env:
             - name: RUST_LOG
               valueFrom:
                 configMapKeyRef:
-                  name: proxy-config
+                  name: fpd-config
                   key: rust_log
             - name: TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: proxy-secrets
+                  name: fpd-secrets
                   key: token
             - name: LISTEN_ADDRESS
               value: 0.0.0.0:3002
@@ -47,7 +47,7 @@ spec:
       volumes:
         - name: data-sources
           secret:
-            secretName: proxy-secrets
+            secretName: fpd-secrets
             items:
               - key: data_sources.yaml
                 path: data_sources.yaml

@@ -143,12 +143,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     match proxy.connect(shutdown).await {
         Ok(_) => {
-            info!("Proxy shutdown successfully");
+            info!("Daemon shutdown successfully");
             Ok(())
         }
         Err(err) => {
-            error!(?err, "proxy encountered a error");
-            bail!("Proxy encountered an error: {err:?}");
+            error!(?err, "daemon encountered a error");
+            bail!("Daemon encountered an error: {err:?}");
         }
     }
 }
@@ -157,7 +157,7 @@ fn initialize_logger(args: &cli::Arguments) {
     let env_filter = if let Some(rust_log) = &args.rust_log {
         EnvFilter::from_str(rust_log).expect("Invalid RUST_LOG value")
     } else if let Some(log_level) = args.log_level {
-        // Enable logs from both the proxy and the provider runtime
+        // Enable logs from both the daemon and the provider runtime
         EnvFilter::new(format!(
             "{}={log_level},fp_provider_runtime={log_level}",
             env!("CARGO_PKG_NAME"),

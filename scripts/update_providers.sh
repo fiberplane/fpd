@@ -27,7 +27,7 @@ set -e
 
 if [ ! -d $FIBERPLANE_DIR ]; then
     echo "Please make sure you have the providers repository checked out next"
-    echo "to your proxy project."
+    echo "to your fpd project."
     exit 1
 fi
 
@@ -45,7 +45,7 @@ pwd
 printf "${CYAN}Optimizing providers...${NC}\n"
 for provider in "${PROVIDERS[@]}"; do
     # Optimize for performance
-    wasm-opt -Oz -c -o "../proxy/providers/${provider}.wasm" "target/wasm32-unknown-unknown/release/${provider}_provider.wasm"
+    wasm-opt -Oz -c -o "../fpd/providers/${provider}.wasm" "target/wasm32-unknown-unknown/release/${provider}_provider.wasm"
 done
 
 echo "Done."

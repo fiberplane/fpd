@@ -991,6 +991,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "fpd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "clap",
+ "ctrlc",
+ "directories",
+ "fiberplane",
+ "futures",
+ "http",
+ "httpmock",
+ "hyper",
+ "once_cell",
+ "prometheus",
+ "reqwest",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "test-env-log",
+ "test-log",
+ "thiserror",
+ "time",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1981,38 +2013,6 @@ dependencies = [
  "memchr",
  "parking_lot 0.12.1",
  "thiserror",
-]
-
-[[package]]
-name = "proxy"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "clap",
- "ctrlc",
- "directories",
- "fiberplane",
- "futures",
- "http",
- "httpmock",
- "hyper",
- "once_cell",
- "prometheus",
- "reqwest",
- "rmp-serde",
- "serde",
- "serde_json",
- "serde_yaml",
- "test-env-log",
- "test-log",
- "thiserror",
- "time",
- "tokio",
- "tokio-tungstenite",
- "tracing",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]
