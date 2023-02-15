@@ -2,21 +2,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: proxy
+  name: fpd
   labels:
-    app: proxy
+    app: fpd
 spec:
   selector:
     matchLabels:
-      app: proxy
+      app: fpd
   template:
     metadata:
       labels:
-        app: proxy
+        app: fpd
     spec:
       containers:
-        - name: proxy
-          image: proxy:latest
+        - name: fpd
+          image: fpd:latest
           imagePullPolicy: Always
           env:
             - name: RUST_LOG
@@ -40,7 +40,7 @@ spec:
       volumes:
         - name: data-sources
           configMap:
-            name: proxy
+            name: fpd
             defaultMode: 420
             items:
               - key: data_sources.yaml
