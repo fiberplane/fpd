@@ -278,7 +278,7 @@ impl ProxyService {
                     }
                 }
             }
-        });
+        }.in_current_span());
 
         // Spawn a separate task for handling outgoing messages
         // so that incoming and outgoing do not interfere with one another
@@ -309,6 +309,20 @@ impl ProxyService {
             .in_current_span(),
         );
 
+        // NOTE: a Span Guard is unsafe to hold across awaits, and can
+        // mess up the reported traces.
+        //
+        // All code above carefully avoids
+        // calling await outside of tokio::spawned-futures so it's safe
+        // to have the guard in scope, but past this point it's not
+        // safe anymore, so we manually drop the guard.
+        //
+        // tokio::select! actually hides top level awaits.
+        //
+        // Ref: https://docs.rs/tracing/latest/tracing/struct.Span.html#method.enter
+        //      https://docs.rs/tokio/latest/tokio/macro.select.html
+        drop(_enter);
+
         loop {
             let outgoing_sender = outgoing_sender.clone();
             let mut shutdown = shutdown.subscribe();
@@ -323,7 +337,7 @@ impl ProxyService {
                                         if let Err(err) = service.handle_message(message, outgoing_sender).await {
                                             error!("Error handling message: {:?}", err);
                                         };
-                                    }.in_current_span());
+                                    }.instrument(span.clone()));
                                 },
                                 Err(err) => {
                                     error!(?err, "Error deserializing MessagePack message");
