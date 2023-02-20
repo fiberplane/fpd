@@ -20,7 +20,7 @@ spec:
           imagePullPolicy: Always
           env:
             - name: RUST_LOG
-              value: ${RUST_LOG-proxy=trace}
+              value: ${RUST_LOG-fpd=trace}
             - name: TOKEN
               value: ${TOKEN}
             - name: LISTEN_ADDRESS
