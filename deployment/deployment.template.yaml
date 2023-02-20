@@ -25,10 +25,7 @@ spec:
                   name: fpd-config
                   key: rust_log
             - name: LOG_JSON
-              valueFrom:
-                configMapKeyRef:
-                  name: fpd-config
-                  key: log_json
+              value: "true"
             - name: TOKEN
               valueFrom:
                 secretKeyRef:
