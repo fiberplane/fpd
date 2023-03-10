@@ -205,6 +205,7 @@ jobs:
           docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
       - name: Configure AWS Credentials
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
@@ -213,6 +214,7 @@ jobs:
 
       - name: Login to Amazon ECR
         id: ecr
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Export variables
@@ -243,6 +245,7 @@ jobs:
         run: docker run --rm "${IMAGE}:${TAG}" --help
 
       - name: Push Docker image
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         run: docker push "${IMAGE}:${TAG}"
 
   # Create a new manifest that contains references to the other two Docker
@@ -257,6 +260,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Configure AWS Credentials
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
@@ -265,6 +269,7 @@ jobs:
 
       - name: Login to Amazon ECR
         id: ecr
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Export variables
@@ -281,6 +286,7 @@ jobs:
           --amend ${IMAGE}:dev-${SHORT_SHA}-arm64v8
 
       - name: Push Docker manifest
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         run: docker manifest push ${IMAGE}:${TAG}
 
   # Add SHA256 sum for the binary and create a distributable file. This
@@ -337,6 +343,7 @@ jobs:
           path: artifacts
 
       - name: Configure AWS Credentials
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
@@ -349,6 +356,7 @@ jobs:
           echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
 
       - name: Sync artifacts to S3 builds bucket
+        if: ${{ github.event_name != 'push' || github.event.pull_request.head.repo.fork == false }}
         run: >
           aws s3 sync
           --acl private
