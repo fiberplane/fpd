@@ -13,6 +13,7 @@ use hyper::{Body, Server};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use status_check::DataSourceCheckTask;
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
@@ -28,7 +29,7 @@ mod status_check;
 #[cfg(test)]
 mod tests;
 
-use status_check::DataSourceCheckTask;
+const STATUS_CHECK_VERSION: u8 = 2;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -262,7 +263,7 @@ impl ProxyService {
                                 .name(data_source.name.clone())
                                 .description(data_source.description.clone())
                                 .provider_type(data_source.provider_type.clone())
-                                .protocol_version(get_protocol_version(&data_source.provider_type))
+                                .protocol_version(STATUS_CHECK_VERSION)
                                 .status(DataSourceStatus::Error(Error::ProxyDisconnected))
                             .build())
                             .collect();
@@ -655,7 +656,7 @@ impl ProxyService {
                     .name(name.clone())
                     .description(data_source.description.clone())
                     .provider_type(data_source.provider_type.clone())
-                    .protocol_version(get_protocol_version(&data_source.provider_type))
+                    .protocol_version(STATUS_CHECK_VERSION)
                     .status(status)
                     .build()
             })
@@ -749,9 +750,6 @@ async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> Wasm
     .await;
 
     provider_types.into_iter().zip(runtimes).collect()
-}
-fn get_protocol_version(_: &str) -> u8 {
-    2
 }
 
 /// Listen on the given address and return a 200 for GET /
