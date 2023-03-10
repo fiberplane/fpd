@@ -2,7 +2,7 @@ use super::metrics::{metrics_export, CONCURRENT_QUERIES, QUERIES_DURATION_SECOND
 use super::tokio_tungstenite_reconnect::ReconnectingWebSocket;
 use anyhow::{anyhow, Context, Result};
 use fiberplane::base64uuid::Base64Uuid;
-use fiberplane::models::providers::{self, Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
+use fiberplane::models::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
 use fiberplane::provider_bindings::Blob;
 use fiberplane::provider_runtime::spec::{types::ProviderRequest, Runtime};
