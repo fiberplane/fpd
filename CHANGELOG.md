@@ -8,4 +8,4 @@ The format of this file is based on [Keep a Changelog](https://keepachangelog.co
 
 ### Changed
 
-- Rename Event in the providers module to ProviderEvent (#128)
+- Remove support for legacy proxy messages. Currently it only supports version 2 (#128)
