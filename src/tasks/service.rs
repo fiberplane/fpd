@@ -652,7 +652,7 @@ impl ProxyService {
 
                 if let Some((delay, task)) = task.next() {
                     if response.is_err() {
-                        warn!(
+                        error!(
                             "error connecting to data source: {name}, retrying in {}s",
                             delay.as_secs()
                         );
