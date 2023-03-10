@@ -424,6 +424,16 @@ impl ProxyService {
             message: "Incoming message is expecting an operation ID".to_string(),
         })?;
 
+        // Currently we only support version 2 of the server message protocol
+        if message.protocol_version != 2 {
+            return Ok(ProxyMessage::new_error_response(
+                Error::Invocation {
+                    message: format!("unsupported version: {}", message.protocol_version),
+                },
+                op_id,
+            ));
+        }
+
         // Try to create the runtime for the given data source
         let data_source = match self.inner.data_sources.get(&message.data_source_name) {
             Some(data_source) => data_source.clone(),
@@ -460,34 +470,27 @@ impl ProxyService {
             .start_timer();
 
         debug!(%protocol_version, %data_source.provider_type, %message.op_id, "Calling provider with {:?}", message.payload);
-        let response = match (message.protocol_version, message.payload) {
-            (1, ServerMessagePayload::Invoke(message)) => {
-                self.handle_invoke_proxy_message_v1(message, runtime, &data_source, op_id)
+        let response = match message.payload {
+            ServerMessagePayload::Invoke(message) => {
+                self.handle_invoke_proxy_message(message, runtime, &data_source, op_id)
                     .await
             }
-            (2, ServerMessagePayload::Invoke(message)) => {
-                self.handle_invoke_proxy_message_v2(message, runtime, &data_source, op_id)
-                    .await
-            }
-            (2, ServerMessagePayload::CreateCells(message)) => {
+            ServerMessagePayload::CreateCells(message) => {
                 self.handle_create_cells_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::ExtractData(message)) => {
+            ServerMessagePayload::ExtractData(message) => {
                 self.handle_extract_data_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::GetConfigSchema(message)) => {
+            ServerMessagePayload::GetConfigSchema(message) => {
                 self.handle_config_schema_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::GetSupportedQueryTypes(message)) => {
+            ServerMessagePayload::GetSupportedQueryTypes(message) => {
                 self.handle_supported_query_types(message, runtime, &data_source, op_id)
                     .await
             }
-            (_, payload) => ProxyMessage::new_error_response(
+            payload => ProxyMessage::new_error_response(
                 Error::Invocation {
-                    message: format!(
-                        "unsupported (protocol version, payload) pair: ({}, {:?})",
-                        message.protocol_version, payload
-                    ),
+                    message: format!("unsupported payload: ({:?})", payload),
                 },
                 op_id,
             ),
@@ -503,23 +506,7 @@ impl ProxyService {
         trace_id = ?op_id,
         data_source_name = ?data_source.name,
     ))]
-    async fn handle_invoke_proxy_message_v1(
-        &self,
-        _: InvokeRequest,
-        _: &Runtime,
-        data_source: &ProxyDataSource,
-        op_id: Base64Uuid,
-    ) -> ProxyMessage {
-        let message = "Unsupported proxy message version".to_string();
-        let error = providers::Error::Other { message };
-        ProxyMessage::new_error_response(error, op_id)
-    }
-
-    #[instrument(skip_all, fields(
-        trace_id = ?op_id,
-        data_source_name = ?data_source.name,
-    ))]
-    async fn handle_invoke_proxy_message_v2(
+    async fn handle_invoke_proxy_message(
         &self,
         message: InvokeRequest,
         runtime: &Runtime,
