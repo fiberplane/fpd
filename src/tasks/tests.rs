@@ -486,7 +486,7 @@ async fn returns_error_for_query_to_unknown_provider() {
         let message = ServerMessage::new_invoke_proxy_request(
             b"fake payload".to_vec(),
             Name::from_static("data-source-1"),
-            1,
+            2,
             op_id,
         );
         let message = message.serialize_msgpack();

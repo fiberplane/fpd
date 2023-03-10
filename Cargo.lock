@@ -258,7 +258,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "1.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#cba255f5c1b34ecb78c0814c84ff17974f213d4b"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
 dependencies = [
  "base64",
  "serde",
@@ -874,8 +874,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane"
-version = "1.0.0-alpha.3"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#cba255f5c1b34ecb78c0814c84ff17974f213d4b"
+version = "1.0.0-beta.1"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -885,8 +885,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-models"
-version = "1.0.0-alpha.3"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#cba255f5c1b34ecb78c0814c84ff17974f213d4b"
+version = "1.0.0-beta.1"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
 dependencies = [
  "base64",
  "base64uuid",
@@ -906,8 +906,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-bindings"
-version = "2.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#cba255f5c1b34ecb78c0814c84ff17974f213d4b"
+version = "2.0.0-beta.1"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -922,8 +922,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-runtime"
-version = "2.0.0-alpha.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#cba255f5c1b34ecb78c0814c84ff17974f213d4b"
+version = "2.0.0-beta.1"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -964,9 +964,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-macros"
-version = "3.0.0-alpha.1"
+version = "3.0.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f82c18058cae910e8ed8295193165a3cff05611101e7983458f1c27ad585742"
+checksum = "179a9f9fba8f20b7f76643df3cdbf31c10dfba79197fc774fe1bbc3a73251cff"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -976,9 +976,9 @@ dependencies = [
 
 [[package]]
 name = "fp-bindgen-support"
-version = "3.0.0-alpha.1"
+version = "3.0.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eeb4e810c1608a653380d5c875114fa1e00f4c05b2907677d2d1f5016861282"
+checksum = "8d72ed0c94d00685155d7ebd626c76f4f33105010cf26e0a911935bd5f111b77"
 dependencies = [
  "fp-bindgen-macros",
  "once_cell",
