@@ -4,9 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use fiberplane::base64uuid::Base64Uuid;
 use fiberplane::models::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
-use fiberplane::provider_bindings::{
-    Blob, HttpRequestError, LegacyProviderRequest, LegacyProviderResponse,
-};
+use fiberplane::provider_bindings::Blob;
 use fiberplane::provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
 use http::{Method, Request, Response, StatusCode};
@@ -15,6 +13,7 @@ use hyper::{Body, Server};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use status_check::DataSourceCheckTask;
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
@@ -30,7 +29,7 @@ mod status_check;
 #[cfg(test)]
 mod tests;
 
-use status_check::DataSourceCheckTask;
+const STATUS_CHECK_VERSION: u8 = 2;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -42,10 +41,7 @@ pub struct ProxyDataSource {
 }
 
 pub(crate) type WasmModules = HashMap<String, Result<Runtime, Error>>;
-const V1_PROVIDERS: &[&str] = &["elasticsearch", "loki"];
 
-static STATUS_REQUEST_V1: Lazy<Vec<u8>> =
-    Lazy::new(|| rmp_serde::to_vec_named(&LegacyProviderRequest::Status).unwrap());
 static STATUS_REQUEST_V2: Lazy<Vec<u8>> = Lazy::new(|| {
     rmp_serde::to_vec_named(
         &ProviderRequest::builder()
@@ -267,7 +263,7 @@ impl ProxyService {
                                 .name(data_source.name.clone())
                                 .description(data_source.description.clone())
                                 .provider_type(data_source.provider_type.clone())
-                                .protocol_version(get_protocol_version(&data_source.provider_type))
+                                .protocol_version(STATUS_CHECK_VERSION)
                                 .status(DataSourceStatus::Error(Error::ProxyDisconnected))
                             .build())
                             .collect();
@@ -428,6 +424,16 @@ impl ProxyService {
             message: "Incoming message is expecting an operation ID".to_string(),
         })?;
 
+        // Currently we only support version 2 of the server message protocol
+        if message.protocol_version != 2 {
+            return Ok(ProxyMessage::new_error_response(
+                Error::Invocation {
+                    message: format!("unsupported version: {}", message.protocol_version),
+                },
+                op_id,
+            ));
+        }
+
         // Try to create the runtime for the given data source
         let data_source = match self.inner.data_sources.get(&message.data_source_name) {
             Some(data_source) => data_source.clone(),
@@ -464,34 +470,27 @@ impl ProxyService {
             .start_timer();
 
         debug!(%protocol_version, %data_source.provider_type, %message.op_id, "Calling provider with {:?}", message.payload);
-        let response = match (message.protocol_version, message.payload) {
-            (1, ServerMessagePayload::Invoke(message)) => {
-                self.handle_invoke_proxy_message_v1(message, runtime, &data_source, op_id)
+        let response = match message.payload {
+            ServerMessagePayload::Invoke(message) => {
+                self.handle_invoke_proxy_message(message, runtime, &data_source, op_id)
                     .await
             }
-            (2, ServerMessagePayload::Invoke(message)) => {
-                self.handle_invoke_proxy_message_v2(message, runtime, &data_source, op_id)
-                    .await
-            }
-            (2, ServerMessagePayload::CreateCells(message)) => {
+            ServerMessagePayload::CreateCells(message) => {
                 self.handle_create_cells_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::ExtractData(message)) => {
+            ServerMessagePayload::ExtractData(message) => {
                 self.handle_extract_data_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::GetConfigSchema(message)) => {
+            ServerMessagePayload::GetConfigSchema(message) => {
                 self.handle_config_schema_proxy_message(message, runtime, &data_source, op_id)
             }
-            (2, ServerMessagePayload::GetSupportedQueryTypes(message)) => {
+            ServerMessagePayload::GetSupportedQueryTypes(message) => {
                 self.handle_supported_query_types(message, runtime, &data_source, op_id)
                     .await
             }
-            (_, payload) => ProxyMessage::new_error_response(
+            payload => ProxyMessage::new_error_response(
                 Error::Invocation {
-                    message: format!(
-                        "unsupported (protocol version, payload) pair: ({}, {:?})",
-                        message.protocol_version, payload
-                    ),
+                    message: format!("unsupported payload: ({:?})", payload),
                 },
                 op_id,
             ),
@@ -507,26 +506,7 @@ impl ProxyService {
         trace_id = ?op_id,
         data_source_name = ?data_source.name,
     ))]
-    async fn handle_invoke_proxy_message_v1(
-        &self,
-        message: InvokeRequest,
-        runtime: &Runtime,
-        data_source: &ProxyDataSource,
-        op_id: Base64Uuid,
-    ) -> ProxyMessage {
-        let result =
-            bindings::invoke_provider_v1(runtime, message.data, data_source.config.clone()).await;
-        match result {
-            Ok(response) => ProxyMessage::new_invoke_proxy_response(response, op_id),
-            Err(error) => ProxyMessage::new_error_response(error, op_id),
-        }
-    }
-
-    #[instrument(skip_all, fields(
-        trace_id = ?op_id,
-        data_source_name = ?data_source.name,
-    ))]
-    async fn handle_invoke_proxy_message_v2(
+    async fn handle_invoke_proxy_message(
         &self,
         message: InvokeRequest,
         runtime: &Runtime,
@@ -639,11 +619,7 @@ impl ProxyService {
             .iter()
             .find(|(name, _)| *name == task.name())
             .map(|(name, data_source)| async move {
-                let response = if V1_PROVIDERS.contains(&data_source.provider_type.as_str()) {
-                    self.check_provider_status_v1(name.clone()).await
-                } else {
-                    self.check_provider_status_v2(name.clone()).await
-                };
+                let response = self.check_provider_status_v2(name.clone()).await;
 
                 let status = match response {
                     Ok(_) => DataSourceStatus::Connected,
@@ -652,7 +628,7 @@ impl ProxyService {
 
                 if let Some((delay, task)) = task.next() {
                     if response.is_err() {
-                        warn!(
+                        error!(
                             "error connecting to data source: {name}, retrying in {}s",
                             delay.as_secs()
                         );
@@ -667,7 +643,7 @@ impl ProxyService {
                     .name(name.clone())
                     .description(data_source.description.clone())
                     .provider_type(data_source.provider_type.clone())
-                    .protocol_version(get_protocol_version(&data_source.provider_type))
+                    .protocol_version(STATUS_CHECK_VERSION)
                     .status(status)
                     .build()
             })
@@ -702,70 +678,6 @@ impl ProxyService {
                 }),
         )
         .await;
-    }
-
-    #[instrument(err, skip(self))]
-    async fn check_provider_status_v1(&self, data_source_name: Name) -> Result<(), Error> {
-        debug!(
-            "Using protocol v1 to check provider status: {}",
-            &data_source_name
-        );
-        let message = ServerMessage::new_invoke_proxy_request(
-            STATUS_REQUEST_V1.clone(),
-            data_source_name,
-            1,
-            Base64Uuid::new(),
-        );
-        let response = self
-            .handle_message_inner(message)
-            .await
-            .expect("The handler only fails if the message has no op_id.");
-        let response = match response.payload {
-            ProxyMessagePayload::InvokeProxyResponse(response) => response,
-            ProxyMessagePayload::Error(err) => {
-                return Err(err.error);
-            }
-            _ => {
-                return Err(Error::Other {
-                    message: format!("Unexpected response from provider: {response:?}"),
-                });
-            }
-        };
-        match rmp_serde::from_slice(&response.data) {
-            Ok(LegacyProviderResponse::StatusOk) => {
-                debug!("provider status check returned OK");
-                Ok(())
-            }
-            Ok(LegacyProviderResponse::Error {
-                error: Error::UnsupportedRequest,
-            }) => {
-                debug!("provider does not support status request");
-                Ok(())
-            }
-            // Try parsing the server response as a string so we can return a nicer message
-            Ok(LegacyProviderResponse::Error {
-                error:
-                    Error::Http {
-                        error:
-                            HttpRequestError::ServerError {
-                                status_code,
-                                response,
-                            },
-                    },
-            }) => Err(Error::Http {
-                error: HttpRequestError::ServerError {
-                    status_code,
-                    response,
-                },
-            }),
-            Ok(LegacyProviderResponse::Error { error }) => Err(error),
-            Err(err) => Err(Error::Deserialization {
-                message: format!("Error deserializing provider response: {err:?}"),
-            }),
-            _ => Err(Error::Other {
-                message: format!("Unexpected provider response: {response:?}"),
-            }),
-        }
     }
 
     #[instrument(skip(self))]
@@ -825,13 +737,6 @@ async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> Wasm
     .await;
 
     provider_types.into_iter().zip(runtimes).collect()
-}
-fn get_protocol_version(provider_type: &str) -> u8 {
-    if V1_PROVIDERS.contains(&provider_type) {
-        1
-    } else {
-        2
-    }
 }
 
 /// Listen on the given address and return a 200 for GET /

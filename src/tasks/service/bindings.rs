@@ -8,22 +8,6 @@ use fiberplane::{
 use serde_json::{Map, Value};
 use tracing::trace;
 
-pub async fn invoke_provider_v1(
-    runtime: &Runtime,
-    request: Vec<u8>,
-    config: Map<String, Value>,
-) -> Result<Vec<u8>, Error> {
-    let config = rmp_serde::to_vec_named(&config).map_err(|err| Error::Config {
-        message: format!("Error serializing config as JSON: {err:?}"),
-    })?;
-    runtime
-        .invoke_raw(request, config)
-        .await
-        .map_err(|err| Error::Invocation {
-            message: format!("Error invoking provider: {err:?}"),
-        })
-}
-
 pub async fn invoke_provider_v2(
     runtime: &Runtime,
     request: Vec<u8>,

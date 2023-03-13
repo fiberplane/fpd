@@ -13,7 +13,7 @@ async-channel = "1.8.0"
 clap = { version = "4.1.4", features = ["derive", "env", "cargo", "help"] }
 ctrlc = "3.2.1"
 directories = "4.0.1"
-fiberplane = { version = "1.0.0-alpha.3", git = "ssh://git@github.com/fiberplane/fiberplane.git", branch = "main", features = [
+fiberplane = { version = "1.0.0-alpha.3", git = "ssh://git@github.com/fiberplane/fiberplane.git", branch = "events_dedup", features = [
   "base64uuid-creation",
   "models",
   "provider-bindings",
