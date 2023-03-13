@@ -258,7 +258,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "1.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
 dependencies = [
  "base64",
  "serde",
@@ -323,9 +323,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.9.1"
+version = "3.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a45a46ab1f2412e53d3a0ade76ffad2025804294569aae387231a0cd6e0899"
+checksum = "0d261e256854913907f67ed06efbc3338dfe6179796deefc1ff763fc1aee5535"
 
 [[package]]
 name = "bytecheck"
@@ -875,7 +875,7 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "1.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -886,7 +886,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-models"
 version = "1.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
 dependencies = [
  "base64",
  "base64uuid",
@@ -907,7 +907,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-bindings"
 version = "2.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -923,7 +923,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-runtime"
 version = "2.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=events_dedup#18afc6b60cd74533499b214f9ccc96cf0a841af5"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1144,7 +1144,7 @@ checksum = "418d37c8b1d42553c93648be529cb70f920d3baf8ef469b74b9638df426e0b4c"
 dependencies = [
  "cfg-if",
  "libc",
- "wasi",
+ "wasi 0.10.2+wasi-snapshot-preview1",
 ]
 
 [[package]]
@@ -1664,24 +1664,14 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.7.14"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8067b404fe97c70829f082dec8bcf4f71225d7eaea1d8645349cb76fa06205cc"
+checksum = "5b9d9a46eff5b4ff64b45a9e316a6d1e0bc719ef429cbec4dc630684212bfdf9"
 dependencies = [
  "libc",
  "log",
- "miow",
- "ntapi",
- "winapi",
-]
-
-[[package]]
-name = "miow"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
-dependencies = [
- "winapi",
+ "wasi 0.11.0+wasi-snapshot-preview1",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -1707,15 +1697,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset",
-]
-
-[[package]]
-name = "ntapi"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6bb902e437b6d86e03cce10a7e2af662292c5dfef23b65899ea3ac9354ad44"
-dependencies = [
- "winapi",
 ]
 
 [[package]]
@@ -2784,21 +2765,22 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.16.1"
+version = "1.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c27a64b625de6d309e8c57716ba93021dccf1b3b5c97edd6d3dd2d2135afc0a"
+checksum = "03201d01c3c27a29c8a5cee5b55a93ddae1ccf6f08f65365c2c918f8c1b76f64"
 dependencies = [
+ "autocfg",
  "bytes",
  "libc",
  "memchr",
  "mio",
  "num_cpus",
- "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "pin-project-lite",
  "signal-hook-registry",
+ "socket2",
  "tokio-macros",
- "winapi",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -3105,6 +3087,12 @@ name = "wasi"
 version = "0.10.2+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
+
+[[package]]
+name = "wasi"
+version = "0.11.0+wasi-snapshot-preview1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "wasm-bindgen"
