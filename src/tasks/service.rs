@@ -259,13 +259,16 @@ impl ProxyService {
                             .inner
                             .data_sources
                             .values()
-                            .map(|data_source| UpsertProxyDataSource::builder()
-                                .name(data_source.name.clone())
-                                .description(data_source.description.clone())
-                                .provider_type(data_source.provider_type.clone())
-                                .protocol_version(STATUS_CHECK_VERSION)
-                                .status(DataSourceStatus::Error(Error::ProxyDisconnected))
-                            .build())
+                            .map(|data_source| {
+                                let mut upsert = UpsertProxyDataSource::builder()
+                                    .name(data_source.name.clone())
+                                    .provider_type(data_source.provider_type.clone())
+                                    .protocol_version(STATUS_CHECK_VERSION)
+                                    .status(DataSourceStatus::Error(Error::ProxyDisconnected))
+                                    .build();
+                                upsert.description = data_source.description.clone();
+                                upsert
+                            })
                             .collect();
                         let message = ProxyMessage::new_set_data_sources_notification(data_sources);
                         data_sources_sender.send(message).ok();
@@ -639,13 +642,14 @@ impl ProxyService {
                     }
                 }
 
-                UpsertProxyDataSource::builder()
+                let mut upsert = UpsertProxyDataSource::builder()
                     .name(name.clone())
-                    .description(data_source.description.clone())
                     .provider_type(data_source.provider_type.clone())
                     .protocol_version(STATUS_CHECK_VERSION)
                     .status(status)
-                    .build()
+                    .build();
+                upsert.description = data_source.description.clone();
+                upsert
             })
             .unwrap()
             .await;

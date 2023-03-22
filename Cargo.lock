@@ -258,7 +258,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "1.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=type-cleanup#8328a09d4a1b84db1c45c8a38892cc99097c2b56"
 dependencies = [
  "base64",
  "serde",
@@ -874,8 +874,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane"
-version = "1.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
+version = "1.0.0-beta.2"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=type-cleanup#8328a09d4a1b84db1c45c8a38892cc99097c2b56"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -885,8 +885,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-models"
-version = "1.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
+version = "1.0.0-beta.2"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=type-cleanup#8328a09d4a1b84db1c45c8a38892cc99097c2b56"
 dependencies = [
  "base64",
  "base64uuid",
@@ -906,8 +906,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-bindings"
-version = "2.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
+version = "2.0.0-beta.2"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=type-cleanup#8328a09d4a1b84db1c45c8a38892cc99097c2b56"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -922,8 +922,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-runtime"
-version = "2.0.0-beta.1"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#bbfa67014981177c66cf20b8eb0703fb733bb1d2"
+version = "2.0.0-beta.2"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=type-cleanup#8328a09d4a1b84db1c45c8a38892cc99097c2b56"
 dependencies = [
  "bytes",
  "fiberplane-models",
