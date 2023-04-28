@@ -1,7 +1,7 @@
 //! Library of fiberplane-provider-protocol binding wrappers
 
 use fiberplane::{
-    provider_bindings::host::mem::{deserialize_from_slice, serialize_to_vec},
+    provider_bindings::wasmer2_host::mem::{deserialize_from_slice, serialize_to_vec},
     provider_bindings::{Blob, Cell, ConfigSchema, Error, ProviderRequest, SupportedQueryType},
     provider_runtime::spec::Runtime,
 };
