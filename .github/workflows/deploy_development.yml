@@ -19,8 +19,6 @@ jobs:
       environment: ${{ github.event.inputs.environment }}
       trigger: manual
     secrets:
-      DEPLOY_AWS_ACCESS_KEY_ID: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-      DEPLOY_AWS_SECRET_ACCESS_KEY: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
       DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
       DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
       DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}

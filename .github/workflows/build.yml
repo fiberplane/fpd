@@ -10,7 +10,7 @@ on:
     branches: ["*"]
 
   push:
-    branches: ["main"]
+    branches: ["main", "release-*"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,6 +20,9 @@ jobs:
   test:
     name: Test and lint
     runs-on: ubuntu-latest-8-cores
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
         with:
@@ -30,13 +33,17 @@ jobs:
         with:
           credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
+
       - name: setup sccache
         env:
           SCCACHE_BUCKET: "fiberplane-cache"
           SCCACHE_REGION: "us-east-1"
           SCCACHE_S3_KEY_PREFIX: "sccache/${SERVICE}"
-          AWS_ACCESS_KEY_ID: "${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}"
-          AWS_SECRET_ACCESS_KEY: "${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}"
         run: |
           SCCACHE_VERSION="v0.3.0"
           cd `mktemp -d`
@@ -62,25 +69,24 @@ jobs:
           # Setup cargo config
           echo -e '[target.x86_64-unknown-linux-gnu]\nlinker = "clang"\nrustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]' >> "$HOME/.cargo/config.toml"
 
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: debug_x86_64-unknown-linux-gnu-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: Swatinem/rust-cache@v2
 
       - name: add rust components
+        if: ${{ github.event_name == 'pull_request' }}
         run: |
           rustup component add clippy
           rustup component add rustfmt
 
       - name: Check format
+        # Skip formatting on main, since it's not critical and should've already
+        # been checked before merging
+        if: ${{ github.event_name == 'pull_request' }}
         run: cargo fmt -- --check
 
       - name: Lint code
+        # Skip linting on main, since it's not critical and should've already
+        # been checked before merging
+        if: ${{ github.event_name == 'pull_request' }}
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -123,16 +129,6 @@ jobs:
         with:
           credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
 
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: cargo fetch
         run: cargo fetch --target ${{ matrix.target }}
 
@@ -142,6 +138,8 @@ jobs:
           toolchain: stable
           override: true
           target: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
 
       - name: Use Cross
         run: |
@@ -183,6 +181,9 @@ jobs:
     name: Build Docker image for ${{ matrix.docker_arch }}
     runs-on: ubuntu-22.04
     needs: build
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         include:
@@ -205,11 +206,10 @@ jobs:
           docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
 
       - name: Login to Amazon ECR
         id: ecr
@@ -251,17 +251,19 @@ jobs:
     name: Build Docker manifest
     runs-on: ubuntu-22.04
     needs: publish-artifacts-docker
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
 
       - name: Login to Amazon ECR
         id: ecr
@@ -326,6 +328,9 @@ jobs:
     name: Publish artifacts to S3 GitHub builds bucket
     runs-on: ubuntu-22.04
     needs: prepare-artifact
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
         with:
@@ -337,11 +342,10 @@ jobs:
           path: artifacts
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
 
       - name: Export variables
         run: |

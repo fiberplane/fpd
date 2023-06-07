@@ -18,17 +18,19 @@ jobs:
   release:
     name: Release fpd ${{ github.event.release.tag_name }}
     runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.sha }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
 
       - name: Login to Amazon ECR
         id: ecr
@@ -156,3 +158,33 @@ jobs:
 
             docker manifest push "${DOCKER_HUB_LEGACY_IMAGE}:${TAG}"
           done
+
+  beta-deploy:
+    needs: release
+    if: ${{ contains(github.event.release.tag_name, '-beta.') }}
+    uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
+    with:
+      environment: demo
+      version: ${{ github.event.release.tag_name }}
+    secrets:
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}
+      FIBERPLANE_TOKEN: ${{ secrets.FIBERPLANE_TOKEN }}
+      FIBERPLANE_DEMO_TOKEN: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+      FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
+
+  production-deploy:
+    needs: release
+    if: ${{ !contains(github.event.release.tag_name, '-') }}
+    uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
+    with:
+      environment: production
+      version: ${{ github.event.release.tag_name }}
+    secrets:
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}
+      FIBERPLANE_TOKEN: ${{ secrets.FIBERPLANE_TOKEN }}
+      FIBERPLANE_DEMO_TOKEN: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+      FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}

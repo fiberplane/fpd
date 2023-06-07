@@ -20,10 +20,6 @@ on:
         required: true
         type: string
     secrets:
-      DEPLOY_AWS_ACCESS_KEY_ID:
-        required: true
-      DEPLOY_AWS_SECRET_ACCESS_KEY:
-        required: true
       DEPLOY_STARTED_SLACK_WEBHOOK_URL:
         required: true
       DEPLOY_FINISHED_SLACK_WEBHOOK_URL:
@@ -37,6 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: "cluster-${{ inputs.environment }}"
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v2
 
@@ -76,11 +75,10 @@ jobs:
           sudo mv kubectl /usr/local/bin/kubectl
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
 
       - name: Login to Amazon ECR
         id: ecr
