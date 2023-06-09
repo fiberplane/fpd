@@ -1,22 +1,51 @@
-# Releases a new version of fpd.
+# Releases a new version of FPD.
+#
 # It will do the following:
-# - Download the dev Docker image, tag it as an release image and push it to our
+# - Do one more test run.
+# - Build and upload the Docker images.
+# - Download the Docker image, tag it as an release image and push it to our
 #   internal repository.
 # - Download the artifacts from our internal builds bucket and sync them to our
 #   release bucket (while also adding a version file).
+# - Deploy beta releases to our demo environment, and releases without suffix
+#   to our production environment.
 ---
 on:
   release:
     types:
       - published
+  workflow_dispatch:
 
 name: Release
 env:
   SERVICE: fpd
   ARCHS: "amd64 arm64v8"
 jobs:
-  release:
+  test-release:
+    name: Test release
+    runs-on: ubuntu-latest-8-cores
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test
+
+  build-release:
+    uses: fiberplane/fpd/.github/workflows/reusable_build_images.yml@main
+    needs: test-release
+
+  release-to-docker-hub:
     name: Release fpd ${{ github.event.release.tag_name }}
+    needs: build-release
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
@@ -160,7 +189,7 @@ jobs:
           done
 
   beta-deploy:
-    needs: release
+    needs: release-to-docker-hub
     if: ${{ contains(github.event.release.tag_name, '-beta.') }}
     uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
     with:
@@ -175,7 +204,7 @@ jobs:
       FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
 
   production-deploy:
-    needs: release
+    needs: release-to-docker-hub
     if: ${{ !contains(github.event.release.tag_name, '-') }}
     uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
     with:
