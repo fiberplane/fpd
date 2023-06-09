@@ -1,34 +1,65 @@
-# Releases a new version of fpd.
+# Releases a new version of FPD.
+#
 # It will do the following:
-# - Download the dev Docker image, tag it as an release image and push it to our
+# - Do one more test run.
+# - Build and upload the Docker images.
+# - Download the Docker image, tag it as an release image and push it to our
 #   internal repository.
 # - Download the artifacts from our internal builds bucket and sync them to our
 #   release bucket (while also adding a version file).
+# - Deploy beta releases to our demo environment, and releases without suffix
+#   to our production environment.
 ---
 on:
   release:
     types:
       - published
+  workflow_dispatch:
 
 name: Release
 env:
   SERVICE: fpd
   ARCHS: "amd64 arm64v8"
 jobs:
-  release:
+  test-release:
+    name: Test release
+    runs-on: ubuntu-latest-8-cores
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test
+
+  build-release:
+    uses: fiberplane/fpd/.github/workflows/reusable_build_images.yml@main
+    needs: test-release
+
+  release-to-docker-hub:
     name: Release fpd ${{ github.event.release.tag_name }}
+    needs: build-release
     runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.sha }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.DEPLOY_AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
 
       - name: Login to Amazon ECR
         id: ecr
@@ -156,3 +187,33 @@ jobs:
 
             docker manifest push "${DOCKER_HUB_LEGACY_IMAGE}:${TAG}"
           done
+
+  beta-deploy:
+    needs: release-to-docker-hub
+    if: ${{ contains(github.event.release.tag_name, '-beta.') }}
+    uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
+    with:
+      environment: demo
+      version: ${{ github.event.release.tag_name }}
+    secrets:
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}
+      FIBERPLANE_TOKEN: ${{ secrets.FIBERPLANE_TOKEN }}
+      FIBERPLANE_DEMO_TOKEN: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+      FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
+
+  production-deploy:
+    needs: release-to-docker-hub
+    if: ${{ !contains(github.event.release.tag_name, '-') }}
+    uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
+    with:
+      environment: production
+      version: ${{ github.event.release.tag_name }}
+    secrets:
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}
+      FIBERPLANE_TOKEN: ${{ secrets.FIBERPLANE_TOKEN }}
+      FIBERPLANE_DEMO_TOKEN: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+      FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}

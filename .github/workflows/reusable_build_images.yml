@@ -1,0 +1,271 @@
+name: Build and upload Docker images
+
+on:
+  workflow_call:
+    inputs: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  SERVICE: fpd
+jobs:
+  # Create the release binaries for each target
+  build-binaries:
+    name: Create binary for ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO: cargo
+      TARGET_FLAGS: ""
+      TARGET_DIR: ./target
+      RUST_BACKTRACE: 1
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: x86_64-apple-darwin
+            os: macos-12
+          - target: aarch64-apple-darwin
+            os: macos-12
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: setup-git-credentials
+        uses: fusion-engineering/setup-git-credentials@v2
+        with:
+          credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
+
+      - name: cargo fetch
+        run: cargo fetch --target ${{ matrix.target }}
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Use Cross
+        run: |
+          cargo install cross --force
+          echo "CARGO=cross" >> $GITHUB_ENV
+          echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
+          echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
+
+      - name: Build release binary
+        run: ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
+
+      # TODO: Change this to the cargo's builtin strip
+      - name: Strip release binary (linux and macos, x86)
+        if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-apple-darwin'
+        run: strip "${TARGET_DIR}/release/${SERVICE}"
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p /tmp/artifact/
+          cp "${TARGET_DIR}/release/${SERVICE}" /tmp/artifact/
+
+      # # We are not able to run the ARM based binaries on our x86 hardware.
+      # - name: Release version information
+      #   if: matrix.target != 'aarch64-apple-darwin' && matrix.target != 'aarch64-unknown-linux-gnu'
+      #   run: |
+      #     /tmp/artifact/${SERVICE} version -o verbose
+      #     /tmp/artifact/${SERVICE} version -o json > /tmp/artifact/manifest.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.target }}
+          path: /tmp/artifact/
+          if-no-files-found: error
+          retention-days: 1
+
+  # Wrap the Linux binaries in a Docker image
+  publish-artifacts-docker:
+    name: Build Docker image for ${{ matrix.docker_arch }}
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            docker_arch: amd64
+            docker_platform: linux/amd64
+          - target: aarch64-unknown-linux-gnu
+            docker_arch: arm64v8
+            docker_platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Enable arm64 support in Docker
+        if: matrix.docker_arch == 'arm64v8'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Export variables
+        run: |
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
+          echo "TAG=dev-${short_sha}-${{ matrix.docker_arch }}" >> $GITHUB_ENV
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: ${{ matrix.target }}
+          path: artifact
+
+      - name: Prepare artifact
+        run: chmod u+x ./artifact/${SERVICE}
+
+      - name: Build Docker image
+        run: >
+          docker build
+          -t ${IMAGE}:${TAG}
+          --platform "${{ matrix.docker_platform }}"
+          --build-arg ARCH=${{ matrix.docker_arch }}/
+          --build-arg BIN_PATH=artifact/${SERVICE}
+          --build-arg PROVIDERS_PATH=providers
+          .
+
+      - name: Test Docker image
+        run: docker run --rm "${IMAGE}:${TAG}" --help
+
+      - name: Push Docker image
+        run: docker push "${IMAGE}:${TAG}"
+
+  # Create a new manifest that contains references to the other two Docker
+  # images to create a cross platform Docker image.
+  publish-artifacts-docker-manifest:
+    name: Build Docker manifest
+    runs-on: ubuntu-22.04
+    needs: publish-artifacts-docker
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Export variables
+        run: |
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
+          echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
+          echo "TAG=dev-${short_sha}" >> $GITHUB_ENV
+
+      - name: Create Docker manifest
+        run: >
+          docker manifest create ${IMAGE}:${TAG}
+          --amend ${IMAGE}:dev-${SHORT_SHA}-amd64
+          --amend ${IMAGE}:dev-${SHORT_SHA}-arm64v8
+
+      - name: Push Docker manifest
+        run: docker manifest push ${IMAGE}:${TAG}
+
+  # Add SHA256 sum for the binary and create a distributable file. This
+  # distributable file include the binary for the specific architecture with all
+  # the providers from the ./providers directory.
+  prepare-artifact:
+    name: Create distributable zip file
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/download-artifact@v2
+        with:
+          path: artifacts
+
+      - name: Create distributable zip file
+        run: |
+          for artifact in artifacts/*; do
+            (
+              echo "Preparing release for ${artifact}"
+              cd "$artifact"
+              chmod u+x ./${SERVICE}
+              cp -r ../../providers/ .
+              zip -r ./${SERVICE}.zip ./${SERVICE} providers
+              rm -r providers
+              echo "Finished release for ${artifact}"
+            )
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: dist-artifacts
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 1
+
+  # Copy the artifacts to our Builds bucket for long term storage.
+  publish-artifacts-s3:
+    name: Publish artifacts to S3 GitHub builds bucket
+    runs-on: ubuntu-22.04
+    needs: prepare-artifact
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: dist-artifacts
+          path: artifacts
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::901443922744:role/github_actions
+
+      - name: Export variables
+        run: |
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
+
+      - name: Sync artifacts to S3 builds bucket
+        run: >
+          aws s3 sync
+          --acl private
+          --delete
+          artifacts/
+          s3://${{ secrets.BUILDS_BUCKET }}/${SERVICE}/commits/${SHORT_SHA}/
