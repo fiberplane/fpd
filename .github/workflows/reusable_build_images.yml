@@ -11,7 +11,6 @@ jobs:
   # Create the release binaries for each target
   build-binaries:
     name: Create binary for ${{ matrix.target }}
-    needs: test
     runs-on: ${{ matrix.os }}
     env:
       CARGO: cargo
@@ -90,7 +89,7 @@ jobs:
   publish-artifacts-docker:
     name: Build Docker image for ${{ matrix.docker_arch }}
     runs-on: ubuntu-22.04
-    needs: build
+    needs: build-binaries
     permissions:
       id-token: write
       contents: read
@@ -201,7 +200,7 @@ jobs:
   prepare-artifact:
     name: Create distributable zip file
     runs-on: ubuntu-22.04
-    needs: build
+    needs: build-binaries
     steps:
       - uses: actions/checkout@v3
         with:
