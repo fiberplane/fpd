@@ -258,7 +258,8 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 [[package]]
 name = "base64uuid"
 version = "1.0.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#d1e239fc4abbb3dddf9f9357c1ecf40c246d13dd"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9e3d2060139fc5977f18e2514ddd54aa594ee087f2fc8486a73f897423fd41b"
 dependencies = [
  "base64",
  "serde",
@@ -874,8 +875,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane"
-version = "1.0.0-beta.2"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#d1e239fc4abbb3dddf9f9357c1ecf40c246d13dd"
+version = "1.0.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01f06b2335db7ef381fe146a29a79ad079745521e13fcc90a7939ec73b5b957c"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -885,8 +887,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-models"
-version = "1.0.0-beta.2"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#d1e239fc4abbb3dddf9f9357c1ecf40c246d13dd"
+version = "1.0.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47c146ebade86a9d6a979e43806f2a815e25df51580b0d81ca54a1430414f11b"
 dependencies = [
  "base64",
  "base64uuid",
@@ -897,6 +900,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "strum",
  "strum_macros",
  "thiserror",
  "time",
@@ -906,8 +910,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-bindings"
-version = "2.0.0-beta.2"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#d1e239fc4abbb3dddf9f9357c1ecf40c246d13dd"
+version = "2.0.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91954579600132d17a4aea8bfff63773cab6124794fc64982c4cbeba467f9c4e"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -922,8 +927,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-runtime"
-version = "2.0.0-beta.2"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#d1e239fc4abbb3dddf9f9357c1ecf40c246d13dd"
+version = "2.0.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0182a34b4545145c83057886a784823fed51dd83031cf95549195c79c096da4"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -992,7 +998,7 @@ dependencies = [
 
 [[package]]
 name = "fpd"
-version = "2.10.0"
+version = "2.11.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -2611,6 +2617,12 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
+name = "strum"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 
 [[package]]
 name = "strum_macros"
