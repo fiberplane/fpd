@@ -42,6 +42,9 @@ jobs:
   build-release:
     uses: fiberplane/fpd/.github/workflows/reusable_build_images.yml@main
     needs: test-release
+    secrets:
+      BUILDS_BUCKET: ${{ secrets.BUILDS_BUCKET }}
+      PRIVATE_GITHUB_TOKEN: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
 
   release-to-docker-hub:
     name: Release fpd ${{ github.event.release.tag_name }}

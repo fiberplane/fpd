@@ -4,24 +4,11 @@
 name: Deploy release images to cluster
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: The fiberplane environment
-        required: true
-        default: "demo"
-      version:
-        description: Version that needs to be deployed
-        required: true
-      trigger:
-        description: The source that triggered the deploy, either manual or auto
-        default: "manual"
   workflow_call:
     inputs:
       environment:
         description: The fiberplane environment
         required: true
-        default: "demo"
         type: string
       version:
         description: Version that needs to be deployed
@@ -49,7 +36,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     concurrency:
-      group: "cluster-${{ github.event.inputs.environment }}"
+      group: "cluster-${{ inputs.environment }}"
     permissions:
       id-token: write
       contents: read
@@ -71,26 +58,26 @@ jobs:
         env:
           SERVICE: fpd
         run: |
-          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+          if [ "${{ inputs.environment }}" == "production" ]; then
             echo "ingress_root_domain=studio.fiberplane.com" >> $GITHUB_OUTPUT
           else
-            echo "::set-output name=ingress_root_domain::${{ github.event.inputs.environment }}.fiberplane.io"
+            echo "::set-output name=ingress_root_domain::${{ inputs.environment }}.fiberplane.io"
           fi
           short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
           echo "SHORT_SHA=${short_sha}" >> $GITHUB_ENV
           echo "SERVICE=${SERVICE}" >> $GITHUB_ENV
           echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
-          echo "TAG=release-${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "TAG=release-${{ inputs.version }}" >> $GITHUB_ENV
 
       - name: Send "deploy started" to Slack
         uses: slackapi/slack-github-action@v1.18.0
         with:
           payload: |
             {
-              "environment": "${{ github.event.inputs.environment }}",
+              "environment": "${{ inputs.environment }}",
               "component": "${{ env.SERVICE }}",
               "trigger": "manual",
-              "version": "${{ github.event.inputs.version }}",
+              "version": "${{ inputs.version }}",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
         env:
@@ -111,14 +98,14 @@ jobs:
 
       - name: Template Kubernetes files
         env:
-          VERSION: "${{ github.event.inputs.version }}"
-          FP_ENVIRONMENT: "${{ github.event.inputs.environment }}"
+          VERSION: "${{ inputs.version }}"
+          FP_ENVIRONMENT: "${{ inputs.environment }}"
           FP_INGRESS_ROOT_DOMAIN: ${{ steps.vars.outputs.ingress_root_domain }}
         run: scripts/template_all.sh "deployment/*.template.yaml" > result.yaml
 
       - name: Create kubeconfig
         env:
-          FP_ENVIRONMENT: "${{ github.event.inputs.environment }}"
+          FP_ENVIRONMENT: "${{ inputs.environment }}"
         run: aws eks update-kubeconfig --name "${FP_ENVIRONMENT}-cluster"
 
       - name: Kubectl version
@@ -135,10 +122,10 @@ jobs:
         with:
           payload: |
             {
-              "environment": "${{ github.event.inputs.environment }}",
+              "environment": "${{ inputs.environment }}",
               "component": "${{ env.SERVICE }}",
               "trigger": "${{ inputs.trigger }}",
-              "version": "${{ github.event.inputs.version }}",
+              "version": "${{ inputs.version }}",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
         env:
@@ -150,10 +137,10 @@ jobs:
         with:
           payload: |
             {
-              "environment": "${{ github.event.inputs.environment }}",
+              "environment": "${{ inputs.environment }}",
               "component": "${{ env.SERVICE }}",
               "trigger": "${{ inputs.trigger }}",
-              "version": "${{ github.event.inputs.version }}",
+              "version": "${{ inputs.version }}",
               "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
         env:
