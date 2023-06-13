@@ -4,24 +4,11 @@
 name: Deploy release images to cluster
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: The fiberplane environment
-        required: true
-        default: "demo"
-      version:
-        description: Version that needs to be deployed
-        required: true
-      trigger:
-        description: The source that triggered the deploy, either manual or auto
-        default: "manual"
   workflow_call:
     inputs:
       environment:
         description: The fiberplane environment
         required: true
-        default: "demo"
         type: string
       version:
         description: Version that needs to be deployed

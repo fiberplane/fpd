@@ -1,0 +1,32 @@
+# This will deploy the Kubernetes manifests to a cluster, containing references
+# to our release Docker images (ie. tags that use versions).
+---
+name: Manually deploy release images to cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: The fiberplane environment
+        required: true
+        default: "demo"
+      version:
+        description: Version that needs to be deployed. Must match the tag.
+        required: true
+
+jobs:
+  manual-deploy:
+    needs: release-to-docker-hub
+    if: ${{ contains(github.event.release.tag_name, '-beta.') }}
+    uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
+    with:
+      environment: ${{ inputs.environment }}
+      version: ${{ inputs.version }}
+      trigger: manual
+    secrets:
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}
+      FIBERPLANE_TOKEN: ${{ secrets.FIBERPLANE_TOKEN }}
+      FIBERPLANE_DEMO_TOKEN: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+      FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
