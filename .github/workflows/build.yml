@@ -101,3 +101,6 @@ jobs:
   build:
     uses: fiberplane/fpd/.github/workflows/reusable_build_images.yml@main
     needs: test
+    secrets:
+      BUILDS_BUCKET: ${{ secrets.BUILDS_BUCKET }}
+      PRIVATE_GITHUB_TOKEN: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
