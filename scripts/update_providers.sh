@@ -7,6 +7,7 @@ PROVIDERS=(
     "sentry"
     "https"
     "cloudwatch"
+    "parseable"
 )
 
 REPO_ROOT=`dirname "$0"`/..
