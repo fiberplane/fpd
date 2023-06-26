@@ -6,10 +6,16 @@ The format of this file is based on [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased]
 
-TBD
+- TBD
+
+## [2.12.0]
+
+- update providers and add Parseable provider (#144)
+
 
 ## [2.7.5]
 
 ### Changed
 
 - Remove support for legacy proxy messages. Currently it only supports version 2 (#128)
+
