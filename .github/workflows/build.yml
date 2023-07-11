@@ -93,7 +93,7 @@ jobs:
           args: --all-features
 
       - name: Pull latest providers
-        run: cargo run pull
+        run: cargo run pull --branch=main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

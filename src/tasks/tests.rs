@@ -1,3 +1,5 @@
+use crate::runtime::providers_wasm_dir;
+
 use super::service::{ProxyDataSource, ProxyService, WasmModules};
 use fiberplane::base64uuid::Base64Uuid;
 use fiberplane::models::providers::{Error, HttpRequestError, TIMESERIES_QUERY_TYPE};
@@ -11,7 +13,7 @@ use hyper::header::HeaderValue;
 use once_cell::sync::Lazy;
 use serde_json::{json, Map, Value};
 use std::iter::FromIterator;
-use std::{collections::HashMap, path::Path, time::Duration};
+use std::{collections::HashMap, time::Duration};
 use test_log::test;
 use tokio::{join, net::TcpListener, sync::broadcast};
 use tokio_tungstenite::{accept_hdr_async, tungstenite::Message};
@@ -173,7 +175,7 @@ async fn sends_data_sources_on_connect() {
     let service = ProxyService::init(
         format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
-        Path::new("./providers"),
+        providers_wasm_dir().unwrap().as_ref(),
         data_sources,
         5,
         None,
@@ -279,7 +281,7 @@ async fn checks_data_source_status_on_interval() {
     let service = ProxyService::init(
         format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
-        Path::new("./providers"),
+        providers_wasm_dir().unwrap().as_ref(),
         data_sources,
         5,
         None,
@@ -565,7 +567,7 @@ async fn calls_provider_with_query_and_sends_result() {
     let service = ProxyService::init(
         format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
-        Path::new("./providers"),
+        providers_wasm_dir().unwrap().as_ref(),
         data_sources,
         5,
         None,
@@ -681,7 +683,7 @@ async fn handles_multiple_concurrent_messages() {
     let service = ProxyService::init(
         format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
-        Path::new("./providers"),
+        providers_wasm_dir().unwrap().as_ref(),
         data_sources,
         5,
         None,
@@ -804,7 +806,7 @@ async fn calls_provider_with_query_and_sends_error() {
     let service = ProxyService::init(
         format!("ws://{addr}").parse().unwrap(),
         TOKEN.clone(),
-        Path::new("./providers"),
+        providers_wasm_dir().unwrap().as_ref(),
         data_sources,
         5,
         None,

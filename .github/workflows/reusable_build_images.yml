@@ -200,8 +200,8 @@ jobs:
         run: docker manifest push ${IMAGE}:${TAG}
 
   # Add SHA256 sum for the binary and create a distributable file. This
-  # distributable file include the binary for the specific architecture with all
-  # the providers from the ./providers directory.
+  # distributable file include the binary for the specific architecture bundled
+  # with all the latest providers
   prepare-artifact:
     name: Create distributable zip file
     runs-on: ubuntu-22.04
@@ -217,8 +217,6 @@ jobs:
 
       - name: Pull latest providers
         run: cargo run pull
-        env:
-          GITHUB_TOKEN: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
 
       - name: Create distributable zip file
         run: |
