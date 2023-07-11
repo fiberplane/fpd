@@ -141,7 +141,7 @@ async fn download_providers_release(octocrab: &Octocrab, release: &str) -> Resul
 }
 
 async fn download_providers_archive(octocrab: &Octocrab, download_url: &str) -> Result<(), Error> {
-    if download_url.ends_with(".zip") {
+    if download_url.ends_with("zip") {
         download_providers_zip(octocrab, download_url).await?
     } else {
         download_providers_tarball(octocrab, download_url).await?
