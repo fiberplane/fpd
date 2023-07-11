@@ -250,7 +250,7 @@ pub fn build_providers(args: BuildProvidersArgs) -> Result<(), Error> {
     let providers_dir = args.providers_dir;
     if !providers_dir.exists() {
         return Err(Error::Other {
-            message: format!("Providers dir `{}` doesn't exist", providers_dir.display()),
+            message: format!("Providers directory `{}` doesn't exist", providers_dir.display()),
         });
     }
 
