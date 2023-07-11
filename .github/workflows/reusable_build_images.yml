@@ -215,14 +215,20 @@ jobs:
         with:
           path: artifacts
 
+      - name: Pull latest providers
+        run: cargo run pull
+        env:
+          GITHUB_TOKEN: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
+
       - name: Create distributable zip file
         run: |
+          wasm_dir=$(cargo run config paths wasm-dir)
           for artifact in artifacts/*; do
             (
               echo "Preparing release for ${artifact}"
               cd "$artifact"
               chmod u+x ./${SERVICE}
-              cp -r ../../providers/ .
+              cp -r ${wasm_dir} providers
               zip -r ./${SERVICE}.zip ./${SERVICE} providers
               rm -r providers
               echo "Finished release for ${artifact}"

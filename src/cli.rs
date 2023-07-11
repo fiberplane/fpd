@@ -7,6 +7,8 @@ use std::{net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 use tracing::Level;
 use url::Url;
 
+use crate::tasks::provider_manager::{BuildProvidersArgs, PullProvidersArgs};
+
 #[derive(Parser)]
 #[clap(author, about, version, verbatim_doc_comment)]
 /// The Fiberplane Daemon connects Fiberplane Studio to your data sources.
@@ -67,15 +69,12 @@ pub enum Action {
         #[clap(subcommand)]
         action: ConfigAction,
     },
-    /// Pull Fiberplane providers
-    Pull {
-        /// Names of the providers to fetch
-        #[arg(value_enum)]
-        names: Vec<BuiltinProvider>,
-        /// Pull all known providers
-        #[clap(long, short)]
-        all: bool,
-    },
+
+    /// Pull Fiberplane providers from GitHub
+    Pull(PullProvidersArgs),
+
+    /// Rebuild Fiberplane providers from a local `providers` repository checkout
+    BuildProviders(BuildProvidersArgs),
 }
 
 #[derive(Subcommand)]
@@ -96,32 +95,6 @@ pub enum ConfigPathQuery {
     DataSources,
     /// Path to the directory containing the WebAssembly providers
     WasmDir,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-pub enum BuiltinProvider {
-    /// Prometheus provider
-    Prometheus,
-    /// Loki provider
-    Loki,
-    /// Sentry provider
-    Sentry,
-    /// HTTPS provider
-    Https,
-    /// Elasticsearch provider
-    Elasticsearch,
-}
-
-impl BuiltinProvider {
-    pub fn name(&self) -> String {
-        match self {
-            BuiltinProvider::Prometheus => "prometheus".to_string(),
-            BuiltinProvider::Loki => "loki".to_string(),
-            BuiltinProvider::Sentry => "sentry".to_string(),
-            BuiltinProvider::Elasticsearch => "elasticsearch".to_string(),
-            BuiltinProvider::Https => "https".to_string(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
