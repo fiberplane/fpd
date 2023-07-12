@@ -150,7 +150,7 @@ jobs:
           --platform "${{ matrix.docker_platform }}"
           --build-arg ARCH=${{ matrix.docker_arch }}/
           --build-arg BIN_PATH=artifact/${SERVICE}
-          --build-arg PROVIDERS_PATH=${cargo run config paths wasm-dir}
+          --build-arg PROVIDERS_PATH=$(cargo run config paths wasm-dir)
           .
 
       - name: Test Docker image
