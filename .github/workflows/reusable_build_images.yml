@@ -144,7 +144,7 @@ jobs:
         run: chmod u+x ./artifact/${SERVICE}
 
       - name: Pull latest providers
-        run: cargo run pull
+        run: cargo run pull --wasm-dir=providers
 
       - name: Build Docker image
         run: >
@@ -153,7 +153,7 @@ jobs:
           --platform "${{ matrix.docker_platform }}"
           --build-arg ARCH=${{ matrix.docker_arch }}/
           --build-arg BIN_PATH=artifact/${SERVICE}
-          --build-arg PROVIDERS_PATH=$(cargo run config paths wasm-dir)
+          --build-arg PROVIDERS_PATH=providers
           .
 
       - name: Test Docker image
@@ -219,17 +219,16 @@ jobs:
           path: artifacts
 
       - name: Pull latest providers
-        run: cargo run pull
+        run: cargo run pull --wasm-dir=providers
 
       - name: Create distributable zip file
         run: |
-          wasm_dir=$(cargo run config paths wasm-dir)
           for artifact in artifacts/*; do
             (
               echo "Preparing release for ${artifact}"
               cd "$artifact"
               chmod u+x ./${SERVICE}
-              cp -r ${wasm_dir} providers
+              cp -r ../../providers/ .
               zip -r ./${SERVICE}.zip ./${SERVICE} providers
               rm -r providers
               echo "Finished release for ${artifact}"

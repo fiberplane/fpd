@@ -60,10 +60,15 @@ pub struct PullProvidersArgs {
     /// This argument is ignored if a branch is specified.
     #[clap(short, long, default_value = "latest")]
     release: String,
+
+    /// Path to directory to store the WASM files.
+    #[clap(long, env)]
+    wasm_dir: Option<PathBuf>,
 }
 
 pub async fn pull(args: PullProvidersArgs) -> Result<(), Error> {
-    ensure_wasm_dir()?;
+    let wasm_dir = &args.wasm_dir;
+    ensure_wasm_dir(wasm_dir)?;
 
     if let Some(branch) = args.branch.as_ref() {
         let github_token = args.github_token.ok_or(Error::TokenRequired)?;
@@ -73,14 +78,18 @@ pub async fn pull(args: PullProvidersArgs) -> Result<(), Error> {
             .map_err(|err| Error::Other {
                 message: format!("Could not create GitHub client: {err}"),
             })?;
-        download_provider_artifacts_from_branch(&octocrab, branch).await
+        download_provider_artifacts_from_branch(&octocrab, branch, wasm_dir).await
     } else {
-        download_providers_release(&Octocrab::default(), &args.release).await
+        download_providers_release(&Octocrab::default(), &args.release, wasm_dir).await
     }
 }
 
-fn ensure_wasm_dir() -> Result<(), Error> {
-    let wasm_dir = providers_wasm_dir()?;
+fn ensure_wasm_dir(wasm_dir: &Option<PathBuf>) -> Result<(), Error> {
+    let wasm_dir = match wasm_dir {
+        Some(wasm_dir) => wasm_dir.clone(),
+        None => providers_wasm_dir()?,
+    };
+
     if wasm_dir.exists() && !wasm_dir.is_dir() {
         return Err(Error::Runtime(
             crate::runtime::Error::ProvidersDirUnavailable(wasm_dir),
@@ -97,6 +106,7 @@ fn ensure_wasm_dir() -> Result<(), Error> {
 async fn download_provider_artifacts_from_branch(
     octocrab: &Octocrab,
     branch: &str,
+    wasm_dir: &Option<PathBuf>,
 ) -> Result<(), Error> {
     eprintln!("Finding latest provider artifacts...");
 
@@ -109,10 +119,14 @@ async fn download_provider_artifacts_from_branch(
 
     let archive_download_url = &latest_artifact.archive_download_url;
 
-    download_providers_archive(octocrab, archive_download_url).await
+    download_providers_archive(octocrab, archive_download_url, wasm_dir).await
 }
 
-async fn download_providers_release(octocrab: &Octocrab, release: &str) -> Result<(), Error> {
+async fn download_providers_release(
+    octocrab: &Octocrab,
+    release: &str,
+    wasm_dir: &Option<PathBuf>,
+) -> Result<(), Error> {
     let release = if release == "latest" {
         eprintln!("Fetching latest providers release...");
 
@@ -137,14 +151,18 @@ async fn download_providers_release(octocrab: &Octocrab, release: &str) -> Resul
         .find(|asset| asset.name == "providers.tgz")
         .ok_or(Error::ProvidersNotFound)?;
 
-    download_providers_archive(octocrab, asset.browser_download_url.as_str()).await
+    download_providers_archive(octocrab, asset.browser_download_url.as_str(), wasm_dir).await
 }
 
-async fn download_providers_archive(octocrab: &Octocrab, download_url: &str) -> Result<(), Error> {
+async fn download_providers_archive(
+    octocrab: &Octocrab,
+    download_url: &str,
+    wasm_dir: &Option<PathBuf>,
+) -> Result<(), Error> {
     if download_url.ends_with("zip") {
-        download_providers_zip(octocrab, download_url).await?
+        download_providers_zip(octocrab, download_url, wasm_dir).await?
     } else {
-        download_providers_tarball(octocrab, download_url).await?
+        download_providers_tarball(octocrab, download_url, wasm_dir).await?
     }
 
     eprintln!("Providers updated.");
@@ -152,7 +170,11 @@ async fn download_providers_archive(octocrab: &Octocrab, download_url: &str) -> 
     Ok(())
 }
 
-async fn download_providers_tarball(octocrab: &Octocrab, download_url: &str) -> Result<(), Error> {
+async fn download_providers_tarball(
+    octocrab: &Octocrab,
+    download_url: &str,
+    wasm_dir: &Option<PathBuf>,
+) -> Result<(), Error> {
     eprintln!("Downloading providers tarball from: {download_url}");
 
     let response = octocrab._get(download_url).await?;
@@ -174,13 +196,17 @@ async fn download_providers_tarball(octocrab: &Octocrab, download_url: &str) -> 
             })?
             .to_owned();
 
-        entry.unpack(&get_provider_destination(&provider))?;
+        entry.unpack(&get_provider_destination(wasm_dir, &provider))?;
     }
 
     Ok(())
 }
 
-async fn download_providers_zip(octocrab: &Octocrab, download_url: &str) -> Result<(), Error> {
+async fn download_providers_zip(
+    octocrab: &Octocrab,
+    download_url: &str,
+    wasm_dir: &Option<PathBuf>,
+) -> Result<(), Error> {
     eprintln!("Downloading providers zip from: {download_url}");
 
     let response = octocrab._get(download_url).await?;
@@ -198,7 +224,7 @@ async fn download_providers_zip(octocrab: &Octocrab, download_url: &str) -> Resu
             .to_owned();
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
-        fs::write(get_provider_destination(&provider), buffer)?;
+        fs::write(get_provider_destination(wasm_dir, &provider), buffer)?;
     }
 
     Ok(())
@@ -242,10 +268,15 @@ pub struct BuildProvidersArgs {
     /// Path where the checkout of the `providers` repository can be found.
     #[clap(long, default_value = "../providers")]
     providers_dir: PathBuf,
+
+    /// Path to directory to store the WASM files.
+    #[clap(long, env)]
+    wasm_dir: Option<PathBuf>,
 }
 
 pub fn build_providers(args: BuildProvidersArgs) -> Result<(), Error> {
-    ensure_wasm_dir()?;
+    let wasm_dir = &args.wasm_dir;
+    ensure_wasm_dir(wasm_dir)?;
 
     let providers_dir = args.providers_dir;
     if !providers_dir.exists() {
@@ -265,15 +296,21 @@ pub fn build_providers(args: BuildProvidersArgs) -> Result<(), Error> {
     cmd("cargo", cargo_args).dir(&providers_dir).run()?;
 
     if provider == "all" {
-        copy_all_artifacts(providers_dir.join("artifacts"))
+        copy_all_artifacts(providers_dir.join("artifacts"), wasm_dir)
     } else {
         let artifact = providers_dir.join(format!("artifacts/{provider}.wasm"));
-        fs::copy(artifact, get_provider_destination(OsStr::new(provider)))?;
+        fs::copy(
+            artifact,
+            get_provider_destination(wasm_dir, OsStr::new(provider)),
+        )?;
         Ok(())
     }
 }
 
-fn copy_all_artifacts(artifacts_path: impl AsRef<Path>) -> Result<(), Error> {
+fn copy_all_artifacts(
+    artifacts_path: impl AsRef<Path>,
+    wasm_dir: &Option<PathBuf>,
+) -> Result<(), Error> {
     for entry in fs::read_dir(artifacts_path)? {
         let path = entry?.path();
         if path.extension().unwrap_or_default() != "wasm" {
@@ -282,20 +319,26 @@ fn copy_all_artifacts(artifacts_path: impl AsRef<Path>) -> Result<(), Error> {
 
         fs::copy(
             &path,
-            get_provider_destination(path.file_stem().ok_or_else(|| Error::Other {
-                message: "Artifact had no filename".to_owned(),
-            })?),
+            get_provider_destination(
+                wasm_dir,
+                path.file_stem().ok_or_else(|| Error::Other {
+                    message: "Artifact had no filename".to_owned(),
+                })?,
+            ),
         )?;
     }
 
     Ok(())
 }
 
-fn get_provider_destination(provider_name: &OsStr) -> PathBuf {
+fn get_provider_destination(wasm_dir: &Option<PathBuf>, provider_name: &OsStr) -> PathBuf {
     let mut provider_filename = OsString::from(provider_name);
     provider_filename.push(".wasm");
 
-    let mut destination_path = providers_wasm_dir().unwrap();
+    let mut destination_path = match wasm_dir {
+        Some(wasm_dir) => wasm_dir.clone(),
+        None => providers_wasm_dir().unwrap(),
+    };
     destination_path.push(provider_filename);
     destination_path
 }
