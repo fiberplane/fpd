@@ -8,6 +8,10 @@ The format of this file is based on [Keep a Changelog](https://keepachangelog.co
 
 - TBD
 
+## [2.14.0]
+
+- Updated dependencies
+
 ## [2.12.0]
 
 - update providers and add Parseable provider (#144)
