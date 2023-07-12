@@ -43,8 +43,12 @@ async fn main() -> Result<(), anyhow::Error> {
                     return Ok(());
                 }
             },
-            cli::Action::Pull { names, all } => {
-                tasks::provider_manager::pull(names.as_slice(), all).await?;
+            cli::Action::Pull(args) => {
+                tasks::provider_manager::pull(args).await?;
+                return Ok(());
+            }
+            cli::Action::BuildProviders(args) => {
+                tasks::provider_manager::build_providers(args)?;
                 return Ok(());
             }
         }
@@ -147,7 +151,7 @@ async fn main() -> Result<(), anyhow::Error> {
             Ok(())
         }
         Err(err) => {
-            error!(?err, "daemon encountered a error");
+            error!(?err, "daemon encountered an error");
             bail!("Daemon encountered an error: {err:?}");
         }
     }

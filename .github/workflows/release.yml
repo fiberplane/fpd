@@ -40,7 +40,7 @@ jobs:
         run: cargo test
 
   build-release:
-    uses: fiberplane/fpd/.github/workflows/reusable_build_images.yml@main
+    uses: ./.github/workflows/reusable_build_images.yml
     needs: test-release
     secrets:
       BUILDS_BUCKET: ${{ secrets.BUILDS_BUCKET }}
