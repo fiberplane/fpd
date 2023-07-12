@@ -143,6 +143,9 @@ jobs:
       - name: Prepare artifact
         run: chmod u+x ./artifact/${SERVICE}
 
+      - name: Pull latest providers
+        run: cargo run pull
+
       - name: Build Docker image
         run: >
           docker build
