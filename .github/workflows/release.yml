@@ -36,6 +36,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Pull latest providers
+        run: cargo run pull
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run tests
         run: cargo test
 
