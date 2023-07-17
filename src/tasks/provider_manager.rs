@@ -185,7 +185,10 @@ async fn download_providers_tarball(
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?;
-        if !path.extension().is_some_and(|ext| ext == "wasm") {
+        if match path.extension() {
+            Some(ext) => ext != "wasm",
+            None => true,
+        } {
             continue;
         }
 
