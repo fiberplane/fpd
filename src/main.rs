@@ -10,7 +10,7 @@ use tokio::fs;
 use tracing::{error, info, trace, warn};
 use tracing_subscriber::EnvFilter;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
     let args = cli::Arguments::parse();
 
