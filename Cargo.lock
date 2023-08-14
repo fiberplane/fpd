@@ -1199,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "fpd"
-version = "2.15.0"
+version = "2.16.0"
 dependencies = [
  "anyhow",
  "async-channel",
