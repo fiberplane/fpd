@@ -1,9 +1,3 @@
-# SSH Troubleshooting:
-# - If you get the error "Build Failed: ImageBuild: could not parse ssh: [default]:...":
-#   Make sure the ssh-agent is running BEFORE you run `tilt up` by running the command:
-#     eval $(ssh-agent) && ssh-add
-#   (you should run this in the same terminal session as you run `tilt up` in)
-
 run_fpd_on_host = 'fpd' in os.getenv('RUN_ON_HOST', '').split(',') or os.getenv('RUN_ON_HOST') == 'all'
 
 # Mapping from the provider name to the port it listens on
@@ -13,14 +7,15 @@ all_providers = {
   'prometheus': 9090,
 }
 
-# Run the data source providers
-data_sources_yaml = ''
-providers = []
-if not os.getenv('PROVIDERS') or os.getenv('PROVIDERS') == 'all':
+# Start the data source providers
+if not os.getenv('PROVIDERS'):
+  providers = [] # Default to no providers, since especially Elastic is really memory hungry
+elif os.getenv('PROVIDERS') == 'all':
   providers = all_providers.keys()
 else:
   providers = os.getenv('PROVIDERS').split(',')
 
+data_sources_yaml = ''
 for provider in providers:
   if provider not in all_providers:
     print('Provider %s not found. Available providers: %s' % (provider, ', '.join(all_providers.keys())))
@@ -58,14 +53,10 @@ if 'elasticsearch' in providers:
     objects=['fluentd:serviceaccount', 'fluentd:clusterrole', 'fluentd:clusterrolebinding'],
     labels=['customer'])
 
-if run_fpd_on_host:
-  api_base = 'ws://localhost:3030'
-else:
-  api_base = 'ws://api'
 env={
   'RUST_LOG': 'fpd=trace',
   'LISTEN_ADDRESS': '127.0.0.1:3002',
-  'API_BASE': api_base,
+  'API_BASE': 'ws://localhost:3030' if run_fpd_on_host else 'ws://api',
   # The Token still contains "proxy" as it's the legacy name of fpd
   # To change this, a synchronized change in fiberplane/api/src/fixtures/mod.rs::PROXY_NAME
   # is necessary
