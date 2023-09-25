@@ -77,13 +77,13 @@ if run_fpd_on_host:
     # Note: this endpoint is called "/health" rather than "healthz"
     readiness_probe=probe(http_get=http_get_action(3002, path='/health')))
 else:
-  # Run docker with ssh option to access private git repositories
-  docker_build('fpd:latest', '.', dockerfile='./Dockerfile.dev', ssh='default')
   k8s_resource(workload='fpd', resource_deps=providers, objects=['fpd:configmap'], port_forwards=3002, labels=['customer'])
 
   k8s_yaml(local('./scripts/template.sh deployment/local/deployment.template.yaml', env=env))
 
   # Apply the data sources configuration using k8s configmap
+  data_sources_yaml = '"[]"' if len(data_sources_yaml) == 0 else ('|\n' + data_sources_yaml).replace('\n', '\n    ')
+
   configmap = '''
   apiVersion: v1
   kind: ConfigMap
@@ -91,7 +91,6 @@ else:
     name: fpd
     namespace: default
   data:
-    data_sources.yaml: |
-      %s
-  ''' % data_sources_yaml.replace('\n', '\n      ')
+    data_sources.yaml: %s
+  ''' % data_sources_yaml
   k8s_yaml(blob(configmap))

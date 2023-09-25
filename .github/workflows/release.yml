@@ -183,6 +183,10 @@ jobs:
             docker manifest push "${DOCKER_HUB_IMAGE}:${TAG}"
           done
 
+          # Add latest tag
+          docker tag "${DOCKER_HUB_IMAGE}:${TAG}" "${DOCKER_HUB_IMAGE}:latest"
+          docker push "${DOCKER_HUB_IMAGE}:latest"
+
       - name: Tag and push release Docker legacy images (Docker Hub)
         run: |
           DOCKER_TAGS="${DOCKER_HUB_TAG} ${DOCKER_HUB_MAJOR_TAG}"
