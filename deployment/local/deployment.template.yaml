@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: fpd
-          image: fiberplane/fpd:v2 # TODO: Use `latest` tag
+          image: fiberplane/fpd:v2
           imagePullPolicy: Always
           env:
             - name: RUST_LOG
