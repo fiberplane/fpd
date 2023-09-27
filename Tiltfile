@@ -69,6 +69,10 @@ if run_fpd_on_host:
   if os.getenv('OVERWRITE_DATA_SOURCES') != '0':
     local('echo %s > deployment/local/data_sources.yaml' % shlex.quote(data_sources_yaml))
 
+  # Make sure providers have been pulled at least once.
+  if not os.path.exists("providers"):
+    local('cargo run pull --wasm-dir=providers')
+
   local_resource('fpd',
     serve_env=env,
     serve_cmd='cargo run -- --wasm-dir providers',
