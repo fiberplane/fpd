@@ -39,7 +39,9 @@ tar = "0.4"
 thiserror = "1.0.38"
 time = "0.3.14"
 tokio = { version = "1.18.5", features = ["full"] }
-tokio-tungstenite = { version = "0.16", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.20.1", features = [
+  "rustls-tls-native-roots",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
 url = "2.2.2"

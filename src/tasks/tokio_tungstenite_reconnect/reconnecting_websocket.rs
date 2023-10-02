@@ -228,18 +228,22 @@ impl ReconnectingWebSocket {
 
         let request = clone_request(&self.0.request);
         let config = WebSocketConfig {
-            // tungstenite-rs has a minimum send queue size of 1
-            max_send_queue: Some(1),
+            max_write_buffer_size: 1,
             ..WebSocketConfig::default()
         };
-        let (ws, response) =
-            match tokio_tungstenite::connect_async_with_config(request, Some(config)).await {
-                Ok(result) => result,
-                Err(err) => {
-                    debug!(?err, "Error connecting to websocket server");
-                    return Err(err);
-                }
-            };
+        let (ws, response) = match tokio_tungstenite::connect_async_with_config(
+            request,
+            Some(config),
+            false,
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(err) => {
+                debug!(?err, "Error connecting to websocket server");
+                return Err(err);
+            }
+        };
         trace!("websocket connection established");
 
         let ws = WebSocketKeepAlive::new_with_ping_timeout(ws, self.0.ping_timeout);
