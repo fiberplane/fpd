@@ -1,13 +1,15 @@
 use super::websocket_keepalive::{WebSocketKeepAlive, DEFAULT_PING_TIMEOUT};
 use async_channel::{bounded, Receiver, SendError, Sender};
 use futures::{select_biased, FutureExt};
-use http::Request;
+use http::{HeaderValue, Request};
+use std::convert::TryFrom;
 use std::sync::Arc;
 use std::{cmp, time::Duration};
 use tokio::spawn;
 use tokio::sync::{watch, Mutex};
 use tokio::time::sleep;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use tokio_tungstenite::tungstenite::error::UrlError;
+use tokio_tungstenite::tungstenite::handshake::client::generate_key;
 use tokio_tungstenite::tungstenite::{
     client::IntoClientRequest, error::ProtocolError, Error, Message,
 };
@@ -226,20 +228,28 @@ impl ReconnectingWebSocket {
     async fn initiate_connection(&self) -> Result<(), Error> {
         trace!("connecting to: {}", self.0.request.uri());
 
-        let request = clone_request(&self.0.request);
-        let config = WebSocketConfig {
-            // tungstenite-rs has a minimum send queue size of 1
-            max_send_queue: Some(1),
-            ..WebSocketConfig::default()
-        };
-        let (ws, response) =
-            match tokio_tungstenite::connect_async_with_config(request, Some(config)).await {
-                Ok(result) => result,
-                Err(err) => {
-                    debug!(?err, "Error connecting to websocket server");
-                    return Err(err);
-                }
-            };
+        let mut request = clone_request(&self.0.request);
+        let host = request
+            .uri()
+            .host()
+            .ok_or(Error::Url(UrlError::NoHostName))?
+            .to_owned();
+
+        // Set all the headers correctly, since we accept `Request` objects
+        // rather than URLs only.
+        let headers = request.headers_mut();
+        headers.insert("Host", HeaderValue::try_from(host)?);
+        headers.insert("Connection", HeaderValue::from_static("Upgrade"));
+        headers.insert("Upgrade", HeaderValue::from_static("websocket"));
+        headers.insert("Sec-WebSocket-Version", HeaderValue::from_static("13"));
+        headers.insert("Sec-WebSocket-Key", HeaderValue::try_from(generate_key())?);
+
+        let (ws, response) = tokio_tungstenite::connect_async(request)
+            .await
+            .map_err(|err| {
+                debug!(?err, "Error connecting to websocket server");
+                err
+            })?;
         trace!("websocket connection established");
 
         let ws = WebSocketKeepAlive::new_with_ping_timeout(ws, self.0.ping_timeout);
