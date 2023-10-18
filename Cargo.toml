@@ -1,6 +1,6 @@
 [package]
 name = "fpd"
-version = "2.16.0"
+version = "2.17.0"
 edition = "2018"
 description = "The Fiberplane Daemon enables secure communication between Fiberplane and your data sources using WebAssembly-based providers."
 authors = ["Fiberplane <info@fiberplane.com>"]
@@ -14,7 +14,7 @@ clap = { version = "4.1.4", features = ["derive", "env", "cargo", "help"] }
 ctrlc = "3.2.1"
 directories = "4.0.1"
 duct = "0.13"
-fiberplane = { version = "1.0.0-beta.3", features = [
+fiberplane = { version = "1.0.0-beta.6", features = [
   "base64uuid-creation",
   "models",
   "provider-bindings",
@@ -60,3 +60,6 @@ test-env-log = { version = "0.2", default-features = false, features = [
   "trace",
 ] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[patch.crates-io]
+fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane.git", branch = "main" }
