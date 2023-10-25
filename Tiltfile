@@ -89,12 +89,13 @@ else:
   data_sources_yaml = '"[]"' if len(data_sources_yaml) == 0 else ('|\n' + data_sources_yaml).replace('\n', '\n    ')
 
   configmap = '''
-  apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: fpd
-    namespace: default
-  data:
-    data_sources.yaml: %s
-  ''' % data_sources_yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fpd
+  namespace: default
+data:
+  data_sources.yaml: %s
+''' % data_sources_yaml
+
   k8s_yaml(blob(configmap))
