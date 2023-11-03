@@ -9,6 +9,11 @@ The format of this file is based on
 
 - TBD
 
+## [2.18.0]
+
+- Updated dependencies
+
+
 ## [2.17.0]
 
 - Updated dependencies
