@@ -8,6 +8,10 @@ The format of this file is based on [Keep a Changelog](https://keepachangelog.co
 
 - TBD
 
+## [2.18.0]
+
+- Updated dependencies
+
 ## [2.15.0]
 
 - Updated dependencies
