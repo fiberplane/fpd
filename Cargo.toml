@@ -1,10 +1,6 @@
 [package]
 name = "fpd"
-<<<<<<< HEAD
-version = "2.19.0"
-=======
 version = "2.18.0"
->>>>>>> origin/main
 edition = "2018"
 description = "The Fiberplane Daemon enables secure communication between Fiberplane and your data sources using WebAssembly-based providers."
 authors = ["Fiberplane <info@fiberplane.com>"]
