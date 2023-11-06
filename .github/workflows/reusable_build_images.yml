@@ -145,6 +145,8 @@ jobs:
 
       - name: Pull latest providers
         run: cargo run pull --wasm-dir=providers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Docker image
         run: >
@@ -220,6 +222,8 @@ jobs:
 
       - name: Pull latest providers
         run: cargo run pull --wasm-dir=providers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create distributable zip file
         run: |
