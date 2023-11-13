@@ -109,3 +109,37 @@ jobs:
     secrets:
       BUILDS_BUCKET: ${{ secrets.BUILDS_BUCKET }}
       PRIVATE_GITHUB_TOKEN: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
+
+  tag:
+    name: Compute 'main' commit docker tag
+    runs-on: ubuntu-latest-8-cores
+    outputs:
+      docker_tag: ${{ steps.compute.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - id: compute
+        name: Export variables
+        # The short_sha invocation must be the same git invocation as the one in the preceding
+        # build step, otherwise the image won't be found.
+        run: |
+          short_sha=$(git rev-parse --short "${{ github.event.pull_request.head.sha || github.sha }}")
+          echo "tag=dev-${short_sha}" >> "$GITHUB_OUTPUT"
+
+  dev-deploy:
+    name: Deploy 'main' commit on Dev cluster
+    needs: [build, tag]
+    if: ${{ github.ref == 'refs/heads/main' }}
+    uses: fiberplane/fpd/.github/workflows/deploy_release.yml@main
+    with:
+      environment: dev
+      version: ${{ needs.tag.outputs.docker_tag }}
+    secrets:
+      DEPLOY_STARTED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_STARTED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FINISHED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FINISHED_SLACK_WEBHOOK_URL }}
+      DEPLOY_FAILED_SLACK_WEBHOOK_URL: ${{ secrets.DEPLOY_FAILED_SLACK_WEBHOOK_URL }}
+      FIBERPLANE_TOKEN: ${{ secrets.FIBERPLANE_TOKEN }}
+      FIBERPLANE_DEMO_TOKEN: ${{ secrets.FIBERPLANE_DEMO_TOKEN }}
+      FIBERPLANE_DEV_TOKEN: ${{ secrets.FIBERPLANE_DEV_TOKEN }}
