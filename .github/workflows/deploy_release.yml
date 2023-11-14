@@ -68,7 +68,7 @@ jobs:
           echo "SERVICE=${SERVICE}" >> $GITHUB_ENV
           echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
           # Dev releases do not have the 'release-' prefix to the image tag
-          if [ "${{ inputs.environment }}" == "dev"]; then
+          if [ "${{ inputs.environment }}" == "dev" ]; then
             echo "TAG=${{ inputs.version }}" >> $GITHUB_ENV
           else
             echo "TAG=release-${{ inputs.version }}" >> $GITHUB_ENV
