@@ -7,7 +7,9 @@ The format of this file is based on
 
 ## [Unreleased]
 
-- TBD
+## [2.19.0]
+
+- Updated dependencies
 
 ## [2.18.0]
 
