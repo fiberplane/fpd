@@ -7,6 +7,12 @@ The format of this file is based on
 
 ## [Unreleased]
 
+- TBD
+
+## [2.19.3]
+
+- Fix the image tag when deploying a dev image from main (#172 #173)
+
 ## [2.19.0]
 
 - Updated dependencies
