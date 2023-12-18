@@ -83,7 +83,7 @@ jobs:
       #     /tmp/artifact/${SERVICE} version -o json > /tmp/artifact/manifest.json
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: /tmp/artifact/
@@ -135,7 +135,7 @@ jobs:
           echo "IMAGE=${{ steps.ecr.outputs.registry }}/${SERVICE}" >> $GITHUB_ENV
           echo "TAG=dev-${short_sha}-${{ matrix.docker_arch }}" >> $GITHUB_ENV
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: artifact
@@ -216,7 +216,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
@@ -240,7 +240,7 @@ jobs:
           done
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: dist-artifacts
           path: artifacts/
@@ -260,7 +260,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v4
         with:
           name: dist-artifacts
           path: artifacts
