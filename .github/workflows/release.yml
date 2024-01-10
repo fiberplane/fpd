@@ -133,7 +133,7 @@ jobs:
         run: echo "${{ github.event.release.tag_name }}" | cut -c2- > artifacts/version
 
       - name: Upload to GitHub artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: artifacts
           path: artifacts
