@@ -5,6 +5,7 @@ use clap::Parser;
 use duct::cmd;
 use fiberplane::provider_bindings::Timestamp;
 use flate2::read::GzDecoder;
+use http::Uri;
 use octocrab::models::{ArtifactId, JobId, RepositoryId};
 use octocrab::{Octocrab, Page};
 use secrecy::ExposeSecret;
@@ -15,6 +16,8 @@ use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use tar::Archive;
 use thiserror::Error;
+
+const GITHUB_BASE_URI: &str = "https://api.github.com";
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -117,9 +120,9 @@ async fn download_provider_artifacts_from_branch(
         });
     }
 
-    let archive_download_url = &latest_artifact.archive_download_url;
-
-    download_providers_archive(octocrab, archive_download_url, wasm_dir).await
+    // latest_artifact.
+    let download_url = &latest_artifact.archive_download_url;
+    download_providers_archive(octocrab, download_url, wasm_dir).await
 }
 
 async fn download_providers_release(
@@ -178,8 +181,20 @@ async fn download_providers_tarball(
     eprintln!("Downloading providers tarball from: {download_url}");
 
     let response = octocrab._get(download_url).await?;
-    let response = octocrab.follow_location_to_data(response).await?;
-    let tarball_bytes = hyper::body::to_bytes(response.into_body()).await?;
+    let tarball_bytes = if response.status().is_redirection() {
+        let header_value = response.headers().get("location").unwrap();
+        let location = header_value.to_str().unwrap().to_string();
+
+        if location.starts_with(GITHUB_BASE_URI) {
+            let uri = location.parse::<Uri>().unwrap();
+            let response = octocrab._get(uri).await?;
+            hyper::body::to_bytes(response).await?
+        } else {
+            reqwest::get(location).await?.bytes().await?
+        }
+    } else {
+        hyper::body::to_bytes(response.into_body()).await?
+    };
 
     let mut archive = Archive::new(GzDecoder::new(Cursor::new(tarball_bytes)));
     for entry in archive.entries()? {
@@ -213,8 +228,20 @@ async fn download_providers_zip(
     eprintln!("Downloading providers zip from: {download_url}");
 
     let response = octocrab._get(download_url).await?;
-    let response = octocrab.follow_location_to_data(response).await?;
-    let zip_bytes = hyper::body::to_bytes(response.into_body()).await?;
+    let zip_bytes = if response.status().is_redirection() {
+        let header_value = response.headers().get("location").unwrap();
+        let location = header_value.to_str().unwrap().to_string();
+
+        if location.starts_with(GITHUB_BASE_URI) {
+            let uri = location.parse::<Uri>().unwrap();
+            let response = octocrab._get(uri).await?;
+            hyper::body::to_bytes(response).await?
+        } else {
+            reqwest::get(location).await?.bytes().await?
+        }
+    } else {
+        hyper::body::to_bytes(response.into_body()).await?
+    };
 
     let mut archive = zip::ZipArchive::new(Cursor::new(zip_bytes))?;
     for i in 0..archive.len() {

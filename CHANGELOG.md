@@ -9,6 +9,18 @@ The format of this file is based on
 
 - TBD
 
+## [2.22.0]
+
+- Updated dependencies
+
+## [2.21.0]
+
+- Updated dependencies
+
+## [2.20.0]
+
+- Updated dependencies
+
 ## [2.19.3]
 
 - Fix the image tag when deploying a dev image from main (#172 #173)
@@ -20,7 +32,6 @@ The format of this file is based on
 ## [2.18.0]
 
 - Updated dependencies
-
 
 ## [2.17.0]
 
