@@ -5,7 +5,6 @@ use clap::Parser;
 use duct::cmd;
 use fiberplane::provider_bindings::Timestamp;
 use flate2::read::GzDecoder;
-use futures::TryFutureExt;
 use http::Uri;
 use octocrab::models::{ArtifactId, JobId, RepositoryId};
 use octocrab::{Octocrab, Page};
@@ -186,14 +185,13 @@ async fn download_providers_tarball(
         let header_value = response.headers().get("location").unwrap();
         let location = header_value.to_str().unwrap().to_string();
 
-        let result = if location.starts_with(GITHUB_BASE_URI) {
+        if location.starts_with(GITHUB_BASE_URI) {
             let uri = location.parse::<Uri>().unwrap();
             let response = octocrab._get(uri).await?;
             hyper::body::to_bytes(response).await?
         } else {
             reqwest::get(location).await?.bytes().await?
-        };
-        result
+        }
     } else {
         hyper::body::to_bytes(response.into_body()).await?
     };
@@ -234,14 +232,13 @@ async fn download_providers_zip(
         let header_value = response.headers().get("location").unwrap();
         let location = header_value.to_str().unwrap().to_string();
 
-        let result = if location.starts_with(GITHUB_BASE_URI) {
+        if location.starts_with(GITHUB_BASE_URI) {
             let uri = location.parse::<Uri>().unwrap();
             let response = octocrab._get(uri).await?;
             hyper::body::to_bytes(response).await?
         } else {
             reqwest::get(location).await?.bytes().await?
-        };
-        result
+        }
     } else {
         hyper::body::to_bytes(response.into_body()).await?
     };
