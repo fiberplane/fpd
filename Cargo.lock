@@ -1050,9 +1050,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane"
-version = "1.0.0-beta.6"
+version = "1.0.0-beta.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8060642e412d4b8a24e8137b0c1c2ac4f7e0a6e4dc8408adafb4ee9c5720b5d5"
+checksum = "0588955baa390005027bcf838c62bc5019b09dcbb00e338c84fab8ba1a0c9834"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -1062,14 +1062,15 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-models"
-version = "1.0.0-beta.6"
+version = "1.0.0-beta.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab098a6c4464a8fc722ef4d9d96abe7ceedd1a619327a1da9313009cd85737f4"
+checksum = "370d1dea212a27462f6d13cce0d7aae87d52f7981ab4c53d4bab9ea50c5829ab"
 dependencies = [
  "base64 0.13.1",
  "base64uuid",
  "bytes",
  "form_urlencoded",
+ "ordered-float",
  "rmp-serde",
  "rmpv",
  "serde",
@@ -1085,9 +1086,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-bindings"
-version = "2.0.0-beta.6"
+version = "2.0.0-beta.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5410cef18d982407f2f0bc5709ade243f9869a848cc8cfeb47d00b48ad9eaa67"
+checksum = "b8b981a520c2e0d2b13d5b9a6f80be9ff0cd11c42af8e08d11f17b28b412387b"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1102,9 +1103,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-runtime"
-version = "2.0.0-beta.6"
+version = "2.0.0-beta.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04305230a7a5d86ab433b393a05ee743414984a85f328f07da91153e7eba2e00"
+checksum = "170b253723b90fc5d04874d2b29df6b6cf83fbed13b0e4fa336295c57f83e0d3"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1194,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "fpd"
-version = "2.22.0"
+version = "2.23.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -2085,9 +2086,9 @@ dependencies = [
 
 [[package]]
 name = "octocrab"
-version = "0.33.3"
+version = "0.33.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "054a8bf47dfa8f89bb0dcf17e485e9f49f2586c05bf0aa67b8ec5a9e7bc8dfd5"
+checksum = "309f1476ea43a6cfb5a92600ef133ae22afbdce545d29666a69197769afb8605"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2138,6 +2139,17 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "ordered-float"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76df7075c7d4d01fdcb46c912dd17fba5b60c78ea480b475f2b6ab6f666584e"
+dependencies = [
+ "num-traits",
+ "rand",
+ "serde",
 ]
 
 [[package]]
@@ -2406,6 +2418,7 @@ dependencies = [
  "libc",
  "rand_chacha",
  "rand_core",
+ "serde",
 ]
 
 [[package]]
@@ -2425,6 +2438,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
+ "serde",
 ]
 
 [[package]]
