@@ -330,9 +330,8 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
 name = "base64uuid"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9e3d2060139fc5977f18e2514ddd54aa594ee087f2fc8486a73f897423fd41b"
+version = "1.1.0"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
 dependencies = [
  "base64 0.13.1",
  "serde",
@@ -1050,9 +1049,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane"
-version = "1.0.0-beta.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0588955baa390005027bcf838c62bc5019b09dcbb00e338c84fab8ba1a0c9834"
+version = "1.0.0-beta.11"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -1062,9 +1060,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-models"
-version = "1.0.0-beta.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "370d1dea212a27462f6d13cce0d7aae87d52f7981ab4c53d4bab9ea50c5829ab"
+version = "1.0.0-beta.11"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
 dependencies = [
  "base64 0.13.1",
  "base64uuid",
@@ -1086,9 +1083,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-bindings"
-version = "2.0.0-beta.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8b981a520c2e0d2b13d5b9a6f80be9ff0cd11c42af8e08d11f17b28b412387b"
+version = "2.0.0-beta.11"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1103,9 +1099,8 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-runtime"
-version = "2.0.0-beta.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "170b253723b90fc5d04874d2b29df6b6cf83fbed13b0e4fa336295c57f83e0d3"
+version = "2.0.0-beta.11"
+source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1195,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "fpd"
-version = "2.23.0"
+version = "2.24.0"
 dependencies = [
  "anyhow",
  "async-channel",
