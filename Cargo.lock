@@ -330,9 +330,9 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 
 [[package]]
 name = "base64uuid"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9e3d2060139fc5977f18e2514ddd54aa594ee087f2fc8486a73f897423fd41b"
+checksum = "57b5b1071f0de9672aa0a20b854892e32f6b690ee522a932c416bd8446b26bca"
 dependencies = [
  "base64 0.13.1",
  "serde",
@@ -1050,9 +1050,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane"
-version = "1.0.0-beta.9"
+version = "1.0.0-beta.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0588955baa390005027bcf838c62bc5019b09dcbb00e338c84fab8ba1a0c9834"
+checksum = "c267bdf3e871158de8907268b36a000dc9f06a5d0aff070ee6788bf96c8d52b2"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -1062,9 +1062,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-models"
-version = "1.0.0-beta.9"
+version = "1.0.0-beta.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "370d1dea212a27462f6d13cce0d7aae87d52f7981ab4c53d4bab9ea50c5829ab"
+checksum = "020d9a4550101b82ad2976396be527cf2ebf82441e4a821d52e77a635f363ae3"
 dependencies = [
  "base64 0.13.1",
  "base64uuid",
@@ -1086,9 +1086,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-bindings"
-version = "2.0.0-beta.9"
+version = "2.0.0-beta.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8b981a520c2e0d2b13d5b9a6f80be9ff0cd11c42af8e08d11f17b28b412387b"
+checksum = "fd93b90ad6b4fcf02e1d5d636e53563fab52b87a35d1293d1d565bae4686214c"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1103,9 +1103,9 @@ dependencies = [
 
 [[package]]
 name = "fiberplane-provider-runtime"
-version = "2.0.0-beta.9"
+version = "2.0.0-beta.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "170b253723b90fc5d04874d2b29df6b6cf83fbed13b0e4fa336295c57f83e0d3"
+checksum = "6a85036720c4340993038ff45c3647ad9fe9d71730c1ebe35c8e07e611c16d54"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1195,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "fpd"
-version = "2.23.0"
+version = "2.24.0"
 dependencies = [
  "anyhow",
  "async-channel",

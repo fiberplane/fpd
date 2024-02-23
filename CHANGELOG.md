@@ -5,9 +5,17 @@ All notable changes to this project will be documented in this file.
 The format of this file is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [2.25.0] - TBD
 
-- TBD
+TBD
+
+## [2.24.0] - 2024-02-26
+
+- Updated dependencies
+
+## [2.23.0]
+
+- Updated dependencies
 
 ## [2.22.0]
 

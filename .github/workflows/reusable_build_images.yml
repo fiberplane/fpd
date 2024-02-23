@@ -38,8 +38,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: setup-git-credentials
-        uses: fusion-engineering/setup-git-credentials@v2
+      - uses: de-vri-es/setup-git-credentials@v2
         with:
           credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
 

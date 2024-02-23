@@ -29,8 +29,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: setup-git-credentials
-        uses: fusion-engineering/setup-git-credentials@v2
+      - uses: de-vri-es/setup-git-credentials@v2
         with:
           credentials: "https://fiberplanebot:${{ secrets.PRIVATE_GITHUB_TOKEN }}@github.com/"
 
@@ -39,7 +38,7 @@ jobs:
       - name: Pull latest providers
         run: cargo run pull
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}        
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run tests
         run: cargo test
