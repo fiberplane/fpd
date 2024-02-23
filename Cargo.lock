@@ -331,7 +331,8 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "base64uuid"
 version = "1.1.0"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57b5b1071f0de9672aa0a20b854892e32f6b690ee522a932c416bd8446b26bca"
 dependencies = [
  "base64 0.13.1",
  "serde",
@@ -1050,7 +1051,8 @@ dependencies = [
 [[package]]
 name = "fiberplane"
 version = "1.0.0-beta.11"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c267bdf3e871158de8907268b36a000dc9f06a5d0aff070ee6788bf96c8d52b2"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -1061,7 +1063,8 @@ dependencies = [
 [[package]]
 name = "fiberplane-models"
 version = "1.0.0-beta.11"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "020d9a4550101b82ad2976396be527cf2ebf82441e4a821d52e77a635f363ae3"
 dependencies = [
  "base64 0.13.1",
  "base64uuid",
@@ -1084,7 +1087,8 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-bindings"
 version = "2.0.0-beta.11"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd93b90ad6b4fcf02e1d5d636e53563fab52b87a35d1293d1d565bae4686214c"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1100,7 +1104,8 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-runtime"
 version = "2.0.0-beta.11"
-source = "git+ssh://git@github.com/fiberplane/fiberplane.git?branch=main#fe1aa4b382e7fe3ba8c6c0ad33f942f29d43f431"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a85036720c4340993038ff45c3647ad9fe9d71730c1ebe35c8e07e611c16d54"
 dependencies = [
  "bytes",
  "fiberplane-models",
