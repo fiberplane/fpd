@@ -7,7 +7,7 @@ The format of this file is based on
 
 ## unreleased
 
-## [2.26.0] - 2024-03-01
+## [2.25.0] - 2024-03-05
 
 - Updated dependencies
 
