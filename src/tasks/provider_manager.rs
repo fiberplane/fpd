@@ -6,6 +6,7 @@ use duct::cmd;
 use fiberplane::provider_bindings::Timestamp;
 use flate2::read::GzDecoder;
 use http::Uri;
+use http_body_util::BodyExt;
 use octocrab::models::{ArtifactId, JobId, RepositoryId};
 use octocrab::{Octocrab, Page};
 use secrecy::ExposeSecret;
@@ -188,12 +189,12 @@ async fn download_providers_tarball(
         if location.starts_with(GITHUB_BASE_URI) {
             let uri = location.parse::<Uri>().unwrap();
             let response = octocrab._get(uri).await?;
-            hyper::body::to_bytes(response).await?
+            response.into_body().collect().await?.to_bytes()
         } else {
             reqwest::get(location).await?.bytes().await?
         }
     } else {
-        hyper::body::to_bytes(response.into_body()).await?
+        response.into_body().collect().await?.to_bytes()
     };
 
     let mut archive = Archive::new(GzDecoder::new(Cursor::new(tarball_bytes)));
@@ -235,12 +236,12 @@ async fn download_providers_zip(
         if location.starts_with(GITHUB_BASE_URI) {
             let uri = location.parse::<Uri>().unwrap();
             let response = octocrab._get(uri).await?;
-            hyper::body::to_bytes(response).await?
+            response.into_body().collect().await?.to_bytes()
         } else {
             reqwest::get(location).await?.bytes().await?
         }
     } else {
-        hyper::body::to_bytes(response.into_body()).await?
+        response.into_body().collect().await?.to_bytes()
     };
 
     let mut archive = zip::ZipArchive::new(Cursor::new(zip_bytes))?;

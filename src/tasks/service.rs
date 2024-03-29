@@ -1,21 +1,25 @@
 use super::metrics::{metrics_export, CONCURRENT_QUERIES, QUERIES_DURATION_SECONDS, QUERIES_TOTAL};
 use super::tokio_tungstenite_reconnect::ReconnectingWebSocket;
 use anyhow::{anyhow, Context, Result};
+use bytes::Bytes;
 use fiberplane::base64uuid::Base64Uuid;
 use fiberplane::models::providers::{Error, STATUS_MIME_TYPE, STATUS_QUERY_TYPE};
 use fiberplane::models::{data_sources::DataSourceStatus, names::Name, proxies::*};
 use fiberplane::provider_bindings::Blob;
 use fiberplane::provider_runtime::spec::{types::ProviderRequest, Runtime};
 use futures::{future::join_all, select, FutureExt};
-use http::{Method, Request, Response, StatusCode};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Server};
+use http::{Method, Response, StatusCode};
+use http_body_util::Full;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use status_check::DataSourceCheckTask;
 use std::collections::HashMap;
 use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc, time::Duration};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::Mutex;
 use tokio::sync::{broadcast::Sender, watch};
@@ -201,9 +205,11 @@ impl ProxyService {
         // Health check endpoints
         let ws_clone = ws.clone();
         if let Some(listen_address) = self.inner.listen_address {
+            let tcp_listener = TcpListener::bind(listen_address).await?;
+
             tokio::spawn(
                 async move {
-                    if let Err(err) = serve_health_check_endpoints(listen_address, ws_clone).await {
+                    if let Err(err) = serve_health_check_endpoints(tcp_listener, ws_clone).await {
                         // TODO should we shut the server down?
                         error!(?err, "Error serving health check endpoints");
                     }
@@ -745,47 +751,62 @@ async fn load_wasm_modules(wasm_dir: &Path, provider_types: Vec<String>) -> Wasm
 
 /// Listen on the given address and return a 200 for GET /
 /// and either 200 or 502 for GET /health, depending on the WebSocket connection status
-async fn serve_health_check_endpoints(addr: SocketAddr, ws: ReconnectingWebSocket) -> Result<()> {
-    let make_svc = make_service_fn(move |_conn| {
+async fn serve_health_check_endpoints(
+    tcp_listener: TcpListener,
+    ws: ReconnectingWebSocket,
+) -> Result<()> {
+    loop {
+        let (stream, _) = tcp_listener
+            .accept()
+            .await
+            .expect("unable to accept connection");
+
         let ws = ws.clone();
-        async move {
-            Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
-                let ws = ws.clone();
-                async move {
-                    let (status, body) = match (request.method(), request.uri().path()) {
-                        (&Method::GET, "/") | (&Method::GET, "") => (
-                            StatusCode::OK,
-                            Body::from("Hi, I'm your friendly neighborhood proxy.".to_string()),
-                        ),
-                        (&Method::GET, "/health") => {
-                            if ws.is_connected() {
-                                (StatusCode::OK, Body::from("Connected".to_string()))
-                            } else {
-                                (
-                                    StatusCode::BAD_GATEWAY,
-                                    Body::from("Disconnected".to_string()),
-                                )
-                            }
-                        }
-                        (&Method::GET, "/metrics") => match metrics_export() {
-                            Ok(metrics) => (StatusCode::OK, Body::from(metrics)),
-                            Err(err) => (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Body::from(format!("Error exporting metrics: {err}")),
+
+        // `hyper::rt` IO traits.
+        let io = TokioIo::new(stream);
+
+        tokio::task::spawn(async move {
+            if let Err(err) = http1::Builder::new()
+                // `service_fn` converts our function in a `Service`
+                .serve_connection(
+                    io,
+                    service_fn(move |request| {
+                    let ws = ws.clone();
+                    async move {
+                        let (status, body) = match (request.method(), request.uri().path()) {
+                            (&Method::GET, "/") | (&Method::GET, "") => (
+                                StatusCode::OK,
+                                "Hi, I'm your friendly neighborhood proxy.".to_string(),
                             ),
-                        },
-                        (_, _) => (StatusCode::NOT_FOUND, Body::empty()),
-                    };
-                    trace!(http_status_code = %status.as_u16(), http_method = %request.method(), path = request.uri().path());
+                            (&Method::GET, "/health") => {
+            if ws.is_connected() {
+                                    (StatusCode::OK, "Connected".to_string())
+                                } else {
+                                    (
+                                        StatusCode::BAD_GATEWAY,
+                                        "Disconnected".to_string(),
+                                    )
+                                }
+                            }
+                            (&Method::GET, "/metrics") => match metrics_export() {
+                                Ok(metrics) => (StatusCode::OK, metrics),
+                                Err(err) => (
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    format!("Error exporting metrics: {err}"),
+                                ),
+                            },
+                            (_, _) => (StatusCode::NOT_FOUND, "Not Found".to_string()),
+                        };
+                        trace!(http_status_code = %status.as_u16(), http_method = %request.method(), path = request.uri().path());
 
-                    Ok::<_, Infallible>(Response::builder().status(status).body(body).unwrap())
+                        Ok::<_, Infallible>(Response::builder().status(status).body(Full::new(Bytes::from(body))).unwrap())
+                    }
+                }))
+                .await
+                {
+                    error!("Error serving connection: {:?}", err);
                 }
-            }))
-        }
-    });
-
-    debug!(?addr, "Serving health check endpoints");
-
-    let server = Server::bind(&addr).serve(make_svc);
-    Ok(server.await?)
+        });
+    }
 }
