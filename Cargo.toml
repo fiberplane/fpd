@@ -15,7 +15,7 @@ clap = { version = "4.1.4", features = ["derive", "env", "cargo", "help"] }
 ctrlc = "3.2.1"
 directories = "4.0.1"
 duct = "0.13"
-fiberplane = { version = "1.0.0-beta.11", features = [
+fiberplane = { version = "1.0.0-beta.14", features = [
   "base64uuid-creation",
   "models",
   "provider-bindings",
@@ -62,4 +62,4 @@ test-env-log = { version = "0.2", default-features = false, features = [
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [patch.crates-io]
-#fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane.git", branch = "main" }
+fiberplane = { git = "ssh://git@github.com/fiberplane/fiberplane.git", branch = "main" }
