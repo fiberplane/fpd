@@ -5,7 +5,7 @@ use clap::Parser;
 use duct::cmd;
 use fiberplane::provider_bindings::Timestamp;
 use flate2::read::GzDecoder;
-use http::Uri;
+use http_body_util::BodyExt;
 use octocrab::models::{ArtifactId, JobId, RepositoryId};
 use octocrab::{Octocrab, Page};
 use secrecy::ExposeSecret;
@@ -180,20 +180,24 @@ async fn download_providers_tarball(
 ) -> Result<(), Error> {
     eprintln!("Downloading providers tarball from: {download_url}");
 
+    // We need to get rid of the base URL, to ensure that octocrab will add
+    // authentication headers again.
+    let download_url = download_url.trim_start_matches(GITHUB_BASE_URI);
+
     let response = octocrab._get(download_url).await?;
     let tarball_bytes = if response.status().is_redirection() {
         let header_value = response.headers().get("location").unwrap();
         let location = header_value.to_str().unwrap().to_string();
 
         if location.starts_with(GITHUB_BASE_URI) {
-            let uri = location.parse::<Uri>().unwrap();
-            let response = octocrab._get(uri).await?;
-            hyper::body::to_bytes(response).await?
+            let location = location.trim_start_matches(GITHUB_BASE_URI);
+            let response = octocrab._get(location).await?;
+            response.into_body().collect().await?.to_bytes()
         } else {
             reqwest::get(location).await?.bytes().await?
         }
     } else {
-        hyper::body::to_bytes(response.into_body()).await?
+        response.into_body().collect().await?.to_bytes()
     };
 
     let mut archive = Archive::new(GzDecoder::new(Cursor::new(tarball_bytes)));
@@ -227,20 +231,24 @@ async fn download_providers_zip(
 ) -> Result<(), Error> {
     eprintln!("Downloading providers zip from: {download_url}");
 
+    // We need to get rid of the base URL, to ensure that octocrab will add
+    // authentication headers again.
+    let download_url = download_url.trim_start_matches(GITHUB_BASE_URI);
+
     let response = octocrab._get(download_url).await?;
     let zip_bytes = if response.status().is_redirection() {
         let header_value = response.headers().get("location").unwrap();
         let location = header_value.to_str().unwrap().to_string();
 
         if location.starts_with(GITHUB_BASE_URI) {
-            let uri = location.parse::<Uri>().unwrap();
-            let response = octocrab._get(uri).await?;
-            hyper::body::to_bytes(response).await?
+            let location = location.trim_start_matches(GITHUB_BASE_URI);
+            let response = octocrab._get(location).await?;
+            response.into_body().collect().await?.to_bytes()
         } else {
             reqwest::get(location).await?.bytes().await?
         }
     } else {
-        hyper::body::to_bytes(response.into_body()).await?
+        response.into_body().collect().await?.to_bytes()
     };
 
     let mut archive = zip::ZipArchive::new(Cursor::new(zip_bytes))?;
