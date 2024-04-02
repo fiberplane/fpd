@@ -5,7 +5,6 @@ use clap::Parser;
 use duct::cmd;
 use fiberplane::provider_bindings::Timestamp;
 use flate2::read::GzDecoder;
-use http::Uri;
 use http_body_util::BodyExt;
 use octocrab::models::{ArtifactId, JobId, RepositoryId};
 use octocrab::{Octocrab, Page};
