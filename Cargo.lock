@@ -406,7 +406,7 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "base64uuid"
 version = "1.1.0"
-source = "git+https://github.com/fiberplane/fiberplane?branch=updates_2024-04-16#0b7384f6080725bc7d4701b69d3e9a127f7413af"
+source = "git+https://github.com/fiberplane/fiberplane?branch=main#ccb4659f0cdf0d106d3cf6ece0ab575e134e22ef"
 dependencies = [
  "base64 0.13.1",
  "serde",
@@ -1111,7 +1111,7 @@ checksum = "658bd65b1cf4c852a3cc96f18a8ce7b5640f6b703f905c7d74532294c2a63984"
 [[package]]
 name = "fiberplane"
 version = "1.0.0-beta.14"
-source = "git+https://github.com/fiberplane/fiberplane?branch=updates_2024-04-16#0b7384f6080725bc7d4701b69d3e9a127f7413af"
+source = "git+https://github.com/fiberplane/fiberplane?branch=main#ccb4659f0cdf0d106d3cf6ece0ab575e134e22ef"
 dependencies = [
  "base64uuid",
  "fiberplane-models",
@@ -1122,7 +1122,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-models"
 version = "1.0.0-beta.13"
-source = "git+https://github.com/fiberplane/fiberplane?branch=updates_2024-04-16#0b7384f6080725bc7d4701b69d3e9a127f7413af"
+source = "git+https://github.com/fiberplane/fiberplane?branch=main#ccb4659f0cdf0d106d3cf6ece0ab575e134e22ef"
 dependencies = [
  "base64 0.13.1",
  "base64uuid",
@@ -1145,7 +1145,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-bindings"
 version = "2.0.0-beta.13"
-source = "git+https://github.com/fiberplane/fiberplane?branch=updates_2024-04-16#0b7384f6080725bc7d4701b69d3e9a127f7413af"
+source = "git+https://github.com/fiberplane/fiberplane?branch=main#ccb4659f0cdf0d106d3cf6ece0ab575e134e22ef"
 dependencies = [
  "bytes",
  "fiberplane-models",
@@ -1161,7 +1161,7 @@ dependencies = [
 [[package]]
 name = "fiberplane-provider-runtime"
 version = "2.0.0-beta.13"
-source = "git+https://github.com/fiberplane/fiberplane?branch=updates_2024-04-16#0b7384f6080725bc7d4701b69d3e9a127f7413af"
+source = "git+https://github.com/fiberplane/fiberplane?branch=main#ccb4659f0cdf0d106d3cf6ece0ab575e134e22ef"
 dependencies = [
  "bytes",
  "fiberplane-models",

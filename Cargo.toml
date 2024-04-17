@@ -62,4 +62,4 @@ test-env-log = { version = "0.2", default-features = false, features = [
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [patch.crates-io]
-fiberplane = { git = "https://github.com/fiberplane/fiberplane", branch = "updates_2024-04-16" }
+fiberplane = { git = "https://github.com/fiberplane/fiberplane", branch = "main" }
