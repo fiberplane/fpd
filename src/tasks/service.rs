@@ -272,7 +272,7 @@ impl ProxyService {
                                     .protocol_version(STATUS_CHECK_VERSION)
                                     .status(DataSourceStatus::Error(Error::ProxyDisconnected))
                                     .build();
-                                upsert.description = data_source.description.clone();
+                                upsert.description.clone_from(&data_source.description);
                                 upsert
                             })
                             .collect();
@@ -654,7 +654,7 @@ impl ProxyService {
                     .protocol_version(STATUS_CHECK_VERSION)
                     .status(status)
                     .build();
-                upsert.description = data_source.description.clone();
+                upsert.description.clone_from(&data_source.description);
                 upsert
             })
             .unwrap()
