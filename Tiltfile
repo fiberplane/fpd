@@ -54,7 +54,7 @@ if 'elasticsearch' in providers:
     labels=['customer'])
 
 env={
-  'RUST_LOG': 'fpd=trace',
+  'RUST_LOG': os.getenv('RUST_LOG', 'fpd=trace'),
   'LISTEN_ADDRESS': '127.0.0.1:3002',
   'API_BASE': 'ws://localhost:3030' if run_fpd_on_host else 'ws://api',
   # The Token still contains "proxy" as it's the legacy name of fpd
