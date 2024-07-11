@@ -48,8 +48,8 @@ jobs:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-          override: true
+          # This toolchain is compatible with wasmer 2.3
+          toolchain: 1.76
           target: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2

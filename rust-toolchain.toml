@@ -1,0 +1,14 @@
+[toolchain]
+# We must pin the stable toolchain to 1.76, as wasmer 2.3 used in fp-bindgen is not passing correctly an
+# unsafe precondition checked in later rust versions.
+#
+# Note that the true solution is to upgrade to wasmer 3 in fp-bindgen, but this is a stopgap measure for
+# now
+#
+# Error message during `cargo test`:
+#
+# thread 'tasks::tests::handles_multiple_concurrent_messages' panicked at library/core/src/panicking.rs:220:5:
+# unsafe precondition(s) violated: ptr::copy_nonoverlapping requires that both pointer arguments are aligned and non-null and the specified memory ranges do not overlap
+# note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+# thread caused non-unwinding panic. aborting.
+channel = "1.76"
